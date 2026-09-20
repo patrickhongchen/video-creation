@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Presentation } from '../model'
 import { slugify } from '../presentationFactories'
 import { listNarrationTakes } from '../narration/narrationDb'
@@ -6,7 +6,8 @@ import { browserCanDecodeTake } from '../narration/audioDecoding'
 import { buildFinalPlaybackPlan } from '../finalPlayback/buildFinalPlaybackPlan'
 import type { NarrationTakesBySection } from '../finalPlayback/finalPlaybackTypes'
 import { useFinalPlayback } from '../finalPlayback/useFinalPlayback'
-import { useFinalVideoRecorder } from '../recording/useFinalVideoRecorder'
+import { buildDesktopExportJob, getDesktopBridge } from '../desktop/desktopBridge'
+import type { DesktopExportProgress } from '../desktop/desktopTypes'
 import { Stage } from './Stage'
 import { CheckIcon, CloseIcon, PlayIcon } from './Icons'
 
@@ -16,6 +17,8 @@ interface FinalVideoStudioProps {
   onOpenNarration: () => void
 }
 
+type ExportState = 'ready' | 'preparing' | 'rendering' | 'exported'
+
 function formatTime(milliseconds: number) {
   const seconds = Math.max(0, Math.floor(milliseconds / 1_000))
   const minutes = Math.floor(seconds / 60)
@@ -24,20 +27,26 @@ function formatTime(milliseconds: number) {
 
 function localDateStamp() {
   const date = new Date()
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function createJobId() {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `export-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: FinalVideoStudioProps) {
+  const desktop = getDesktopBridge()
   const [takesBySection, setTakesBySection] = useState<NarrationTakesBySection>({})
   const [takesStatus, setTakesStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [decodeStatus, setDecodeStatus] = useState<'waiting' | 'checking' | 'ready'>('waiting')
   const [decodeIssues, setDecodeIssues] = useState<Record<string, string>>({})
+  const [exportState, setExportState] = useState<ExportState>('ready')
+  const [exportProgress, setExportProgress] = useState<DesktopExportProgress | null>(null)
+  const [outputPath, setOutputPath] = useState('')
   const [error, setError] = useState('')
-  const stageRef = useRef<HTMLDivElement>(null)
-  const outputCanvasRef = useRef<HTMLCanvasElement>(null)
+  const exportAttemptRef = useRef(0)
 
   const plan = useMemo(
     () => buildFinalPlaybackPlan(presentation, takesBySection),
@@ -77,59 +86,37 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
       const decodable = await browserCanDecodeTake(entry.selectedTake!)
       return decodable
         ? null
-        : [entry.sectionId, `“${entry.title}” uses selected audio that this browser could not decode.`] as const
-    })).then((results) => {
-      if (cancelled) return
-      const issues = results.reduce<Record<string, string>>((entries, result) => {
-        if (result) entries[result[0]] = result[1]
-        return entries
-      }, {})
-      setDecodeIssues(issues)
-      setDecodeStatus('ready')
-    })
+        : [entry.sectionId, `“${entry.title}” cannot be decoded for Final Playback Preview. Desktop export may still decode it with FFmpeg.`] as const
+    }))
+      .then((results) => {
+        if (cancelled) return
+        setDecodeIssues(results.reduce<Record<string, string>>((entries, result) => {
+          if (result) entries[result[0]] = result[1]
+          return entries
+        }, {}))
+        setDecodeStatus('ready')
+      })
+      .catch(() => {
+        if (cancelled) return
+        setDecodeStatus('ready')
+        setDecodeIssues({ preview: 'Selected audio could not be checked for Final Playback Preview.' })
+      })
     return () => { cancelled = true }
   }, [plan.readiness, takesStatus])
 
-  const recorder = useFinalVideoRecorder({ onError: setError })
-  const recorderStatusRef = useRef(recorder.status)
-  recorderStatusRef.current = recorder.status
-  const disposePlaybackAudioRef = useRef<() => Promise<void>>(async () => undefined)
-
-  const handlePlaybackComplete = useCallback(() => {
-    if (recorderStatusRef.current === 'recording') recorder.finishRecording()
-  }, [recorder.finishRecording])
-
-  const handlePlaybackError = useCallback((message: string) => {
-    setError(message)
-    if (recorderStatusRef.current === 'recording' || recorderStatusRef.current === 'finalizing') {
-      recorder.cancelRender()
-      void disposePlaybackAudioRef.current()
-    }
-  }, [recorder.cancelRender])
-
-  const playback = useFinalPlayback({
-    plan,
-    onError: handlePlaybackError,
-    onComplete: handlePlaybackComplete,
-  })
-  disposePlaybackAudioRef.current = playback.disposeAudio
-
-  const previousRecorderStatusRef = useRef(recorder.status)
   useEffect(() => {
-    const previousStatus = previousRecorderStatusRef.current
-    previousRecorderStatusRef.current = recorder.status
-    if ((previousStatus === 'recording' || previousStatus === 'finalizing') && recorder.status === 'unprepared') {
-      playback.stop()
-      void playback.disposeAudio()
-    }
-    if (recorder.status === 'review') void playback.disposeAudio()
-  }, [recorder.status, playback.stop, playback.disposeAudio])
+    if (!desktop) return
+    return desktop.onExportProgress((progress) => {
+      setExportState('rendering')
+      setExportProgress(progress)
+    })
+  }, [desktop])
 
+  const playback = useFinalPlayback({ plan, onError: setError })
   useEffect(() => () => {
     playback.stop()
-    recorder.cancelRender()
     void playback.disposeAudio()
-  }, [playback.stop, playback.disposeAudio, recorder.cancelRender])
+  }, [playback.stop, playback.disposeAudio])
 
   const activeSceneIndex = Math.max(0, presentation.scenes.findIndex((scene) => scene.id === playback.activeSceneId))
   const activeScene = presentation.scenes[activeSceneIndex] ?? presentation.scenes[0]
@@ -138,97 +125,94 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
   useEffect(() => { previousSceneIndexRef.current = activeSceneIndex }, [activeSceneIndex])
 
   const decodeIssueCount = Object.keys(decodeIssues).length
-  const readinessIssueCount = plan.readinessIssues.length + decodeIssueCount
-  const ready = takesStatus === 'ready' && decodeStatus === 'ready' && plan.isReady && decodeIssueCount === 0
-  const busy = recorder.status === 'preparing' || recorder.status === 'recording' || recorder.status === 'finalizing'
-  const rendering = recorder.status === 'recording' || recorder.status === 'finalizing'
-  const progress = playback.totalDurationMs > 0
+  const readinessIssueCount = plan.readinessIssues.length
+  const exportReady = takesStatus === 'ready' && plan.isReady
+  const previewReady = exportReady && decodeStatus === 'ready' && decodeIssueCount === 0
+  const busy = exportState === 'preparing' || exportState === 'rendering'
+  const previewProgress = playback.totalDurationMs > 0
     ? Math.min(100, (playback.currentTimeMs / playback.totalDurationMs) * 100)
     : 0
 
-  const prepareCapture = async () => {
-    setError('')
+  const startExport = async () => {
+    if (!desktop || !exportReady || busy) return
+    const attempt = exportAttemptRef.current + 1
+    exportAttemptRef.current = attempt
     playback.stop()
-    const stage = stageRef.current
-    const canvas = outputCanvasRef.current
-    if (!stage || !canvas) {
-      setError('The Stage or output preview is not available yet.')
-      return
-    }
-    await recorder.prepare(stage, canvas)
-  }
-
-  const renderVideo = async () => {
-    if (!ready || recorder.status !== 'ready') return
     setError('')
-    playback.stop()
+    setOutputPath('')
+    setExportProgress(null)
+    setExportState('preparing')
     try {
-      const audioStream = await playback.ensureAudioReady()
-      await recorder.beginRecording(audioStream)
-      await playback.restart()
+      const sourceSegments = plan.segments.map((segment) => segment.type === 'silent-scene'
+        ? { ...segment }
+        : {
+            type: 'narration' as const,
+            sectionId: segment.sectionId,
+            title: segment.title,
+            sceneIds: [...segment.sceneIds],
+            durationMs: segment.durationMs,
+            cues: segment.take.cues.map((cue) => ({ ...cue })),
+            takeId: segment.take.id,
+            mimeType: segment.take.mimeType,
+            blob: segment.take.blob,
+          })
+      const job = await buildDesktopExportJob({
+        jobId: createJobId(),
+        presentation: structuredClone(presentation),
+        editorViewportWidth: window.innerWidth,
+        totalDurationMs: plan.totalDurationMs,
+        finalHoldMs: plan.finalHoldMs,
+        suggestedBaseName: `${slugify(presentation.title || presentation.id)}-${localDateStamp()}`,
+        segments: sourceSegments,
+      })
+      if (exportAttemptRef.current !== attempt) return
+      const result = await desktop.exportVideo(job)
+      if (exportAttemptRef.current !== attempt) return
+      if (result.status === 'completed') {
+        setOutputPath(result.outputPath)
+        setExportState('exported')
+        setExportProgress((current) => current ?? {
+          jobId: job.jobId,
+          elapsedMs: plan.totalDurationMs,
+          totalDurationMs: plan.totalDurationMs,
+          percent: 100,
+        })
+      } else {
+        setExportState('ready')
+        setExportProgress(null)
+      }
     } catch (problem) {
-      playback.stop()
-      recorder.cancelRender()
-      void playback.disposeAudio()
-      setError(problem instanceof Error ? problem.message : 'Final video rendering could not start.')
+      setExportState('ready')
+      setExportProgress(null)
+      setError(problem instanceof Error ? problem.message : 'Final video export failed.')
     }
   }
 
-  const cancelRender = () => {
-    playback.stop()
-    recorder.cancelRender()
-  }
-
-  const cancelCapture = () => {
-    playback.stop()
-    recorder.cancelCapture()
-    void playback.disposeAudio()
+  const cancelExport = async () => {
+    if (!desktop) return
+    exportAttemptRef.current += 1
+    try {
+      await desktop.cancelExport()
+    } finally {
+      setExportState('ready')
+      setExportProgress(null)
+    }
   }
 
   const leaveStudio = () => {
     playback.stop()
-    recorder.cancelRender()
     void playback.disposeAudio()
     onExit()
   }
 
-  const downloadVideo = () => {
-    if (!recorder.videoUrl) return
-    const link = document.createElement('a')
-    link.href = recorder.videoUrl
-    link.download = `${slugify(presentation.title || presentation.id)}-${localDateStamp()}.${recorder.extension}`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-  }
-
-  if (recorder.status === 'review' && recorder.videoUrl) {
-    return (
-      <main className="final-video-studio final-video-review">
-        <header className="final-video-header">
-          <div><span className="final-video-kicker">Final Video</span><h1>Review your render</h1></div>
-          <button className="final-video-exit" onClick={leaveStudio}><CloseIcon /> Back to editor</button>
-        </header>
-        <section className="final-review-body">
-          <video className="final-review-player" src={recorder.videoUrl} controls playsInline />
-          <div className="final-review-copy">
-            <span className="final-ready-label"><CheckIcon /> Render complete</span>
-            <h2>{presentation.title}</h2>
-            <p>Your {recorder.extension.toUpperCase()} video is kept in memory only. Download it before closing or refreshing this page.</p>
-            <dl><div><dt>Frame</dt><dd>1080 × 1920</dd></div><div><dt>Rate</dt><dd>30 fps</dd></div><div><dt>Duration</dt><dd>{formatTime(playback.totalDurationMs)}</dd></div></dl>
-            <div className="final-review-actions">
-              <button className="final-primary-button" onClick={downloadVideo}>Download Video</button>
-              <button onClick={() => { playback.stop(); recorder.discard(); void playback.disposeAudio() }}>Render Again</button>
-              <button className="final-danger-button" onClick={() => { playback.stop(); recorder.discard(); void playback.disposeAudio() }}>Discard</button>
-            </div>
-          </div>
-        </section>
-      </main>
-    )
-  }
+  const elapsedMs = exportProgress?.elapsedMs ?? 0
+  const progress = exportProgress?.percent ?? 0
+  const progressSceneIndex = exportProgress?.activeSceneId
+    ? presentation.scenes.findIndex((scene) => scene.id === exportProgress.activeSceneId)
+    : -1
 
   return (
-    <main className={`final-video-studio${rendering ? ' is-rendering' : ''}`}>
+    <main className={`final-video-studio${busy ? ' is-rendering' : ''}`}>
       <header className="final-video-header">
         <div><span className="final-video-kicker">Final Video</span><h1>{presentation.title}</h1></div>
         <div className="final-video-header-summary"><strong>{formatTime(plan.totalDurationMs)}</strong><span>estimated duration</span></div>
@@ -241,21 +225,20 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
         <aside className="final-readiness-panel">
           <div className="final-panel-heading"><span>01</span><div><small>Preflight</small><h2>Narration readiness</h2></div></div>
           {takesStatus === 'loading' ? <p className="final-muted">Loading local takes…</p> : null}
-          {decodeStatus === 'checking' ? <p className="final-muted">Checking selected audio…</p> : null}
+          {decodeStatus === 'checking' ? <p className="final-muted">Checking selected audio for preview…</p> : null}
           <ol className="final-readiness-list">
             {plan.readiness.map((entry) => {
               const decodeIssue = decodeIssues[entry.sectionId]
-              const entryReady = entry.ready && !decodeIssue
-              return <li key={entry.sectionId} className={entryReady ? 'is-ready' : 'has-issue'}>
-                <span>{entryReady ? <CheckIcon /> : '×'}</span>
-                <div><strong>{entry.title || 'Untitled section'}</strong><small>{decodeIssue ?? entry.issue ?? `${formatTime(entry.selectedTake?.durationMs ?? 0)} selected take`}</small></div>
+              return <li key={entry.sectionId} className={entry.ready ? 'is-ready' : 'has-issue'}>
+                <span>{entry.ready ? <CheckIcon /> : '×'}</span>
+                <div><strong>{entry.title || 'Untitled section'}</strong><small>{entry.issue ?? decodeIssue ?? `${formatTime(entry.selectedTake?.durationMs ?? 0)} selected take`}</small></div>
               </li>
             })}
           </ol>
           {plan.readiness.length === 0 && takesStatus === 'ready' ? <p className="final-notice">No narration sections. This will be a completely silent visual video.</p> : null}
-          {readinessIssueCount > 0 ? <p className="final-blocked-note"><strong>{readinessIssueCount} narration section{readinessIssueCount === 1 ? '' : 's'} need{readinessIssueCount === 1 ? 's' : ''} attention.</strong> Preview and rendering stay blocked until every section is ready.</p> : null}
+          {readinessIssueCount > 0 ? <p className="final-blocked-note"><strong>{readinessIssueCount} narration section{readinessIssueCount === 1 ? '' : 's'} need{readinessIssueCount === 1 ? 's' : ''} attention.</strong> Final playback and export stay blocked until every section is ready.</p> : null}
+          {decodeIssueCount > 0 ? <p className="final-warning">Final Playback Preview is unavailable for selected audio that Chromium cannot decode. Desktop export will ask FFmpeg to decode the original take.</p> : null}
           <button className="final-secondary-button" onClick={onOpenNarration} disabled={busy}>Open Narration Studio</button>
-
           <div className="final-summary-card">
             <div><span>Scenes</span><strong>{presentation.scenes.length}</strong></div>
             <div><span>Silent beats</span><strong>{plan.unassignedSceneCount}</strong></div>
@@ -266,56 +249,54 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
         </aside>
 
         <section className="final-stage-panel">
-          <div className="final-panel-heading"><span>02</span><div><small>Playback source</small><h2>Presentation Stage</h2></div></div>
+          <div className="final-panel-heading"><span>02</span><div><small>Playback source</small><h2>Final Playback Preview</h2></div></div>
           <div className="final-stage-well">
-            <Stage
-              ref={stageRef}
-              scene={activeScene}
-              accent={presentation.accent}
-              presentationId={presentation.id}
-              sceneNumber={activeSceneIndex + 1}
-              sceneCount={presentation.scenes.length}
-              direction={direction}
-              renderInstanceKey={playback.renderInstanceKey}
-              className="final-stage"
-            />
+            <Stage scene={activeScene} accent={presentation.accent} presentationId={presentation.id} sceneNumber={activeSceneIndex + 1} sceneCount={presentation.scenes.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} className="final-stage" />
           </div>
           <div className="final-playback-status">
             <span>{formatTime(playback.currentTimeMs)} / {formatTime(playback.totalDurationMs)}</span>
             <span>Scene {activeSceneIndex + 1} / {presentation.scenes.length}</span>
             <span>{playback.activeSegment?.type === 'narration' ? `Section: ${playback.activeSegment.title}` : playback.activeSegment ? 'Silent visual beat' : 'Ready'}</span>
           </div>
-          <div className="final-progress-track" aria-label={`${Math.round(progress)} percent complete`}><i style={{ width: `${progress}%` }} /></div>
+          <div className="final-progress-track" aria-label={`${Math.round(previewProgress)} percent complete`}><i style={{ width: `${previewProgress}%` }} /></div>
           <div className="final-playback-controls">
-            <button className="final-primary-button" onClick={() => void playback.play()} disabled={!ready || busy || playback.status === 'playing'}><PlayIcon /> {playback.status === 'paused' ? 'Resume' : 'Preview Final Playback'}</button>
-            <button onClick={playback.pause} disabled={playback.status !== 'playing' || rendering}>Pause</button>
-            <button onClick={() => void playback.restart()} disabled={!ready || busy}>Restart</button>
-            <button onClick={playback.stop} disabled={playback.status === 'idle' || rendering}>Stop</button>
+            <button className="final-primary-button" onClick={() => void playback.play()} disabled={!previewReady || busy || playback.status === 'playing'}><PlayIcon /> {playback.status === 'paused' ? 'Resume' : 'Preview Final Playback'}</button>
+            <button onClick={playback.pause} disabled={playback.status !== 'playing'}>Pause</button>
+            <button onClick={() => void playback.restart()} disabled={!previewReady || busy}>Restart</button>
+            <button onClick={playback.stop} disabled={playback.status === 'idle'}>Stop</button>
           </div>
         </section>
 
-        <aside className="final-capture-panel">
-          <div className="final-panel-heading"><span>03</span><div><small>Browser-native capture</small><h2>Output crop</h2></div></div>
-          <div className={`final-output-preview${recorder.status === 'ready' || rendering ? ' is-live' : ''}`}>
-            <canvas ref={outputCanvasRef} width={1080} height={1920} aria-label="Live 1080 by 1920 output crop preview" />
-            {recorder.status === 'unprepared' && <span>Prepare capture to inspect the exact video crop.</span>}
-            {recorder.status === 'preparing' && <span>Choose this browser tab in the share dialog…</span>}
+        <aside className="final-export-panel">
+          <div className="final-panel-heading"><span>03</span><div><small>Desktop export</small><h2>Direct MP4</h2></div></div>
+          <div className="final-export-spec">
+            <strong>1080 × 1920</strong>
+            <span>30 fps · H.264 · AAC</span>
+            <small>Rendered from a dedicated hidden Stage and written directly to disk.</small>
           </div>
-          <p className="final-capture-help">Share the current Video Essay Studio browser tab. Display audio is not used; the selected narration takes feed the recording directly.</p>
 
-          {recorder.status === 'unprepared' && <button className="final-capture-button" onClick={() => void prepareCapture()} disabled={!ready}>Prepare Video Capture</button>}
-          {recorder.status === 'preparing' && <button className="final-capture-button" disabled>Preparing capture…</button>}
-          {recorder.status === 'ready' && <>
-            <span className="final-ready-label"><CheckIcon /> Capture ready · inspect the crop</span>
-            <button className="final-render-button" onClick={() => void renderVideo()} disabled={!ready}>Render Final Video</button>
-            <button className="final-secondary-button" onClick={cancelCapture}>Cancel Capture</button>
-          </>}
-          {rendering && <div className="final-render-state">
-            <span>● Rendering Final Video</span>
-            <strong>{formatTime(playback.currentTimeMs)} / {formatTime(playback.totalDurationMs)}</strong>
-            <small>Real-time render · keep this tab visible and unchanged</small>
-            <button className="final-danger-button" onClick={cancelRender}>Cancel Render</button>
-          </div>}
+          {!desktop ? <div className="final-desktop-required"><strong>Desktop app required for direct MP4 export.</strong><span>Edit, Present, Narration, and Final Playback Preview remain available in this browser.</span></div> : null}
+
+          {desktop && exportState === 'ready' ? <>
+            <p className="final-export-help">Choose a destination, then Video Essay Studio will render the presentation in a dedicated 1080 × 1920 desktop surface. No screen-sharing permission is used.</p>
+            <button className="final-render-button" onClick={() => void startExport()} disabled={!exportReady}>Export Final Video</button>
+          </> : null}
+
+          {desktop && busy ? <div className="final-render-state">
+            <span>● Rendering video…</span>
+            <strong>{formatTime(elapsedMs)} / {formatTime(plan.totalDurationMs)}</strong>
+            <small>{progressSceneIndex >= 0 ? `Scene ${progressSceneIndex + 1} / ${presentation.scenes.length}` : 'Preparing hidden renderer…'}{exportProgress?.activeSectionTitle ? ` · Section: ${exportProgress.activeSectionTitle}` : ''}</small>
+            <div className="final-progress-track" aria-label={`${Math.round(progress)} percent exported`}><i style={{ width: `${progress}%` }} /></div>
+            <button className="final-danger-button" onClick={() => void cancelExport()}>Cancel Export</button>
+          </div> : null}
+
+          {desktop && exportState === 'exported' ? <div className="final-export-success">
+            <span className="final-ready-label"><CheckIcon /> Video exported</span>
+            <p title={outputPath}>{outputPath}</p>
+            <button className="final-render-button" onClick={() => void desktop.openVideo(outputPath)}>Open Video</button>
+            <button className="final-secondary-button" onClick={() => void desktop.showInFinder(outputPath)}>Show in Finder</button>
+            <button className="final-secondary-button" onClick={() => { setExportState('ready'); setOutputPath(''); setExportProgress(null) }}>Export Again</button>
+          </div> : null}
         </aside>
       </div>
     </main>

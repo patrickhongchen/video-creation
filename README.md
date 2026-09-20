@@ -1,6 +1,6 @@
-# Video Essay Studio — Phase 4B
+# Video Essay Studio — Phase 4C
 
-An editorial presentation editor for 9:16 video essays. Phase 4B turns selected Narration Studio takes and their saved scene cues into an automatically performed, browser-native 1080×1920 final video while preserving the editor, charts, Morph animation, and Present mode.
+An Electron desktop application for building and exporting 9:16 video essays. Phase 4C preserves the React editor, Narration Studio, Final Playback Preview, charts, transitions, and Morph animation while moving final MP4 creation to a dedicated offscreen Chromium renderer and bundled FFmpeg.
 
 ## Run it
 
@@ -9,7 +9,13 @@ npm install
 npm run dev
 ```
 
-Create a production build with `npm run build`.
+`npm run dev` keeps the ordinary Vite/browser development workflow. Run the complete desktop application with one command:
+
+```bash
+npm run desktop:dev
+```
+
+Create the browser renderer with `npm run build`, or create a locally usable Apple Silicon macOS `.app` with `npm run desktop:build`. Phase 4C does not add signing, notarization, App Store distribution, or automatic updates.
 
 ## What is included
 
@@ -27,8 +33,9 @@ Create a production build with `npm run build`.
 - Monotonic scene cues captured when visuals advance, plus synchronized audio-and-Stage take playback
 - Speaker notes, a simple live microphone meter, a 3–2–1 recording countdown, and cancel/retry controls
 - A readiness-gated Final Video workspace with automatic full-presentation preview and pause, resume, restart, and stop controls
-- Real-time browser-tab capture that crops only the shared Stage into a 1080×1920, 30 fps output canvas
-- In-memory MP4 or WebM review and download, with the filename extension matched to the browser's actual recording container
+- A dedicated hidden 1080×1920 Chromium render surface that reuses the shared `Stage`
+- Deterministic 30 fps raw-frame streaming to bundled FFmpeg with H.264 video, AAC audio, `yuv420p`, and MP4 fast-start metadata
+- Native save destination, progress, cancellation, Open Video, and Show in Finder actions with no screen-sharing permission
 
 The first launch seeds the original **Small Screens, Bigger Questions** demo and a seven-scene **Chart Story Lab** sample built from clearly marked illustrative data. Existing Phase 1 data stored under `video-essay-studio:presentation:v1` is migrated into the new library when possible.
 
@@ -45,8 +52,11 @@ The first launch seeds the original **Small Screens, Bigger Questions** demo and
 - `src/narration/` owns native IndexedDB take/blob persistence, microphone capture, level metering, and cue-synchronized playback.
 - `src/components/NarrationStudio.tsx` owns section authoring and the recording/review workflow while reusing `Stage`.
 - `src/finalPlayback/` builds the deterministic scene-ordered playback plan and runs narrated and silent segments with one continuous Stage render identity.
-- `src/recording/` owns browser-tab capture, Stage crop geometry, output format selection, and MediaRecorder composition.
-- `src/components/FinalVideoStudio.tsx` coordinates readiness, preview, capture preparation, rendering, review, and download.
+- `src/desktop/` defines the narrow renderer/main-process contract and converts selected narration Blobs to transferable bytes.
+- `src/components/ExportRenderSurface.tsx` is the export-only React surface. It derives visuals from the playback-plan timeline and renders the existing `Stage` full-frame.
+- `electron/main.ts` and `electron/preload.ts` provide the secure desktop shell and application-specific IPC bridge; renderer code never receives Node, filesystem, process-spawning, or arbitrary IPC access.
+- `electron/export/` owns the offscreen window, full-frame paint composition, fixed-rate frame pump, narration timeline, FFmpeg process, verification, cancellation, and cleanup.
+- `src/components/FinalVideoStudio.tsx` coordinates readiness, Final Playback Preview, desktop export progress, and post-export actions.
 
 ## Narration Studio workflow
 
@@ -54,7 +64,9 @@ Open a presentation and choose **Narrate**. Create a section by selecting its st
 
 Finished takes remain available for comparison. Play, pause, or restart a take to hear it while the saved cues drive the same `Stage` used by Edit and Present modes. Mark one take as selected for each section; the readiness count reports how many sections have a valid selected local take. Canceling an active recording discards its audio and cues without writing to storage.
 
-Audio blobs, MIME type, duration, cues, creation time, and selected-take state are local browser data stored in IndexedDB. Temporary object URLs exist only during playback and are revoked afterward. Presentation JSON and localStorage contain only the lightweight section definitions (`id`, `title`, and ordered scene IDs), never audio, microphone data, object URLs, or IndexedDB keys.
+Audio blobs, MIME type, duration, cues, creation time, and selected-take state are local data stored in IndexedDB. Temporary object URLs exist only during playback and are revoked afterward. Presentation JSON and localStorage contain only the lightweight section definitions (`id`, `title`, and ordered scene IDs), never audio, microphone data, object URLs, or IndexedDB keys.
+
+Electron uses its own persistent Chromium profile, so presentations and narration recorded inside the desktop app survive application restarts. That profile is separate from Chrome or another browser: presentation JSON can be imported into the desktop app, but existing browser-local narration recordings do not migrate automatically and may need to be re-recorded in Electron.
 
 Duplicating a presentation copies its visuals and narration section structure but gives the copy a new presentation ID, so it has no recordings or selected takes. Import behaves the same way: section structure imports, audio does not. Standard JSON export intentionally excludes recordings; moving narration audio between browsers is not supported yet.
 
@@ -68,11 +80,13 @@ Choose **Final Video** after recording and selecting one usable take for every n
 
 Scenes outside narration sections do not block the workflow. They become silent visual beats using their scene durations. A presentation with no narration sections is also valid and renders as a fully silent video. Narrated section duration comes from its selected take, not the durations of the scenes inside it; the estimate also includes silent beats and a brief final-frame hold.
 
-Use **Preview Final Playback** before capture. The same playback engine used by rendering chains every selected take, follows its saved cues, runs silent beats, and preserves shared-element and chart identity across section boundaries. Preview supports pause/resume, restart, and stop and does not request screen-sharing permission.
+Use **Preview Final Playback** before export. The preview playback engine chains every selected take, follows its saved cues, runs silent beats, and preserves shared-element and chart identity across section boundaries. Preview supports pause/resume, restart, and stop.
 
-For output, choose **Prepare Video Capture** and select the current Video Essay Studio browser tab—not a window or monitor. The capture request explicitly asks supporting browsers to prefer and include the current tab; browsers may ignore these hints and show their normal picker. Inspect the separate live 9:16 crop preview to verify the selected source, then choose **Render Final Video**. Rendering runs in real time, so a 90-second presentation takes about 90 seconds. Keep the shared tab visible and do not change its layout while rendering. Display/tab audio and the microphone are excluded; narration audio comes directly from the selected IndexedDB Blobs through Web Audio. The output canvas is exactly 1080×1920 at 30 fps, and only the Stage is recorded.
+For output, choose **Export Final Video** and select an `.mp4` destination. Electron creates a second, hidden offscreen `BrowserWindow` containing only `ExportRenderSurface` and the shared `Stage`. An explicit ready/start handshake establishes the first valid presentation frame before encoding. The renderer follows the numeric playback-plan clock, while the main process emits exactly one current full frame for every 1/30-second output interval. Static visuals repeat the last full frame instead of shortening the video. Rendering is intentionally real-time, so a 90-second presentation takes about 90 seconds; moving or minimizing the editor does not affect it.
 
-After rendering, review the vertical video, download it, prepare another render, or discard it. Final video Blobs and their object URLs are ephemeral and exist in memory only: they are never written to presentation JSON, localStorage, or IndexedDB. Download a completed video before refreshing, closing the page, or discarding it. Canceling, leaving Final Video, or ending screen sharing releases the display stream, audio graph, animation loops, and temporary URLs.
+Selected narration Blob bytes are copied into a unique temporary job directory. FFmpeg decodes each take, normalizes it to 48 kHz stereo, inserts playback-plan silent segments and the final 500 ms hold, and muxes that audio with the raw Chromium frames. The result is always an MP4 with H.264 video, AAC audio, 1080×1920 resolution, 30 fps, and `yuv420p`. The exporter probes the completed file duration before reporting success. Success, failure, and cancellation destroy the render window, terminate the encoder when necessary, remove temporary files, and remove incomplete output without deleting a completed video.
+
+After success, use **Open Video**, **Show in Finder**, or **Export Again**. In an ordinary browser, editing, Present mode, Narration Studio, and Final Playback Preview remain available, but direct MP4 export shows that the desktop app is required. There is no screen-sharing fallback.
 
 See [docs/PRESENTATION_FORMAT.md](docs/PRESENTATION_FORMAT.md) for the complete schema, a full importable example, validation rules, and a Codex authoring checklist.
 
@@ -97,4 +111,4 @@ The mapped renderer registry makes a missing renderer a TypeScript error.
 
 ## Current boundaries
 
-Final video output is browser-native, real-time capture rather than deterministic offline rendering. Browser MediaRecorder support determines whether the download is MP4 or WebM; there is no transcoding or FFmpeg fallback. There is intentionally no waveform/timeline editing, trimming, gain processing, captions, transcription, background audio, cloud rendering, final-video persistence, or audio bundle export. Narration audio remains local to one browser profile, and selected formats that the current browser cannot decode must be re-recorded in that browser.
+Final video output is a real-time desktop render rather than an accelerated offline Motion engine. The only user-facing final format is MP4. There is intentionally no waveform/timeline editing, trimming, gain processing, captions, transcription, background audio, cloud rendering, project/audio bundle migration, or final-video database. Narration `MediaRecorder` remains browser-native inside Chromium, while FFmpeg handles varying selected-take formats during final export.

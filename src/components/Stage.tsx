@@ -51,12 +51,14 @@ export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ sce
             variants={variants}
             transition={{ duration, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="scene-page-meta">
-              <span>{scene.eyebrow ?? 'Video Essay Studio'}</span>
-              <i />
-              <span>{String(sceneNumber).padStart(2, '0')} / {String(sceneCount).padStart(2, '0')}</span>
+            <div className="scene-canvas">
+              <div className="scene-page-meta">
+                <span>{scene.eyebrow ?? 'Video Essay Studio'}</span>
+                <i />
+                <span>{String(sceneNumber).padStart(2, '0')} / {String(sceneCount).padStart(2, '0')}</span>
+              </div>
+              {renderScene(scene, accent, namespace)}
             </div>
-            {renderScene(scene, accent, namespace)}
           </motion.div>
         </AnimatePresence>
       </LayoutGroup>

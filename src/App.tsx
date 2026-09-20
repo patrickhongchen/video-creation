@@ -54,7 +54,7 @@ export function App() {
       savePresentationLibrary(library)
       setSaveTime(new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date()))
     } catch {
-      setError('Changes could not be saved in this browser. Export your presentation to keep a copy.')
+      setError('Changes could not be saved locally. Export your presentation to keep a copy.')
     }
   }, [library])
 
@@ -293,7 +293,7 @@ export function App() {
             </div>
             {projectDialog === 'delete' ? (
               <>
-                <p>“{presentation.title}” will be removed from this browser. Export it first if you want to keep a copy.</p>
+                <p>“{presentation.title}” will be removed from local storage. Export it first if you want to keep a copy.</p>
                 <div className="project-dialog-actions"><button onClick={() => setProjectDialog(null)}>Cancel</button><button className="danger-button" onClick={deleteCurrentPresentation}>Delete presentation</button></div>
               </>
             ) : (

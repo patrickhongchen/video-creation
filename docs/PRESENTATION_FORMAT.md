@@ -54,7 +54,7 @@ At runtime, presentation scene order is authoritative. Each narration section ap
 
 Final playback requires a usable selected local take for every narration section: a non-empty decodable Blob, valid cues beginning at 0 ms on the section's first scene, only in-section scene references, and cue timestamps within the take duration. Missing cue coverage produces a warning rather than invented cues; the recorded take remains authoritative.
 
-Final output uses real-time capture of the existing Stage. The user must share the current browser tab and visually confirm the live crop before rendering. The output canvas is 1080×1920 at 30 fps; narration is routed directly from the selected take Blobs, while display audio and microphone input are excluded. The browser chooses a supported MP4 or WebM MediaRecorder container, so output format can vary. Rendered videos are held only in memory for review and download and disappear on refresh, discard, or studio exit.
+Desktop export creates a hidden Electron offscreen renderer that contains only the existing `Stage` at 1080×1920. It derives scene changes from the same playback-plan segment durations and narration cue timestamps as Final Playback Preview, preserves one render identity for Motion and Morph continuity, and emits a fixed 30 fps frame stream independent of Chromium paint frequency. Bundled FFmpeg assembles selected narration takes, planned silence, and the final hold into 48 kHz stereo audio, then writes a deterministic MP4 containing H.264 video, AAC audio, and `yuv420p` pixels. Export paths, jobs, temporary files, and encoded media remain outside the presentation schema.
 
 ## Fields shared by every scene
 

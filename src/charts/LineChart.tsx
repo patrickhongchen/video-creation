@@ -46,11 +46,17 @@ export function LineChart({ scene, accent, layoutNamespace }: LineChartProps) {
 
   return (
     <div className={`scene-layout chart-layout chart-layout--line chart-layout--${orientation}`}>
-      <header className="chart-header">
+      <motion.header
+        className="chart-header"
+        key={scene.id}
+        initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={reducedMotion ? { duration: 0 } : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      >
         {scene.eyebrow && <div className="scene-kicker">{scene.eyebrow}</div>}
         <h1 className="chart-headline">{scene.headline}</h1>
         {scene.supportingText && <p className="chart-supporting-text">{scene.supportingText}</p>}
-      </header>
+      </motion.header>
 
       <div className="chart-visual">
         <svg
@@ -77,13 +83,12 @@ export function LineChart({ scene, accent, layoutNamespace }: LineChartProps) {
           {path && (
             <motion.path
               className="chart-line"
-              d={path}
               fill="none"
               stroke={accent}
               pathLength={1}
               vectorEffect="non-scaling-stroke"
-              initial={reducedMotion ? false : { pathLength: 0, opacity: 0 }}
-              animate={{ pathLength: 1, opacity: 1 }}
+              initial={reducedMotion ? false : { d: path, pathLength: 0, opacity: 0 }}
+              animate={{ d: path, pathLength: 1, opacity: 1 }}
               transition={reducedMotion ? { duration: 0 } : { duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
             />
           )}
@@ -102,11 +107,9 @@ export function LineChart({ scene, accent, layoutNamespace }: LineChartProps) {
                   <motion.circle
                     className={`chart-point${highlighted ? ' chart-point--highlighted' : ''}${hasHighlights && !highlighted ? ' chart-point--muted' : ''}`}
                     layoutId={datumLayoutId(scene, layoutNamespace, point.id)}
-                    cx={point.x}
-                    cy={point.y}
                     r={radius}
-                    initial={reducedMotion ? false : { scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity, fill: highlighted || !hasHighlights ? accent : 'currentColor', r: radius }}
+                    initial={reducedMotion ? false : { cx: point.x, cy: point.y, scale: 0, opacity: 0 }}
+                    animate={{ cx: point.x, cy: point.y, scale: 1, opacity, fill: highlighted || !hasHighlights ? accent : 'currentColor', r: radius }}
                     transition={transition}
                   />
                   <text

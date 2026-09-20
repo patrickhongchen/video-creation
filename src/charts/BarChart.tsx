@@ -12,7 +12,7 @@ const VIEWBOX_WIDTH = 840
 const VIEWBOX_HEIGHT = 560
 
 function datumLayoutId(scene: ChartScene, layoutNamespace: string, datumId: string) {
-  return JSON.stringify([layoutNamespace, scene.chartId ?? scene.id, scene.chartType, datumId])
+  return JSON.stringify([layoutNamespace, scene.chartId ?? scene.id, scene.chartType, scene.orientation ?? 'horizontal', datumId])
 }
 
 function chartValue(scene: ChartScene, value: number) {
@@ -50,11 +50,17 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
 
   return (
     <div className={`scene-layout chart-layout chart-layout--bar chart-layout--${orientation}`}>
-      <header className="chart-header">
+      <motion.header
+        className="chart-header"
+        key={scene.id}
+        initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={reducedMotion ? { duration: 0 } : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+      >
         {scene.eyebrow && <div className="scene-kicker">{scene.eyebrow}</div>}
         <h1 className="chart-headline">{scene.headline}</h1>
         {scene.supportingText && <p className="chart-supporting-text">{scene.supportingText}</p>}
-      </header>
+      </motion.header>
 
       <div className="chart-visual">
         <svg
@@ -107,14 +113,20 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
                 const labelX = Math.min(VIEWBOX_WIDTH - 8, Math.max(8, datumPosition + (positive ? 12 : -12)))
 
                 return (
-                  <g className="chart-datum" key={datum.id}>
-                    <text className="chart-category-label" x={left - 18} y={y + barSize / 2 + 7} textAnchor="end">
+                  <motion.g
+                    className="chart-datum"
+                    key={datum.id}
+                    initial={{ y }}
+                    animate={{ y }}
+                    transition={reducedMotion ? { duration: 0 } : { duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    <text className="chart-category-label" x={left - 18} y={barSize / 2 + 7} textAnchor="end">
                       {datum.label}
                     </text>
                     <motion.rect
                       className={`chart-bar${highlighted ? ' chart-bar--highlighted' : ''}${hasHighlights && !highlighted ? ' chart-bar--muted' : ''}`}
                       layoutId={datumLayoutId(scene, layoutNamespace, datum.id)}
-                      y={y}
+                      y={0}
                       width={width}
                       height={barSize}
                       rx={Math.min(7, barSize / 5)}
@@ -126,7 +138,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
                       <motion.text
                         className="chart-value-label"
                         x={labelX}
-                        y={y + barSize / 2 + 7}
+                        y={barSize / 2 + 7}
                         textAnchor={positive ? 'start' : 'end'}
                         initial={reducedMotion ? false : { opacity: 0 }}
                         animate={{ opacity }}
@@ -135,7 +147,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
                         {formatValue(datum.value)}
                       </motion.text>
                     )}
-                  </g>
+                  </motion.g>
                 )
               }
 
@@ -146,11 +158,17 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
               const labelY = Math.min(VIEWBOX_HEIGHT - 8, Math.max(18, datumPosition + (positive ? -14 : 26)))
 
               return (
-                <g className="chart-datum" key={datum.id}>
+                <motion.g
+                  className="chart-datum"
+                  key={datum.id}
+                  initial={{ x }}
+                  animate={{ x }}
+                  transition={reducedMotion ? { duration: 0 } : { duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+                >
                   <motion.rect
-                      className={`chart-bar${highlighted ? ' chart-bar--highlighted' : ''}${hasHighlights && !highlighted ? ' chart-bar--muted' : ''}`}
-                      layoutId={datumLayoutId(scene, layoutNamespace, datum.id)}
-                      x={x}
+                    className={`chart-bar${highlighted ? ' chart-bar--highlighted' : ''}${hasHighlights && !highlighted ? ' chart-bar--muted' : ''}`}
+                    layoutId={datumLayoutId(scene, layoutNamespace, datum.id)}
+                    x={0}
                     width={barSize}
                     height={height}
                     rx={Math.min(7, barSize / 5)}
@@ -160,7 +178,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
                   />
                   <text
                     className="chart-category-label chart-category-label--vertical"
-                    x={x + barSize / 2}
+                    x={barSize / 2}
                     y={top + plotHeight + 30}
                     textAnchor="middle"
                   >
@@ -169,7 +187,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
                   {scene.showValues && (
                     <motion.text
                       className="chart-value-label"
-                      x={x + barSize / 2}
+                      x={barSize / 2}
                       y={labelY}
                       textAnchor="middle"
                       initial={reducedMotion ? false : { opacity: 0 }}
@@ -179,7 +197,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
                       {formatValue(datum.value)}
                     </motion.text>
                   )}
-                </g>
+                </motion.g>
               )
             })}
           </g>

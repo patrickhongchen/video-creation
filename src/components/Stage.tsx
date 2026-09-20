@@ -19,6 +19,16 @@ const transitionVariants: Record<TransitionType, Variants> = {
   scale: { enter: () => ({ opacity: 0, scale: 1.07 }), center: { opacity: 1, scale: 1 }, exit: () => ({ opacity: 0, scale: 0.94 }) },
 }
 
+function sceneFrameKey(scene: Scene, presentationId: string) {
+  if (scene.type === 'chart' && scene.chartId) {
+    const representation = scene.chartType === 'bar'
+      ? `${scene.chartType}:${scene.orientation ?? 'horizontal'}`
+      : scene.chartType
+    return JSON.stringify([presentationId, 'chart', scene.chartId, representation])
+  }
+  return JSON.stringify([presentationId, 'scene', scene.id])
+}
+
 export function Stage({ scene, accent, presentationId, sceneNumber, sceneCount, direction, className = '' }: StageProps) {
   const reduceMotion = useReducedMotion()
   const variants = transitionVariants[reduceMotion ? 'fade' : scene.transition.type]
@@ -31,7 +41,7 @@ export function Stage({ scene, accent, presentationId, sceneNumber, sceneCount, 
         <AnimatePresence initial={false} custom={direction} mode="sync">
           <motion.div
             className="scene-frame"
-            key={scene.id}
+            key={sceneFrameKey(scene, presentationId)}
             custom={direction}
             initial="enter"
             animate="center"

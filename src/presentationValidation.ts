@@ -1,4 +1,4 @@
-import type { Presentation, Scene, SceneTransition } from './model'
+import type { ChartDatum, ChartDomain, Presentation, Scene, SceneTransition } from './model'
 
 export class PresentationValidationError extends Error {
   constructor(message: string) {
@@ -25,6 +25,10 @@ function optionalString(value: unknown, path: string) {
   return value === undefined ? undefined : string(value, path)
 }
 
+function optionalId(value: unknown, path: string) {
+  return value === undefined ? undefined : id(value, path)
+}
+
 function id(value: unknown, path: string) {
   const result = string(value, path)
   if (!result.trim()) fail(path, 'expected a non-empty ID')
@@ -33,6 +37,16 @@ function id(value: unknown, path: string) {
 
 function finiteNumber(value: unknown, path: string, minimum = 0): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < minimum) fail(path, `expected a number of at least ${minimum}`)
+  return value
+}
+
+function numericValue(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) fail(path, 'expected a finite number')
+  return value
+}
+
+function boolean(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') fail(path, 'expected a boolean')
   return value
 }
 
@@ -58,6 +72,30 @@ function pair(value: unknown, path: string) {
   return { label: string(data.label, `${path}.label`), value: string(data.value, `${path}.value`) }
 }
 
+function chartData(value: unknown, path: string): ChartDatum[] {
+  if (!Array.isArray(value) || value.length === 0) fail(path, 'expected at least one datum')
+  const seenIds = new Set<string>()
+  return value.map((candidate, index) => {
+    const datumPath = `${path}[${index}]`
+    const data = object(candidate, datumPath)
+    const datumId = id(data.id, `${datumPath}.id`)
+    if (seenIds.has(datumId)) fail(`${datumPath}.id`, `duplicate datum ID "${datumId}"`)
+    seenIds.add(datumId)
+    const label = string(data.label, `${datumPath}.label`)
+    if (!label.trim()) fail(`${datumPath}.label`, 'expected a non-empty label')
+    return { id: datumId, label, value: numericValue(data.value, `${datumPath}.value`) }
+  })
+}
+
+function chartDomain(value: unknown, path: string): ChartDomain | undefined {
+  if (value === undefined) return undefined
+  const data = object(value, path)
+  const min = data.min === undefined ? undefined : numericValue(data.min, `${path}.min`)
+  const max = data.max === undefined ? undefined : numericValue(data.max, `${path}.max`)
+  if (min !== undefined && max !== undefined && min >= max) fail(path, 'expected min to be less than max')
+  return { min, max }
+}
+
 function parseScene(value: unknown, index: number): Scene {
   const path = `presentation.scenes[${index}]`
   const data = object(value, path)
@@ -73,8 +111,48 @@ function parseScene(value: unknown, index: number): Scene {
       return { ...base, type: 'comparison', headline: string(data.headline, `${path}.headline`), left: pair(data.left, `${path}.left`), right: pair(data.right, `${path}.right`) }
     case 'stat-detail':
       return { ...base, type: 'stat-detail', value: string(data.value, `${path}.value`), label: string(data.label, `${path}.label`), headline: string(data.headline, `${path}.headline`), body: string(data.body, `${path}.body`), elementId: optionalString(data.elementId, `${path}.elementId`) }
+    case 'chart': {
+      if (data.chartType !== 'bar' && data.chartType !== 'line') fail(`${path}.chartType`, 'expected bar or line')
+      if (data.orientation !== undefined && data.orientation !== 'horizontal' && data.orientation !== 'vertical') fail(`${path}.orientation`, 'expected horizontal or vertical')
+      const parsedData = chartData(data.data, `${path}.data`)
+      if (!Array.isArray(data.highlightIds)) fail(`${path}.highlightIds`, 'expected an array of datum IDs')
+      const datumIds = new Set(parsedData.map((datum) => datum.id))
+      const highlightIds = data.highlightIds.map((value, highlightIndex) => {
+        const highlightId = id(value, `${path}.highlightIds[${highlightIndex}]`)
+        if (!datumIds.has(highlightId)) fail(`${path}.highlightIds[${highlightIndex}]`, `unknown datum ID "${highlightId}"`)
+        return highlightId
+      })
+      if (new Set(highlightIds).size !== highlightIds.length) fail(`${path}.highlightIds`, 'expected unique datum IDs')
+      const domain = chartDomain(data.domain, `${path}.domain`)
+      parsedData.forEach((datum, datumIndex) => {
+        if (domain?.min !== undefined && datum.value < domain.min) fail(`${path}.data[${datumIndex}].value`, `expected a value within the explicit domain (minimum ${domain.min})`)
+        if (domain?.max !== undefined && datum.value > domain.max) fail(`${path}.data[${datumIndex}].value`, `expected a value within the explicit domain (maximum ${domain.max})`)
+      })
+      let decimalPlaces: number | undefined
+      if (data.decimalPlaces !== undefined) {
+        decimalPlaces = numericValue(data.decimalPlaces, `${path}.decimalPlaces`)
+        if (!Number.isInteger(decimalPlaces) || decimalPlaces < 0 || decimalPlaces > 6) fail(`${path}.decimalPlaces`, 'expected an integer from 0 to 6')
+      }
+      return {
+        ...base,
+        type: 'chart',
+        headline: string(data.headline, `${path}.headline`),
+        chartType: data.chartType,
+        orientation: data.orientation,
+        data: parsedData,
+        highlightIds,
+        valuePrefix: optionalString(data.valuePrefix, `${path}.valuePrefix`),
+        valueSuffix: optionalString(data.valueSuffix, `${path}.valueSuffix`),
+        decimalPlaces,
+        showValues: boolean(data.showValues, `${path}.showValues`),
+        source: optionalString(data.source, `${path}.source`),
+        supportingText: optionalString(data.supportingText, `${path}.supportingText`),
+        chartId: optionalId(data.chartId, `${path}.chartId`),
+        domain,
+      }
+    }
     default:
-      return fail(`${path}.type`, 'expected title, text, big-stat, comparison, or stat-detail')
+      return fail(`${path}.type`, 'expected title, text, big-stat, comparison, stat-detail, or chart')
   }
 }
 

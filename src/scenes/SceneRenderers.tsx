@@ -1,6 +1,7 @@
 import { motion } from 'motion/react'
 import type { ComponentType } from 'react'
-import type { BigStatScene, ComparisonScene, Scene, StatDetailScene, TextScene, TitleScene } from '../model'
+import { BarChart, LineChart } from '../charts'
+import type { BigStatScene, ChartScene, ComparisonScene, Scene, StatDetailScene, TextScene, TitleScene } from '../model'
 
 interface SceneRendererProps<T extends Scene> {
   scene: T
@@ -107,6 +108,12 @@ function ComparisonRenderer({ scene, accent }: SceneRendererProps<ComparisonScen
   )
 }
 
+function ChartRenderer({ scene, accent, layoutNamespace }: SceneRendererProps<ChartScene>) {
+  return scene.chartType === 'bar'
+    ? <BarChart scene={scene} accent={accent} layoutNamespace={layoutNamespace} />
+    : <LineChart scene={scene} accent={accent} layoutNamespace={layoutNamespace} />
+}
+
 type RendererMap = {
   [K in Scene['type']]: ComponentType<SceneRendererProps<Extract<Scene, { type: K }>>>
 }
@@ -117,6 +124,7 @@ export const sceneRendererRegistry: RendererMap = {
   'big-stat': BigStatRenderer,
   comparison: ComparisonRenderer,
   'stat-detail': StatDetailRenderer,
+  chart: ChartRenderer,
 }
 
 export function renderScene(scene: Scene, accent: string, layoutNamespace: string) {

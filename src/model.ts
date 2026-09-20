@@ -51,7 +51,38 @@ export interface StatDetailScene extends SceneBase {
   elementId?: string
 }
 
-export type Scene = TitleScene | TextScene | BigStatScene | ComparisonScene | StatDetailScene
+export type ChartType = 'bar' | 'line'
+export type ChartOrientation = 'horizontal' | 'vertical'
+
+export interface ChartDatum {
+  id: string
+  label: string
+  value: number
+}
+
+export interface ChartDomain {
+  min?: number
+  max?: number
+}
+
+export interface ChartScene extends SceneBase {
+  type: 'chart'
+  headline: string
+  chartType: ChartType
+  orientation?: ChartOrientation
+  data: ChartDatum[]
+  highlightIds: string[]
+  valuePrefix?: string
+  valueSuffix?: string
+  decimalPlaces?: number
+  showValues: boolean
+  source?: string
+  supportingText?: string
+  chartId?: string
+  domain?: ChartDomain
+}
+
+export type Scene = TitleScene | TextScene | BigStatScene | ComparisonScene | StatDetailScene | ChartScene
 
 export interface Presentation {
   schemaVersion: 1

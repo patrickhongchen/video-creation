@@ -5,6 +5,7 @@ import { validatePresentation } from '../presentationValidation'
 
 const LIBRARY_KEY = 'video-essay-studio:library:v1'
 const LEGACY_KEY = 'video-essay-studio:presentation:v1'
+const CHART_SAMPLE_SEEDED_KEY = 'video-essay-studio:chart-sample-seeded:v1'
 
 export interface PresentationLibrary {
   presentations: Presentation[]
@@ -15,8 +16,17 @@ function clone<T>(value: T): T {
   return structuredClone(value)
 }
 
+function markChartSampleSeeded() {
+  try {
+    localStorage.setItem(CHART_SAMPLE_SEEDED_KEY, '1')
+  } catch {
+    // The library save path will report unavailable browser storage to the UI.
+  }
+}
+
 function initialLibrary(): PresentationLibrary {
   const seeds = [clone(demoPresentation), clone(samplePresentation)]
+  markChartSampleSeeded()
   try {
     const legacySource = localStorage.getItem(LEGACY_KEY)
     if (legacySource) {
@@ -51,6 +61,8 @@ export function loadPresentationLibrary(): PresentationLibrary {
       }
     })
     if (presentations.length === 0) return initialLibrary()
+    if (!presentationIds.has(samplePresentation.id) && localStorage.getItem(CHART_SAMPLE_SEEDED_KEY) !== '1') presentations.push(clone(samplePresentation))
+    if (presentations.some((presentation) => presentation.id === samplePresentation.id)) markChartSampleSeeded()
     const requestedId = typeof raw.activePresentationId === 'string' ? raw.activePresentationId : ''
     const activePresentationId = presentations.some((item) => item.id === requestedId) ? requestedId : presentations[0].id
     return { presentations, activePresentationId }

@@ -8,6 +8,7 @@ export const sceneTypeOptions: ReadonlyArray<{ type: SceneType; label: string }>
   { type: 'big-stat', label: 'Big Stat' },
   { type: 'comparison', label: 'Comparison' },
   { type: 'stat-detail', label: 'Stat Detail' },
+  { type: 'chart', label: 'Chart' },
 ]
 
 function randomSuffix() {
@@ -46,6 +47,29 @@ export function createScene(type: SceneType): Scene {
       return { ...base, type, title: 'Comparison', headline: 'Compare two ideas.', left: { label: 'Before', value: '1' }, right: { label: 'After', value: '2' } }
     case 'stat-detail':
       return { ...base, type, title: 'Stat detail', value: '42%', label: 'the key figure', headline: 'Explain what the number means.', body: 'Connect the statistic to a concrete consequence.' }
+    case 'chart': {
+      const chartId = createStableId('chart')
+      return {
+        ...base,
+        type,
+        title: 'Chart',
+        eyebrow: 'Sample data',
+        headline: 'Compare the values.',
+        chartType: 'bar',
+        orientation: 'horizontal',
+        data: [
+          { id: createStableId('alpha'), label: 'Alpha', value: 28 },
+          { id: createStableId('beta'), label: 'Beta', value: 21 },
+          { id: createStableId('gamma'), label: 'Gamma', value: 13 },
+        ],
+        highlightIds: [],
+        valueSuffix: '%',
+        showValues: true,
+        source: 'Illustrative sample data',
+        supportingText: 'Replace these placeholder values with sourced data.',
+        chartId,
+      }
+    }
   }
 }
 

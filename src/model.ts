@@ -54,6 +54,7 @@ export interface StatDetailScene extends SceneBase {
 export type Scene = TitleScene | TextScene | BigStatScene | ComparisonScene | StatDetailScene
 
 export interface Presentation {
+  schemaVersion: 1
   id: string
   title: string
   tagline: string

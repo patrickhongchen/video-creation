@@ -1,6 +1,7 @@
 import type { Presentation } from './model'
 
 export const demoPresentation: Presentation = {
+  schemaVersion: 1,
   id: 'small-screens',
   title: 'Small Screens, Bigger Questions',
   tagline: 'Ideas. Structure. A more thoughtful internet.',

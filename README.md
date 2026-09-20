@@ -1,6 +1,6 @@
-# Video Essay Studio — Phase 1
+# Video Essay Studio — Phase 2
 
-An editorial, data-driven presentation engine for vertical short-form video essays. This phase includes a seven-scene demo, typed scene renderers, animated transitions, Morph-style shared elements, a text inspector, speaker notes, local persistence, and a keyboard-driven presentation mode.
+An editorial presentation editor for 9:16 video essays. Phase 2 adds a browser-local project library, scene authoring, presentation settings, and a stable JSON format designed for both people and Codex to write.
 
 ## Run it
 
@@ -11,52 +11,46 @@ npm run dev
 
 Create a production build with `npm run build`.
 
+## What is included
+
+- Multiple locally persisted presentations with switching, creation, duplication, rename, and deletion
+- Title, Text, Big Stat, Comparison, and Stat Detail scene factories
+- Add, duplicate, delete, and reorder scene actions with a valid selection maintained
+- Scene content, timing, transition, notes, and presentation-level title/tagline/accent editing
+- Import validation and readable, presentation-only JSON export
+- Animated transitions, Present mode, typed renderer registry, and Morph-style shared elements from Phase 1
+
+The first launch seeds the original **Small Screens, Bigger Questions** demo and a **The Streaming Wars** sample. Existing Phase 1 data stored under `video-essay-studio:presentation:v1` is migrated into the new library when possible.
+
 ## Architecture
 
-- `src/model.ts` defines the `Presentation` model and discriminated `Scene` union.
-- `src/demoPresentation.ts` contains presentation content only—no JSX or HTML.
-- `src/scenes/SceneRenderers.tsx` contains one renderer per scene type and the renderer registry.
-- `src/components/Stage.tsx` is the single presentation surface used by both editor and Present mode. It owns scene transitions and the shared `LayoutGroup`.
-- `src/components/Inspector.tsx` edits each scene type's major text fields, transition, duration, and notes.
-- `src/App.tsx` owns selection, keyboard navigation, presentation mode, and `localStorage` persistence.
+- `src/model.ts` defines schema version 1 and the discriminated `Scene` union.
+- `src/presentationValidation.ts` is the runtime boundary for untrusted JSON and produces path-specific errors.
+- `src/presentationFactories.ts` owns IDs, presentation defaults, and defaults for every scene type.
+- `src/storage/presentationStorage.ts` owns local library persistence and Phase 1 migration.
+- `src/presentationFiles.ts` owns presentation-only serialization, download, and file parsing.
+- `src/scenes/SceneRenderers.tsx` contains the typed renderer registry; presentation files contain no JSX, HTML, or React details.
+- `src/components/Stage.tsx` remains the shared editor/Present surface for transitions and the Motion `LayoutGroup`.
 
-## Presentation schema
+See [docs/PRESENTATION_FORMAT.md](docs/PRESENTATION_FORMAT.md) for the complete schema, a full importable example, validation rules, and a Codex authoring checklist.
 
-Every presentation has an ID, title, 9:16 aspect ratio, accent color, and ordered scenes. All scene types share:
+## Shared-element identity
 
-```ts
-{
-  id: string
-  type: 'title' | 'text' | 'big-stat' | 'comparison' | 'stat-detail'
-  title: string
-  duration: number
-  notes?: string
-  eyebrow?: string
-  transition: { type: 'fade' | 'slide' | 'scale'; duration: number }
-}
-```
+`big-stat` and `stat-detail` scenes may carry an `elementId`. Consecutive scenes using the same value share a namespaced Motion layout identity, such as `presentation-small-screens:theater-decline-stat`, and Morph between layouts.
 
-The discriminated `type` selects the rest of the required fields. For example, `big-stat` requires `value` and `label`, while `comparison` requires `left` and `right` items. See `src/model.ts` for the full definitions.
-
-### Shared-element / Morph identity
-
-A renderable concept may carry an `elementId` in presentation data. Consecutive renderers pass that ID to Motion as a namespaced `layoutId`:
-
-```ts
-layoutId = `presentation-${presentation.id}:${scene.elementId}`
-```
-
-Scenes `stat-reveal` and `stat-context` both reference `theater-decline-stat`, so the statistic moves and resizes between layouts. Stable IDs are essential: generating a new ID on each render—or reusing one for unrelated simultaneous elements—breaks the Morph relationship. The presentation namespace prevents collisions when multiple documents are eventually mounted together.
+Duplicating a scene always creates a new scene `id` but intentionally preserves `elementId`. An adjacent duplicate can therefore continue the same visual concept through a Morph transition. Change or remove `elementId` when the copy represents an unrelated statistic.
 
 ## Add a scene type
 
-1. Add a new scene interface and include it in the `Scene` union in `src/model.ts`.
-2. Add its renderer to `src/scenes/SceneRenderers.tsx` and register it in `sceneRendererRegistry`. The mapped registry type makes omissions a TypeScript error.
-3. Add fields for the new discriminator in `src/components/Inspector.tsx`.
-4. Add demo data (or load equivalent project data) without putting markup in the presentation.
+1. Add the scene interface to the `Scene` union in `src/model.ts`.
+2. Add its default to `createScene` and its label to `sceneTypeOptions` in `src/presentationFactories.ts`.
+3. Parse and validate it in `src/presentationValidation.ts`.
+4. Add and register its renderer in `src/scenes/SceneRenderers.tsx`.
+5. Add its editor fields in `src/components/Inspector.tsx`.
+6. Update the format specification.
 
-The Stage, navigation, persistence, notes, transition selection, and Present mode then work without changes.
+The mapped renderer registry makes a missing renderer a TypeScript error.
 
 ## Current boundaries
 
-There is intentionally no freeform positioning, timeline, recording, media upload, backend, export, or AI integration. Persistence is a single browser-local document. Morph support currently proves shared identity and layout interpolation; a future composition model can generalize persistent elements beyond the statistic examples while preserving the same `elementId` contract.
+There is intentionally no timeline, recording, media upload, charting, image support, AI API, backend, or video export. Browser storage is the project library; exported presentation JSON is the portable project file.

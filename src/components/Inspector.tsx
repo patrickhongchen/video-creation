@@ -1,10 +1,12 @@
 import type { ChangeEvent } from 'react'
-import type { Scene, TransitionType } from '../model'
+import type { Presentation, Scene, TransitionType } from '../model'
 import { ChevronLeftIcon, ChevronRightIcon } from './Icons'
 
 interface InspectorProps {
   scene: Scene
   onChange: (scene: Scene) => void
+  presentation: Presentation
+  onPresentationChange: (presentation: Presentation) => void
   onPrevious: () => void
   onNext: () => void
   hasPrevious: boolean
@@ -24,9 +26,17 @@ function Field({ label, value, onChange, multiline = false }: { label: string; v
   )
 }
 
-export function Inspector({ scene, onChange, onPrevious, onNext, hasPrevious, hasNext }: InspectorProps) {
+export function Inspector({ scene, onChange, presentation, onPresentationChange, onPrevious, onNext, hasPrevious, hasNext }: InspectorProps) {
   const update = <K extends keyof Scene>(key: K, value: Scene[K]) => onChange({ ...scene, [key]: value } as Scene)
   const updateTransition = (event: ChangeEvent<HTMLSelectElement>) => onChange({ ...scene, transition: { ...scene.transition, type: event.target.value as TransitionType } })
+  const updateDuration = (value: string) => {
+    const duration = Number(value)
+    if (Number.isFinite(duration) && duration >= 1 && duration <= 60) update('duration', duration)
+  }
+  const updateTransitionDuration = (value: string) => {
+    const duration = Number(value)
+    if (Number.isFinite(duration) && duration >= 0 && duration <= 3) onChange({ ...scene, transition: { ...scene.transition, duration } })
+  }
 
   return (
     <aside className="inspector" aria-label="Scene properties">
@@ -36,9 +46,17 @@ export function Inspector({ scene, onChange, onPrevious, onNext, hasPrevious, ha
       </div>
 
       <section>
+        <h3>Presentation</h3>
+        <Field label="Title" value={presentation.title} onChange={(title) => onPresentationChange({ ...presentation, title })} />
+        <Field label="Tagline" value={presentation.tagline} onChange={(tagline) => onPresentationChange({ ...presentation, tagline })} multiline />
+        <label className="field-row"><span>Accent</span><span className="color-input"><input type="color" value={presentation.accent} onChange={(event) => onPresentationChange({ ...presentation, accent: event.target.value })} /><code>{presentation.accent}</code></span></label>
+        <label className="field-row"><span>Format</span><input value="9:16 vertical" disabled /></label>
+      </section>
+
+      <section>
         <h3>Scene</h3>
         <Field label="Title" value={scene.title} onChange={(value) => update('title', value)} />
-        <label className="field-row"><span>Duration</span><span className="duration-input"><input type="number" min="1" max="60" value={scene.duration} onChange={(event) => update('duration', Number(event.target.value))} /><small>seconds</small></span></label>
+        <label className="field-row"><span>Duration</span><span className="duration-input"><input type="number" min="1" max="60" value={scene.duration} onChange={(event) => updateDuration(event.target.value)} /><small>seconds</small></span></label>
       </section>
 
       <section>
@@ -79,7 +97,7 @@ export function Inspector({ scene, onChange, onPrevious, onNext, hasPrevious, ha
           <select value={scene.transition.type} onChange={updateTransition} aria-label="Transition style">
             <option value="fade">Fade</option><option value="slide">Slide</option><option value="scale">Scale</option>
           </select>
-          <span className="duration-input"><input aria-label="Transition duration" type="number" min="0" max="3" step="0.05" value={scene.transition.duration} onChange={(event) => onChange({ ...scene, transition: { ...scene.transition, duration: Number(event.target.value) } })} /><small>seconds</small></span>
+          <span className="duration-input"><input aria-label="Transition duration" type="number" min="0" max="3" step="0.05" value={scene.transition.duration} onChange={(event) => updateTransitionDuration(event.target.value)} /><small>seconds</small></span>
         </div>
       </section>
 

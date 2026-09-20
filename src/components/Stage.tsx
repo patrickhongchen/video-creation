@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import type { Variants } from 'motion/react'
 import type { Scene, TransitionType } from '../model'
@@ -30,14 +31,14 @@ function sceneFrameKey(scene: Scene, presentationId: string, renderInstanceKey =
   return JSON.stringify([presentationId, renderInstanceKey, 'scene', scene.id])
 }
 
-export function Stage({ scene, accent, presentationId, sceneNumber, sceneCount, direction, className = '', renderInstanceKey = 'default' }: StageProps) {
+export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ scene, accent, presentationId, sceneNumber, sceneCount, direction, className = '', renderInstanceKey = 'default' }, ref) {
   const reduceMotion = useReducedMotion()
   const variants = transitionVariants[reduceMotion ? 'fade' : scene.transition.type]
   const duration = reduceMotion ? 0.01 : scene.transition.duration
   const namespace = `presentation-${presentationId}-${renderInstanceKey}`
 
   return (
-    <div className={`stage ${className}`} aria-live="polite" aria-label={`Scene ${sceneNumber} of ${sceneCount}: ${scene.title}`}>
+    <div ref={ref} className={`stage ${className}`} aria-live="polite" aria-label={`Scene ${sceneNumber} of ${sceneCount}: ${scene.title}`}>
       <LayoutGroup id={namespace}>
         <AnimatePresence initial={false} custom={direction} mode="sync">
           <motion.div
@@ -61,4 +62,4 @@ export function Stage({ scene, accent, presentationId, sceneNumber, sceneCount, 
       </LayoutGroup>
     </div>
   )
-}
+})

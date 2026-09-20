@@ -9,8 +9,9 @@ import { Inspector } from './components/Inspector'
 import { CheckIcon, CloseIcon, PlayIcon } from './components/Icons'
 import { NarrationStudio } from './components/NarrationStudio'
 import { deletePresentationTakes, deleteSectionTakes } from './narration/narrationDb'
+import { FinalVideoStudio } from './components/FinalVideoStudio'
 
-type AppMode = 'edit' | 'present' | 'narrate'
+type AppMode = 'edit' | 'present' | 'narrate' | 'final-video'
 
 function sectionIsContiguous(sceneIds: string[], orderedSceneIds: string[]) {
   const positions = sceneIds.map((id) => orderedSceneIds.indexOf(id)).sort((left, right) => left - right)
@@ -241,6 +242,16 @@ export function App() {
     )
   }
 
+  if (mode === 'final-video') {
+    return (
+      <FinalVideoStudio
+        presentation={presentation}
+        onExit={() => setMode('edit')}
+        onOpenNarration={() => setMode('narrate')}
+      />
+    )
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -266,6 +277,7 @@ export function App() {
         <div className="topbar-end">
           <span className="save-state"><CheckIcon /> Saved {saveTime}</span>
           <button className="narrate-button" onClick={() => setMode('narrate')}>Narrate</button>
+          <button className="final-video-button" onClick={() => setMode('final-video')}>Final Video</button>
           <button className="present-button" onClick={() => setMode('present')}><PlayIcon /> Present</button>
         </div>
       </header>

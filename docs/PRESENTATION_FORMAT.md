@@ -44,7 +44,17 @@ Example:
 }
 ```
 
-Recorded takes are deliberately outside schema version 1. IndexedDB stores the audio Blob, exact browser MIME type, duration, creation time, scene cues, and selected state using presentation and section IDs. Therefore normal JSON export includes section definitions but never audio, and import/duplication produces a presentation with the same section structure and no local recordings. There is no ZIP/audio bundle format in Phase 4A.
+Recorded takes are deliberately outside schema version 1. IndexedDB stores the audio Blob, exact browser MIME type, duration, creation time, scene cues, and selected state using presentation and section IDs. Therefore normal JSON export includes section definitions but never audio, and import/duplication produces a presentation with the same section structure and no local recordings. There is no ZIP/audio bundle format.
+
+## Final playback and rendered output
+
+Final Video is runtime behavior and does not add fields to this format. Schema version 1 remains unchanged: video Blobs, output paths, rendering settings, capture metadata, object URLs, and render status are never properties of a `Presentation`.
+
+At runtime, presentation scene order is authoritative. Each narration section appears once at the position of its first scene and uses its selected local take's duration and saved cues. The order of `narration.sections` does not control playback. Unassigned scenes become silent beats using their `duration`; if there are no narration sections, every scene is a silent beat. A short final-frame hold is added after the last segment.
+
+Final playback requires a usable selected local take for every narration section: a non-empty decodable Blob, valid cues beginning at 0 ms on the section's first scene, only in-section scene references, and cue timestamps within the take duration. Missing cue coverage produces a warning rather than invented cues; the recorded take remains authoritative.
+
+Final output uses real-time capture of the existing Stage. The user must share the current browser tab and visually confirm the live crop before rendering. The output canvas is 1080×1920 at 30 fps; narration is routed directly from the selected take Blobs, while display audio and microphone input are excluded. The browser chooses a supported MP4 or WebM MediaRecorder container, so output format can vary. Rendered videos are held only in memory for review and download and disappear on refresh, discard, or studio exit.
 
 ## Fields shared by every scene
 

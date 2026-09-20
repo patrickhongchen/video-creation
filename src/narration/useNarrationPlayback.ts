@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { NarrationTake, SceneCue } from './narrationTypes'
+import { sortSceneCues, synchronizeSceneCues } from './cueSynchronization'
 
 interface UseNarrationPlaybackOptions {
   onSceneCue: (sceneId: string) => void
@@ -43,21 +44,13 @@ export function useNarrationPlayback({ onSceneCue, onError }: UseNarrationPlayba
   }, [stopFrame])
 
   const syncCues = useCallback((timeMs: number, force = false) => {
-    const cues = cuesRef.current
-    if (force) {
-      let activeIndex = 0
-      for (let index = 0; index < cues.length; index += 1) {
-        if (cues[index].timeMs <= timeMs) activeIndex = index
-        else break
-      }
-      nextCueIndexRef.current = activeIndex
-      if (cues[activeIndex]) callbacksRef.current.onSceneCue(cues[activeIndex].sceneId)
-      nextCueIndexRef.current = activeIndex + 1
-    }
-    while (nextCueIndexRef.current < cues.length && cues[nextCueIndexRef.current].timeMs <= timeMs + 8) {
-      callbacksRef.current.onSceneCue(cues[nextCueIndexRef.current].sceneId)
-      nextCueIndexRef.current += 1
-    }
+    nextCueIndexRef.current = synchronizeSceneCues({
+      cues: cuesRef.current,
+      timeMs,
+      nextCueIndex: nextCueIndexRef.current,
+      onSceneCue: callbacksRef.current.onSceneCue,
+      forceCurrentCue: force,
+    })
   }, [])
 
   const runFrame = useCallback(() => {
@@ -93,7 +86,7 @@ export function useNarrationPlayback({ onSceneCue, onError }: UseNarrationPlayba
       audio = new Audio(url)
       audio.preload = 'auto'
       audioRef.current = audio
-      cuesRef.current = [...take.cues].sort((left, right) => left.timeMs - right.timeMs)
+      cuesRef.current = sortSceneCues(take.cues)
       nextCueIndexRef.current = 0
       setTakeId(take.id)
       setCurrentTimeMs(0)

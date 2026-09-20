@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { NarrationSection, Presentation, Scene } from '../model'
+import type { NarrationSection, Presentation } from '../model'
 import {
   deleteNarrationTake,
   deleteSectionTakes,
@@ -8,6 +8,7 @@ import {
   storeNarrationTake,
 } from '../narration/narrationDb'
 import type { NarrationRecording, NarrationTake } from '../narration/narrationTypes'
+import { resolveSection, takeIsUsable } from '../narration/narrationValidation'
 import { useNarrationPlayback } from '../narration/useNarrationPlayback'
 import { useNarrationRecorder } from '../narration/useNarrationRecorder'
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, PlayIcon } from './Icons'
@@ -21,28 +22,7 @@ interface NarrationStudioProps {
   onError: (message: string) => void
 }
 
-interface ResolvedSection {
-  scenes: Scene[]
-  indices: number[]
-  valid: boolean
-  issue: string
-}
-
 const EMPTY_SECTIONS: NarrationSection[] = []
-
-function resolveSection(section: NarrationSection, presentation: Presentation): ResolvedSection {
-  const indices = section.sceneIds.map((id) => presentation.scenes.findIndex((scene) => scene.id === id))
-  const missingCount = indices.filter((index) => index < 0).length
-  const foundIndices = indices.filter((index) => index >= 0)
-  const orderedIndices = [...foundIndices].sort((left, right) => left - right)
-  const scenes = orderedIndices.map((index) => presentation.scenes[index])
-
-  if (section.sceneIds.length === 0) return { scenes, indices: orderedIndices, valid: false, issue: 'This section has no scenes. Choose a start and end scene to repair it.' }
-  if (missingCount > 0) return { scenes, indices: orderedIndices, valid: false, issue: `${missingCount} referenced scene${missingCount === 1 ? ' is' : 's are'} missing. Save a new range to repair this section.` }
-  const contiguous = indices.every((index, position) => position === 0 || index === indices[position - 1] + 1)
-  if (!contiguous) return { scenes, indices: orderedIndices, valid: false, issue: 'These scenes are no longer a contiguous range. Save a new range to repair this section.' }
-  return { scenes: indices.map((index) => presentation.scenes[index]), indices, valid: true, issue: '' }
-}
 
 function makeId(prefix: string) {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -59,13 +39,6 @@ function formatTimer(durationMs: number) {
   const minutes = Math.floor(totalTenths / 600)
   const seconds = Math.floor(totalTenths / 10) % 60
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${totalTenths % 10}`
-}
-
-function takeIsUsable(take: NarrationTake, section: ResolvedSection) {
-  if (!section.valid || !take.blob || take.blob.size === 0 || take.cues.length === 0) return false
-  if (take.cues[0].sceneId !== section.scenes[0]?.id || take.cues[0].timeMs !== 0) return false
-  const sceneIds = new Set(section.scenes.map((scene) => scene.id))
-  return take.cues.every((cue) => sceneIds.has(cue.sceneId) && cue.timeMs >= 0 && cue.timeMs <= take.durationMs + 100)
 }
 
 export function NarrationStudio({ presentation, initialSceneIndex, onPresentationChange, onExit, onError }: NarrationStudioProps) {

@@ -1,6 +1,6 @@
-# Video Essay Studio — Phase 3
+# Video Essay Studio — Phase 4A
 
-An editorial presentation editor for 9:16 video essays. Phase 3 adds structured, animated bar and line charts that can persist across consecutive story beats while preserving the Phase 1 and Phase 2 editing workflow.
+An editorial presentation editor for 9:16 video essays. Phase 4A adds a Narration Studio for recording a presentation in manageable, multi-scene sections while preserving the existing editor, charts, Morph animation, and Present mode.
 
 ## Run it
 
@@ -22,6 +22,10 @@ Create a production build with `npm run build`.
 - Scene content, timing, transition, notes, and presentation-level title/tagline/accent editing
 - Import validation and readable, presentation-only JSON export
 - Animated transitions, Present mode, typed renderer registry, and Morph-style shared elements from Phase 1
+- A desktop-first Narration Studio with contiguous, non-overlapping sections that may span one or many scenes
+- Multiple microphone takes per section, an explicit selected take, and local readiness status
+- Monotonic scene cues captured when visuals advance, plus synchronized audio-and-Stage take playback
+- Speaker notes, a simple live microphone meter, a 3–2–1 recording countdown, and cancel/retry controls
 
 The first launch seeds the original **Small Screens, Bigger Questions** demo and a seven-scene **Chart Story Lab** sample built from clearly marked illustrative data. Existing Phase 1 data stored under `video-essay-studio:presentation:v1` is migrated into the new library when possible.
 
@@ -35,6 +39,22 @@ The first launch seeds the original **Small Screens, Bigger Questions** demo and
 - `src/scenes/SceneRenderers.tsx` contains the typed renderer registry; presentation files contain no JSX, HTML, or React details.
 - `src/charts/` contains the reusable numeric domain/scale utilities and the native Motion/SVG bar and line renderers.
 - `src/components/Stage.tsx` remains the shared editor/Present surface for transitions and the Motion `LayoutGroup`.
+- `src/narration/` owns native IndexedDB take/blob persistence, microphone capture, level metering, and cue-synchronized playback.
+- `src/components/NarrationStudio.tsx` owns section authoring and the recording/review workflow while reusing `Stage`.
+
+## Narration Studio workflow
+
+Open a presentation and choose **Narrate**. Create a section by selecting its start and end scenes, then rename it as needed. Ranges must be contiguous and cannot overlap another section; not every scene has to be assigned. Choose **Record New Take**, allow microphone access, confirm input on the level meter, and start the countdown. During recording, Space or Right Arrow advances within the section and Left Arrow moves back. Every visual change is stored as a scene cue relative to the take's monotonic start time, with the first scene fixed at 0 ms.
+
+Finished takes remain available for comparison. Play, pause, or restart a take to hear it while the saved cues drive the same `Stage` used by Edit and Present modes. Mark one take as selected for each section; the readiness count reports how many sections have a valid selected local take. Canceling an active recording discards its audio and cues without writing to storage.
+
+Audio blobs, MIME type, duration, cues, creation time, and selected-take state are local browser data stored in IndexedDB. Temporary object URLs exist only during playback and are revoked afterward. Presentation JSON and localStorage contain only the lightweight section definitions (`id`, `title`, and ordered scene IDs), never audio, microphone data, object URLs, or IndexedDB keys.
+
+Duplicating a presentation copies its visuals and narration section structure but gives the copy a new presentation ID, so it has no recordings or selected takes. Import behaves the same way: section structure imports, audio does not. Standard JSON export intentionally excludes recordings; moving narration audio between browsers is not supported yet.
+
+Deleting a presentation or narration section also requests deletion of its associated IndexedDB takes. Changing a section's scene range clears its now-stale takes. Deleting a scene removes that scene from its section, removes the section if it becomes empty, and likewise clears that affected section's recordings. Reordering scenes inside a still-contiguous section normalizes its scene-ID order and clears stale cue takes; a move that would split the range is blocked with a clear message.
+
+Narration requires a browser with `getUserMedia`, `MediaRecorder`, Web Audio, and IndexedDB support. Microphone permission is requested for each new recording session, and tracks are stopped after a take, cancellation, error, or studio exit. Recording remains browser-native: no transcoding or format conversion is performed, so the stored MIME type depends on browser support.
 
 See [docs/PRESENTATION_FORMAT.md](docs/PRESENTATION_FORMAT.md) for the complete schema, a full importable example, validation rules, and a Codex authoring checklist.
 
@@ -59,4 +79,4 @@ The mapped renderer registry makes a missing renderer a TypeScript error.
 
 ## Current boundaries
 
-There is intentionally no timeline, recording, media upload, general-purpose chart designer, multi-series charting, image support, AI API, backend, or video export. Browser storage is the project library; exported presentation JSON is the portable project file.
+There is intentionally no final video rendering, display capture, transcoding, waveform/timeline editing, trimming, gain processing, captions, transcription, background audio, cloud sync, or audio bundle export. Narration audio is local to one browser profile. Browser-native microphone formats can differ, arbitrary seek editing is not provided, and section cue timing does not overwrite scene duration. Final automated playback and 1080×1920 video rendering remain Phase 4B work.

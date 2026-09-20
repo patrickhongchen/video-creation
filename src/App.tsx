@@ -7,17 +7,27 @@ import { Stage } from './components/Stage'
 import { SceneList } from './components/SceneList'
 import { Inspector } from './components/Inspector'
 import { CheckIcon, CloseIcon, PlayIcon } from './components/Icons'
+import { NarrationStudio } from './components/NarrationStudio'
+import { deletePresentationTakes, deleteSectionTakes } from './narration/narrationDb'
+
+type AppMode = 'edit' | 'present' | 'narrate'
+
+function sectionIsContiguous(sceneIds: string[], orderedSceneIds: string[]) {
+  const positions = sceneIds.map((id) => orderedSceneIds.indexOf(id)).sort((left, right) => left - right)
+  return positions.every((position, index) => position >= 0 && (index === 0 || position === positions[index - 1] + 1))
+}
 
 export function App() {
   const [library, setLibrary] = useState<PresentationLibrary>(loadPresentationLibrary)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [direction, setDirection] = useState<1 | -1>(1)
-  const [isPresenting, setIsPresenting] = useState(false)
+  const [mode, setMode] = useState<AppMode>('edit')
   const [saveTime, setSaveTime] = useState('')
   const [error, setError] = useState('')
   const [projectDialog, setProjectDialog] = useState<'new' | 'rename' | 'delete' | null>(null)
   const [projectName, setProjectName] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
+  const importReservations = useRef(new Set<string>())
 
   const presentation = library.presentations.find((item) => item.id === library.activePresentationId) ?? library.presentations[0]
   const selectedScene = presentation.scenes[selectedIndex] ?? presentation.scenes[0]
@@ -52,15 +62,15 @@ export function App() {
   }, [presentation.scenes.length, selectedIndex])
 
   useEffect(() => {
-    if (!isPresenting) return
+    if (mode !== 'present') return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'ArrowRight' || event.key === ' ') { event.preventDefault(); next() }
       if (event.key === 'ArrowLeft') { event.preventDefault(); previous() }
-      if (event.key === 'Escape') setIsPresenting(false)
+      if (event.key === 'Escape') setMode('edit')
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isPresenting, next, previous])
+  }, [mode, next, previous])
 
   const openPresentation = (id: string) => {
     setLibrary((current) => ({ ...current, activePresentationId: id }))
@@ -98,25 +108,37 @@ export function App() {
       setError('Create another presentation before deleting this one.')
       return
     }
+    const deletedPresentationId = presentation.id
     setLibrary((current) => {
       const presentations = current.presentations.filter((item) => item.id !== current.activePresentationId)
       return { presentations, activePresentationId: presentations[0].id }
     })
     setSelectedIndex(0)
     setProjectDialog(null)
+    void deletePresentationTakes(deletedPresentationId).catch(() => {
+      setError('The presentation was deleted, but its local narration recordings could not be removed.')
+    })
   }
 
   const importFile = async (file: File | undefined) => {
     if (!file) return
     try {
       const imported = await readPresentationFile(file)
-      setLibrary((current) => {
-        const uniqueId = makePresentationIdUnique(imported.id, current.presentations.map((item) => item.id))
-        const added = { ...imported, id: uniqueId }
-        return { presentations: [...current.presentations, added], activePresentationId: uniqueId }
-      })
+      const uniqueId = makePresentationIdUnique(imported.id, [
+        ...library.presentations.map((item) => item.id),
+        ...importReservations.current,
+      ])
+      importReservations.current.add(uniqueId)
+      let cleanupWarning = false
+      try {
+        await deletePresentationTakes(uniqueId)
+      } catch {
+        cleanupWarning = true
+      }
+      const added = { ...imported, id: uniqueId }
+      setLibrary((current) => ({ presentations: [...current.presentations, added], activePresentationId: uniqueId }))
       setSelectedIndex(0)
-      setError('')
+      setError(cleanupWarning ? 'Imported presentation structure, but local narration storage could not be checked for stale recordings.' : '')
     } catch (problem) {
       setError(problem instanceof Error ? `Import failed: ${problem.message}` : 'Import failed: the file is not a valid presentation.')
     } finally {
@@ -145,7 +167,25 @@ export function App() {
 
   const deleteScene = () => {
     if (presentation.scenes.length === 1) return
-    updateCurrent((current) => ({ ...current, scenes: current.scenes.filter((_, index) => index !== selectedIndex) }))
+    const deletedSceneId = selectedScene.id
+    const affectedSectionIds = presentation.narration?.sections
+      .filter((section) => section.sceneIds.includes(deletedSceneId))
+      .map((section) => section.id) ?? []
+    updateCurrent((current) => {
+      const sections = current.narration?.sections.flatMap((section) => {
+        const sceneIds = section.sceneIds.filter((id) => id !== deletedSceneId)
+        if (sceneIds.length === 0) return []
+        return [{ ...section, sceneIds }]
+      })
+      return {
+        ...current,
+        scenes: current.scenes.filter((_, index) => index !== selectedIndex),
+        ...(current.narration ? { narration: { sections: sections ?? [] } } : {}),
+      }
+    })
+    affectedSectionIds.forEach((sectionId) => {
+      void deleteSectionTakes(presentation.id, sectionId).catch(() => setError('The scene was deleted, but an affected section’s local recordings could not be removed.'))
+    })
     setDirection(-1)
     setSelectedIndex(Math.max(0, Math.min(selectedIndex, presentation.scenes.length - 2)))
   }
@@ -153,22 +193,51 @@ export function App() {
   const moveScene = (offset: -1 | 1) => {
     const target = selectedIndex + offset
     if (target < 0 || target >= presentation.scenes.length) return
-    updateCurrent((current) => {
-      const scenes = [...current.scenes]
-      ;[scenes[selectedIndex], scenes[target]] = [scenes[target], scenes[selectedIndex]]
-      return { ...current, scenes }
+    const scenes = [...presentation.scenes]
+    ;[scenes[selectedIndex], scenes[target]] = [scenes[target], scenes[selectedIndex]]
+    const orderedSceneIds = scenes.map((scene) => scene.id)
+    const brokenSection = presentation.narration?.sections.find((section) => !sectionIsContiguous(section.sceneIds, orderedSceneIds))
+    if (brokenSection) {
+      setError(`“${brokenSection.title || 'Untitled section'}” must stay contiguous. Edit or delete that narration section before moving this scene.`)
+      return
+    }
+    const reorderedSectionIds = new Set<string>()
+    const narrationSections = presentation.narration?.sections.map((section) => {
+      const sceneIds = [...section.sceneIds].sort((left, right) => orderedSceneIds.indexOf(left) - orderedSceneIds.indexOf(right))
+      if (sceneIds.some((sceneId, index) => sceneId !== section.sceneIds[index])) reorderedSectionIds.add(section.id)
+      return { ...section, sceneIds }
+    })
+    updateCurrent((current) => ({
+      ...current,
+      scenes,
+      ...(current.narration ? { narration: { sections: narrationSections ?? [] } } : {}),
+    }))
+    reorderedSectionIds.forEach((sectionId) => {
+      void deleteSectionTakes(presentation.id, sectionId).catch(() => setError('Scenes were reordered, but stale narration recordings could not be removed.'))
     })
     setDirection(offset)
     setSelectedIndex(target)
   }
 
-  if (isPresenting) {
+  if (mode === 'present') {
     return (
       <main className="present-mode">
         <Stage scene={selectedScene} accent={presentation.accent} presentationId={presentation.id} sceneNumber={selectedIndex + 1} sceneCount={presentation.scenes.length} direction={direction} className="present-stage" />
-        <button className="exit-present" onClick={() => setIsPresenting(false)} aria-label="Exit presentation"><CloseIcon /> Exit</button>
+        <button className="exit-present" onClick={() => setMode('edit')} aria-label="Exit presentation"><CloseIcon /> Exit</button>
         <div className="present-hint" aria-hidden="true">← → navigate&nbsp;&nbsp; · &nbsp;&nbsp;Esc exit</div>
       </main>
+    )
+  }
+
+  if (mode === 'narrate') {
+    return (
+      <NarrationStudio
+        presentation={presentation}
+        initialSceneIndex={selectedIndex}
+        onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)}
+        onExit={() => setMode('edit')}
+        onError={setError}
+      />
     )
   }
 
@@ -196,7 +265,8 @@ export function App() {
         </div>
         <div className="topbar-end">
           <span className="save-state"><CheckIcon /> Saved {saveTime}</span>
-          <button className="present-button" onClick={() => setIsPresenting(true)}><PlayIcon /> Present</button>
+          <button className="narrate-button" onClick={() => setMode('narrate')}>Narrate</button>
+          <button className="present-button" onClick={() => setMode('present')}><PlayIcon /> Present</button>
         </div>
       </header>
 

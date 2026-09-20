@@ -1,4 +1,4 @@
-import type { ChartDatum, ChartDomain, Presentation, Scene, SceneTransition } from './model'
+import type { ChartDatum, ChartDomain, NarrationStructure, Presentation, Scene, SceneTransition } from './model'
 
 export class PresentationValidationError extends Error {
   constructor(message: string) {
@@ -156,6 +156,39 @@ function parseScene(value: unknown, index: number): Scene {
   }
 }
 
+function narration(value: unknown, scenes: Scene[]): NarrationStructure | undefined {
+  if (value === undefined) return undefined
+  const data = object(value, 'presentation.narration')
+  if (!Array.isArray(data.sections)) fail('presentation.narration.sections', 'expected an array')
+
+  const sceneIndex = new Map(scenes.map((scene, index) => [scene.id, index]))
+  const sectionIds = new Set<string>()
+  const assignedSceneIds = new Set<string>()
+  const sections = data.sections.map((candidate, index) => {
+    const path = `presentation.narration.sections[${index}]`
+    const section = object(candidate, path)
+    const sectionId = id(section.id, `${path}.id`)
+    if (sectionIds.has(sectionId)) fail(`${path}.id`, `duplicate narration section ID "${sectionId}"`)
+    sectionIds.add(sectionId)
+    if (!Array.isArray(section.sceneIds) || section.sceneIds.length === 0) fail(`${path}.sceneIds`, 'expected at least one scene ID')
+    const sceneIds = section.sceneIds.map((candidateId, sceneIndexInSection) => id(candidateId, `${path}.sceneIds[${sceneIndexInSection}]`))
+    if (new Set(sceneIds).size !== sceneIds.length) fail(`${path}.sceneIds`, 'expected unique scene IDs')
+    const positions = sceneIds.map((sceneId, sceneIndexInSection) => {
+      const position = sceneIndex.get(sceneId)
+      if (position === undefined) fail(`${path}.sceneIds[${sceneIndexInSection}]`, `unknown scene ID "${sceneId}"`)
+      if (assignedSceneIds.has(sceneId)) fail(`${path}.sceneIds[${sceneIndexInSection}]`, `scene "${sceneId}" already belongs to another narration section`)
+      assignedSceneIds.add(sceneId)
+      return position
+    })
+    positions.forEach((position, positionIndex) => {
+      if (positionIndex > 0 && position !== positions[positionIndex - 1] + 1) fail(`${path}.sceneIds`, 'expected a contiguous range in presentation order')
+    })
+    return { id: sectionId, title: string(section.title, `${path}.title`), sceneIds }
+  })
+
+  return { sections }
+}
+
 export function validatePresentation(value: unknown): Presentation {
   const data = object(value, 'presentation')
   if (data.schemaVersion !== 1) fail('presentation.schemaVersion', 'unsupported or missing version (expected 1)')
@@ -167,6 +200,7 @@ export function validatePresentation(value: unknown): Presentation {
     if (sceneIds.has(scene.id)) fail(`presentation.scenes[${index}].id`, `duplicate scene ID "${scene.id}"`)
     sceneIds.add(scene.id)
   })
+  const narrationStructure = narration(data.narration, scenes)
   return {
     schemaVersion: 1,
     id: id(data.id, 'presentation.id'),
@@ -179,6 +213,7 @@ export function validatePresentation(value: unknown): Presentation {
       return accent
     })(),
     scenes,
+    ...(narrationStructure ? { narration: narrationStructure } : {}),
   }
 }
 

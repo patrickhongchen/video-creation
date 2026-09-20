@@ -1,12 +1,12 @@
 # Presentation JSON format (schema version 1)
 
-This is the portable project-file format for Video Essay Studio. A file contains exactly one presentation. It contains content and rendering choices, but no editor selection, project-library metadata, JSX, HTML, or React implementation details.
+This is the portable project-file format for Video Essay Studio. A file contains exactly one presentation. It contains content, rendering choices, and optional narration section structure, but no editor selection, project-library metadata, recorded audio, selected local take, IndexedDB key, object URL, JSX, HTML, or React implementation details.
 
 Codex can generate a presentation by writing a UTF-8 `.json` file that follows this document. Import it with **Import** in the top bar. Exported files use this same format with two-space indentation.
 
 ## Presentation object
 
-Every property below is required.
+Every property below is required except `narration`.
 
 | Property | Type | Rule |
 | --- | --- | --- |
@@ -17,8 +17,34 @@ Every property below is required.
 | `aspectRatio` | string | Must be `"9:16"` in version 1. |
 | `accent` | string | Six-digit hex color, for example `#ff554f`. |
 | `scenes` | array | At least one valid scene. Scene IDs must be unique within the presentation. Array order is playback order. |
+| `narration` | object | Optional. Contains portable narration section structure as described below. |
 
 Unknown properties are ignored during import and will not be retained. This keeps the runtime data boundary explicit.
+
+## Narration structure
+
+When present, `narration` contains a required `sections` array. The array may be empty. Each section has exactly the portable structure below:
+
+| Property | Type | Rule |
+| --- | --- | --- |
+| `id` | string | Required, non-empty, stable, and unique among narration sections. |
+| `title` | string | Required human-facing section name. May be empty while drafting. |
+| `sceneIds` | string[] | Required and non-empty. IDs must exist in `scenes`, occur once across all sections, and form a contiguous range in current presentation order. |
+
+A scene belongs to at most one section, and unassigned scenes are allowed. Sections use scene IDs rather than array positions so ordinary edits preserve identity. Changing a section range clears its local takes because their cues are no longer valid. The editor also removes a deleted scene from its section, removes the section if it becomes empty, and clears the affected section's takes. Reordering scenes within a still-contiguous section updates `sceneIds` to current presentation order and clears its stale cue takes; a move that would split a section into a non-contiguous range is blocked.
+
+Example:
+
+```json
+"narration": {
+  "sections": [
+    { "id": "hook-section", "title": "Hook", "sceneIds": ["housing-hook", "housing-context"] },
+    { "id": "data-section", "title": "The data", "sceneIds": ["housing-stat", "housing-stat-meaning"] }
+  ]
+}
+```
+
+Recorded takes are deliberately outside schema version 1. IndexedDB stores the audio Blob, exact browser MIME type, duration, creation time, scene cues, and selected state using presentation and section IDs. Therefore normal JSON export includes section definitions but never audio, and import/duplication produces a presentation with the same section structure and no local recordings. There is no ZIP/audio bundle format in Phase 4A.
 
 ## Fields shared by every scene
 

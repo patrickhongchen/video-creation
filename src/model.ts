@@ -84,6 +84,16 @@ export interface ChartScene extends SceneBase {
 
 export type Scene = TitleScene | TextScene | BigStatScene | ComparisonScene | StatDetailScene | ChartScene
 
+export interface NarrationSection {
+  id: string
+  title: string
+  sceneIds: string[]
+}
+
+export interface NarrationStructure {
+  sections: NarrationSection[]
+}
+
 export interface Presentation {
   schemaVersion: 1
   id: string
@@ -92,4 +102,5 @@ export interface Presentation {
   aspectRatio: '9:16'
   accent: string
   scenes: Scene[]
+  narration?: NarrationStructure
 }

@@ -10,6 +10,7 @@ import { buildDesktopExportJob, getDesktopBridge } from '../desktop/desktopBridg
 import type { DesktopExportProgress } from '../desktop/desktopTypes'
 import { Stage } from './Stage'
 import { CheckIcon, CloseIcon, PlayIcon } from './Icons'
+import { validatePresentation } from '../presentationValidation'
 
 interface FinalVideoStudioProps {
   presentation: Presentation
@@ -52,6 +53,15 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
     () => buildFinalPlaybackPlan(presentation, takesBySection),
     [presentation, takesBySection],
   )
+  const presentationIssue = useMemo(() => {
+    try {
+      validatePresentation(presentation)
+      return ''
+    } catch (problem) {
+      return problem instanceof Error ? problem.message : 'The presentation contains invalid Composition data.'
+    }
+  }, [presentation])
+  const compositionSceneCount = useMemo(() => presentation.scenes.filter((scene) => scene.type === 'composition').length, [presentation.scenes])
 
   useEffect(() => {
     let cancelled = false
@@ -126,7 +136,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
 
   const decodeIssueCount = Object.keys(decodeIssues).length
   const readinessIssueCount = plan.readinessIssues.length
-  const exportReady = takesStatus === 'ready' && plan.isReady
+  const exportReady = takesStatus === 'ready' && plan.isReady && !presentationIssue
   const previewReady = exportReady && decodeStatus === 'ready' && decodeIssueCount === 0
   const busy = exportState === 'preparing' || exportState === 'rendering'
   const previewProgress = playback.totalDurationMs > 0
@@ -236,6 +246,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
             })}
           </ol>
           {plan.readiness.length === 0 && takesStatus === 'ready' ? <p className="final-notice">No narration sections. This will be a completely silent visual video.</p> : null}
+          {compositionSceneCount > 0 ? <p className={presentationIssue ? 'final-blocked-note' : 'final-notice'}><strong>{presentationIssue ? 'Composition preflight failed.' : `${compositionSceneCount} Composition scene${compositionSceneCount === 1 ? '' : 's'} ready.`}</strong>{presentationIssue ? ` ${presentationIssue}` : ' Image assets, element frames, charts, and shared identities are valid.'}</p> : null}
           {readinessIssueCount > 0 ? <p className="final-blocked-note"><strong>{readinessIssueCount} narration section{readinessIssueCount === 1 ? '' : 's'} need{readinessIssueCount === 1 ? 's' : ''} attention.</strong> Final playback and export stay blocked until every section is ready.</p> : null}
           {decodeIssueCount > 0 ? <p className="final-warning">Final Playback Preview is unavailable for selected audio that Chromium cannot decode. Desktop export will ask FFmpeg to decode the original take.</p> : null}
           <button className="final-secondary-button" onClick={onOpenNarration} disabled={busy}>Open Narration Studio</button>
@@ -251,7 +262,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
         <section className="final-stage-panel">
           <div className="final-panel-heading"><span>02</span><div><small>Playback source</small><h2>Final Playback Preview</h2></div></div>
           <div className="final-stage-well">
-            <Stage scene={activeScene} accent={presentation.accent} presentationId={presentation.id} sceneNumber={activeSceneIndex + 1} sceneCount={presentation.scenes.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} className="final-stage" />
+            <Stage scene={activeScene} accent={presentation.accent} imageAssets={presentation.imageAssets} presentationId={presentation.id} sceneNumber={activeSceneIndex + 1} sceneCount={presentation.scenes.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} className="final-stage" />
           </div>
           <div className="final-playback-status">
             <span>{formatTime(playback.currentTimeMs)} / {formatTime(playback.totalDurationMs)}</span>

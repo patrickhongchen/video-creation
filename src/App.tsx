@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Presentation, Scene } from './model'
-import { createBlankPresentation, createScene, duplicatePresentation, duplicateScene, makePresentationIdUnique, type SceneType } from './presentationFactories'
+import type { CompositionElement, Presentation, Scene } from './model'
+import { createBlankPresentation, createScene, duplicateCompositionElement, duplicatePresentation, duplicateScene, makePresentationIdUnique, type SceneType } from './presentationFactories'
 import { downloadPresentation, readPresentationFile } from './presentationFiles'
 import { loadPresentationLibrary, savePresentationLibrary, type PresentationLibrary } from './storage/presentationStorage'
 import { Stage } from './components/Stage'
@@ -27,8 +27,13 @@ export function App() {
   const [error, setError] = useState('')
   const [projectDialog, setProjectDialog] = useState<'new' | 'rename' | 'delete' | null>(null)
   const [projectName, setProjectName] = useState('')
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
+  const [compositionGrid, setCompositionGrid] = useState(false)
+  const [compositionGuides, setCompositionGuides] = useState(true)
+  const [compositionSnap, setCompositionSnap] = useState(true)
   const fileInput = useRef<HTMLInputElement>(null)
   const importReservations = useRef(new Set<string>())
+  const copiedElement = useRef<CompositionElement | null>(null)
 
   const presentation = library.presentations.find((item) => item.id === library.activePresentationId) ?? library.presentations[0]
   const selectedScene = presentation.scenes[selectedIndex] ?? presentation.scenes[0]
@@ -39,6 +44,11 @@ export function App() {
       presentations: current.presentations.map((item) => item.id === current.activePresentationId ? update(item) : item),
     }))
   }, [])
+
+  const updateScene = useCallback((scene: Scene) => updateCurrent((current) => ({
+    ...current,
+    scenes: current.scenes.map((item, index) => index === selectedIndex ? scene : item),
+  })), [selectedIndex, updateCurrent])
 
   const selectScene = useCallback((next: number) => {
     const safeIndex = Math.max(0, Math.min(next, presentation.scenes.length - 1))
@@ -62,6 +72,8 @@ export function App() {
     if (selectedIndex >= presentation.scenes.length) setSelectedIndex(presentation.scenes.length - 1)
   }, [presentation.scenes.length, selectedIndex])
 
+  useEffect(() => setSelectedElementId(null), [selectedScene.id])
+
   useEffect(() => {
     if (mode !== 'present') return
     const onKeyDown = (event: KeyboardEvent) => {
@@ -72,6 +84,53 @@ export function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [mode, next, previous])
+
+  useEffect(() => {
+    if (mode !== 'edit' || selectedScene.type !== 'composition' || !selectedElementId) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable)) return
+      const element = selectedScene.elements.find((candidate) => candidate.id === selectedElementId)
+      if (!element) return
+      if (event.key.startsWith('Arrow') && !element.locked) {
+        event.preventDefault()
+        const step = event.shiftKey ? 10 : 1
+        const frame = { ...element.frame }
+        if (event.key === 'ArrowLeft') frame.x -= step
+        if (event.key === 'ArrowRight') frame.x += step
+        if (event.key === 'ArrowUp') frame.y -= step
+        if (event.key === 'ArrowDown') frame.y += step
+        updateScene({ ...selectedScene, elements: selectedScene.elements.map((candidate) => candidate.id === element.id ? { ...candidate, frame } : candidate) })
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
+        event.preventDefault()
+        const duplicate = duplicateCompositionElement(element)
+        updateScene({ ...selectedScene, elements: [...selectedScene.elements, duplicate] })
+        setSelectedElementId(duplicate.id)
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c') {
+        event.preventDefault()
+        copiedElement.current = structuredClone(element)
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'v' && copiedElement.current) {
+        event.preventDefault()
+        const pasted = duplicateCompositionElement(copiedElement.current)
+        updateScene({ ...selectedScene, elements: [...selectedScene.elements, pasted] })
+        setSelectedElementId(pasted.id)
+        return
+      }
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault()
+        updateScene({ ...selectedScene, elements: selectedScene.elements.filter((candidate) => candidate.id !== element.id) })
+        setSelectedElementId(null)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [mode, selectedElementId, selectedScene, updateScene])
 
   const openPresentation = (id: string) => {
     setLibrary((current) => ({ ...current, activePresentationId: id }))
@@ -147,11 +206,6 @@ export function App() {
     }
   }
 
-  const updateScene = (scene: Scene) => updateCurrent((current) => ({
-    ...current,
-    scenes: current.scenes.map((item, index) => index === selectedIndex ? scene : item),
-  }))
-
   const addScene = (type: SceneType) => {
     const scene = createScene(type)
     updateCurrent((current) => ({ ...current, scenes: [...current.scenes, scene] }))
@@ -223,7 +277,7 @@ export function App() {
   if (mode === 'present') {
     return (
       <main className="present-mode">
-        <Stage scene={selectedScene} accent={presentation.accent} presentationId={presentation.id} sceneNumber={selectedIndex + 1} sceneCount={presentation.scenes.length} direction={direction} className="present-stage" />
+        <Stage scene={selectedScene} accent={presentation.accent} imageAssets={presentation.imageAssets} presentationId={presentation.id} sceneNumber={selectedIndex + 1} sceneCount={presentation.scenes.length} direction={direction} className="present-stage" />
         <button className="exit-present" onClick={() => setMode('edit')} aria-label="Exit presentation"><CloseIcon /> Exit</button>
         <div className="present-hint" aria-hidden="true">← → navigate&nbsp;&nbsp; · &nbsp;&nbsp;Esc exit</div>
       </main>
@@ -309,14 +363,47 @@ export function App() {
       <div className="workspace">
         <SceneList presentation={presentation} selectedIndex={selectedIndex} onSelect={selectScene} onPrevious={previous} onNext={next} onAdd={addScene} onDuplicate={copyScene} onDelete={deleteScene} onMove={moveScene} />
         <main className="canvas-workspace">
-          <Stage scene={selectedScene} accent={presentation.accent} presentationId={presentation.id} sceneNumber={selectedIndex + 1} sceneCount={presentation.scenes.length} direction={direction} />
+          <Stage
+            scene={selectedScene}
+            accent={presentation.accent}
+            imageAssets={presentation.imageAssets}
+            presentationId={presentation.id}
+            sceneNumber={selectedIndex + 1}
+            sceneCount={presentation.scenes.length}
+            direction={direction}
+            compositionEditor={selectedScene.type === 'composition' ? {
+              selectedElementId,
+              grid: compositionGrid,
+              guides: compositionGuides,
+              snap: compositionSnap,
+              onSelect: setSelectedElementId,
+              onElementChange: (element) => updateScene({ ...selectedScene, elements: selectedScene.elements.map((candidate) => candidate.id === element.id ? element : candidate) }),
+            } : undefined}
+          />
         </main>
-        <Inspector scene={selectedScene} onChange={updateScene} presentation={presentation} onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)} onPrevious={previous} onNext={next} hasPrevious={selectedIndex > 0} hasNext={selectedIndex < presentation.scenes.length - 1} />
+        <Inspector
+          scene={selectedScene}
+          onChange={updateScene}
+          presentation={presentation}
+          onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)}
+          onPrevious={previous}
+          onNext={next}
+          hasPrevious={selectedIndex > 0}
+          hasNext={selectedIndex < presentation.scenes.length - 1}
+          selectedElementId={selectedElementId}
+          compositionGrid={compositionGrid}
+          compositionGuides={compositionGuides}
+          compositionSnap={compositionSnap}
+          onSelectElement={setSelectedElementId}
+          onCompositionGridChange={setCompositionGrid}
+          onCompositionGuidesChange={setCompositionGuides}
+          onCompositionSnapChange={setCompositionSnap}
+        />
       </div>
 
       <footer className="statusbar">
         <span>Scene {selectedIndex + 1} of {presentation.scenes.length}</span><i /><span>{selectedScene.title}</span><i /><span>{selectedScene.duration}s</span>
-        <span className="status-help">Arrow keys <kbd>←</kbd><kbd>→</kbd> navigate in Present mode</span>
+        <span className="status-help">{selectedScene.type === 'composition' ? <>Nudge <kbd>←</kbd><kbd>→</kbd> · Shift = 10px · Alt disables snap</> : <>Arrow keys <kbd>←</kbd><kbd>→</kbd> navigate in Present mode</>}</span>
       </footer>
     </div>
   )

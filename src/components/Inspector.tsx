@@ -2,6 +2,7 @@ import { useEffect, useState, type ChangeEvent } from 'react'
 import type { ChartScene, Presentation, Scene, TransitionType } from '../model'
 import { createStableId } from '../presentationFactories'
 import { ChevronLeftIcon, ChevronRightIcon } from './Icons'
+import { CompositionInspector } from './CompositionInspector'
 
 interface InspectorProps {
   scene: Scene
@@ -12,6 +13,14 @@ interface InspectorProps {
   onNext: () => void
   hasPrevious: boolean
   hasNext: boolean
+  selectedElementId: string | null
+  compositionGrid: boolean
+  compositionGuides: boolean
+  compositionSnap: boolean
+  onSelectElement: (elementId: string | null) => void
+  onCompositionGridChange: (value: boolean) => void
+  onCompositionGuidesChange: (value: boolean) => void
+  onCompositionSnapChange: (value: boolean) => void
 }
 
 function Field({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {
@@ -121,7 +130,7 @@ function ChartEditor({ scene, onChange }: { scene: ChartScene; onChange: (scene:
   </>
 }
 
-export function Inspector({ scene, onChange, presentation, onPresentationChange, onPrevious, onNext, hasPrevious, hasNext }: InspectorProps) {
+export function Inspector({ scene, onChange, presentation, onPresentationChange, onPrevious, onNext, hasPrevious, hasNext, selectedElementId, compositionGrid, compositionGuides, compositionSnap, onSelectElement, onCompositionGridChange, onCompositionGuidesChange, onCompositionSnapChange }: InspectorProps) {
   const update = <K extends keyof Scene>(key: K, value: Scene[K]) => onChange({ ...scene, [key]: value } as Scene)
   const updateTransition = (event: ChangeEvent<HTMLSelectElement>) => onChange({ ...scene, transition: { ...scene.transition, type: event.target.value as TransitionType } })
   const updateDuration = (value: string) => {
@@ -185,6 +194,20 @@ export function Inspector({ scene, onChange, presentation, onPresentationChange,
           <Field label="Right label" value={scene.right.label} onChange={(label) => onChange({ ...scene, right: { ...scene.right, label } })} />
         </>}
         {scene.type === 'chart' && <ChartEditor scene={scene} onChange={onChange} />}
+        {scene.type === 'composition' && <CompositionInspector
+          scene={scene}
+          presentation={presentation}
+          selectedElementId={selectedElementId}
+          grid={compositionGrid}
+          guides={compositionGuides}
+          snap={compositionSnap}
+          onGridChange={onCompositionGridChange}
+          onGuidesChange={onCompositionGuidesChange}
+          onSnapChange={onCompositionSnapChange}
+          onSelect={onSelectElement}
+          onSceneChange={onChange}
+          onPresentationChange={onPresentationChange}
+        />}
       </section>
 
       <section>

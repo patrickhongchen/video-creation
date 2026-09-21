@@ -76,6 +76,7 @@ export function ExportRenderSurface() {
       <Stage
         scene={visual.scene}
         accent={job.presentation.accent}
+        imageAssets={job.presentation.imageAssets}
         presentationId={job.presentation.id}
         sceneNumber={visual.sceneIndex + 1}
         sceneCount={job.presentation.scenes.length}

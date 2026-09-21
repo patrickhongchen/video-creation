@@ -1,6 +1,6 @@
-# Video Essay Studio — Phase 4C
+# Video Essay Studio — Phase 5B
 
-An Electron desktop application for building and exporting 9:16 video essays. Phase 4C preserves the React editor, Narration Studio, Final Playback Preview, charts, transitions, and Morph animation while moving final MP4 creation to a dedicated offscreen Chromium renderer and bundled FFmpeg.
+An Electron desktop application for building and exporting 9:16 video essays. Phase 5B adds a bounded Composition editor for precise mixed layouts while preserving the structured scene templates, Narration Studio, Final Playback Preview, transitions, Morph animation, and deterministic desktop MP4 exporter.
 
 ## Run it
 
@@ -21,6 +21,13 @@ Create the browser renderer with `npm run build`, or create a locally usable App
 
 - Multiple locally persisted presentations with switching, creation, duplication, rename, and deletion
 - Title, Text, Big Stat, Comparison, and Stat Detail scene factories
+- A Composition scene with a fixed logical 1080×1920 canvas and structured text, image, chart, rectangle, circle, line, and arrow elements
+- Dragging, corner resizing, exact X/Y/W/H/rotation/opacity controls, 1 px keyboard nudging, 10 px Shift-nudging, duplication, deletion, and structured copy/paste
+- Center, safe-zone, element-edge, and element-center snapping; Option/Alt temporarily disables snapping; editor-only grid and guide toggles
+- A flat Layers panel with stable element IDs, names, array-authoritative z-order actions, visibility, and locking
+- Presentation-scoped PNG, JPEG, WebP, and SVG assets referenced by stable `assetId`, with contain/cover, controlled positioning, flips, and aspect-preserving resize by default
+- Reused Bar and Line chart rendering inside bounded Composition frames, including data editing, highlights, `chartId`, datum IDs, and minimum frame sizes
+- Type-compatible `sharedElementId` identities for Composition Morphs across scenes and narration-section boundaries
 - Editorial Bar and Line Chart scenes with numeric data, highlights, sources, formatting, and optional explicit domains
 - Stable `chartId` and datum IDs for chart-to-chart Morph storytelling, plus restrained entry animation and reduced-motion support
 - A compact Inspector data editor for adding, deleting, reordering, editing, and highlighting data
@@ -47,6 +54,8 @@ The first launch seeds the original **Small Screens, Bigger Questions** demo and
 - `src/storage/presentationStorage.ts` owns local library persistence and Phase 1 migration.
 - `src/presentationFiles.ts` owns presentation-only serialization, download, and file parsing.
 - `src/scenes/SceneRenderers.tsx` contains the typed renderer registry; presentation files contain no JSX, HTML, or React details.
+- `src/scenes/CompositionSceneRenderer.tsx` owns the canonical canvas, element rendering, editor-only selection chrome, pointer conversion, interaction previews, snapping, and Motion identities. `Stage` remains scene-agnostic.
+- `src/components/CompositionInspector.tsx` owns Composition add controls, exact transforms, type-specific fields, image ingestion, and the flat Layers panel.
 - `src/charts/` contains the reusable numeric domain/scale utilities and the native Motion/SVG bar and line renderers.
 - `src/components/Stage.tsx` remains the shared editor/Present surface for transitions and the Motion `LayoutGroup`.
 - `src/narration/` owns native IndexedDB take/blob persistence, microphone capture, level metering, and cue-synchronized playback.
@@ -98,6 +107,20 @@ Duplicating a scene always creates a new scene `id` but intentionally preserves 
 
 Chart scenes use `chartId` for the continuing chart and datum `id` for each continuing bar or point. Consecutive compatible scenes preserve those IDs so values can move, resize, reorder, and change emphasis without becoming unrelated objects. Chart IDs are namespaced by presentation and chart type; bar charts do not Morph into line charts.
 
+Composition elements use a separate optional `sharedElementId`. The element's `id` is its identity inside one scene; `sharedElementId` describes the semantic visual carried between scenes. Compatible identities are namespaced by representation, so text Morphs only to text, images only to images, matching shape kinds only to matching shape kinds, and charts only when their bar/line representation is compatible. A Composition chart keeps three distinct identity layers: `sharedElementId` for its placement, `chartId` for the continuing visualization, and each datum `id` for a continuing mark.
+
+Duplicating a Composition scene regenerates its scene and element IDs but preserves every `sharedElementId`, `chartId`, datum ID, and asset reference. This supports the fast workflow: duplicate a scene, move or resize the shared elements, then preview their Morph. Duplicating one element within the same scene clears its shared identity to avoid ambiguous matches.
+
+## Composition workflow
+
+Add **Composition** from the scene menu, then use **Add Element** in the Inspector. The visible editor Stage may be smaller than the video, but every frame is stored in canonical 1080×1920 units. Resizing the application never rewrites those coordinates. Pointer input is translated back into canonical units, while the Inspector is the precision source for X, Y, width, height, rotation, and opacity.
+
+The element array is the authoritative back-to-front layer order. Select a layer to rename it, hide/show it, lock/unlock it, or use the forward/back/front/back actions. Locked elements remain rendered but cannot be dragged or resized. Hidden elements are omitted from every Stage, including Present, Narration, Final Playback Preview, and MP4 export. Selection boxes, handles, grids, safe zones, and snap lines exist only when the editor passes Composition editing context.
+
+Images live in the presentation-level `imageAssets` registry as data URLs for this phase; Composition elements store only `assetId`. This keeps element data modular and makes imported/exported JSON self-contained, including transparent PNG/SVG illustrations. It is intentionally a minimal asset layer: there is no project bundle, reusable character library, stock search, video asset, or asset-management UI yet. Very large images may exceed browser localStorage limits; export the presentation JSON after adding important assets.
+
+The hidden Electron renderer uses the same Composition renderer. Its existing 432×768 CSS scene canvas is scaled 2.5× by the exporter, while Composition scales 1080×1920 coordinates to 432×768 inside that canvas. The transforms cancel exactly, so stored canonical positions reach the 1080×1920 output without editor-coordinate approximation.
+
 ## Add a scene type
 
 1. Add the scene interface to the `Scene` union in `src/model.ts`.
@@ -110,5 +133,7 @@ Chart scenes use `chartId` for the continuing chart and datum `id` for each cont
 The mapped renderer registry makes a missing renderer a TypeScript error.
 
 ## Current boundaries
+
+Composition is deliberately between rigid templates and unrestricted design software. There is no pen or Bézier editor, crop tool, mask, filter, arbitrary CSS/HTML, custom font loading, rich-text span formatting, grouping, nested layers, symbols, alignment/distribution panel, timeline, keyframes, per-element animation timing, video element, character library, stock search, or project bundle. Images preserve the frame aspect ratio during corner resize by default; hold Shift to resize the frame freely. Rotation is numeric in the Inspector.
 
 Final video output is a real-time desktop render rather than an accelerated offline Motion engine. The only user-facing final format is MP4. There is intentionally no waveform/timeline editing, trimming, gain processing, captions, transcription, background audio, cloud rendering, project/audio bundle migration, or final-video database. Narration `MediaRecorder` remains browser-native inside Chromium, while FFmpeg handles varying selected-take formats during final export.

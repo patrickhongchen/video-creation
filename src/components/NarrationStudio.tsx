@@ -357,6 +357,7 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
           {currentScene ? <Stage
             scene={currentScene}
             accent={presentation.accent}
+            imageAssets={presentation.imageAssets}
             presentationId={presentation.id}
             sceneNumber={currentOverallIndex + 1}
             sceneCount={presentation.scenes.length}

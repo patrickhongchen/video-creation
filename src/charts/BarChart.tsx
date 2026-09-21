@@ -6,7 +6,10 @@ export interface BarChartProps {
   scene: ChartScene
   accent: string
   layoutNamespace: string
+  variant?: ChartRenderVariant
 }
+
+export type ChartRenderVariant = 'scene' | 'element'
 
 const VIEWBOX_WIDTH = 840
 const VIEWBOX_HEIGHT = 560
@@ -23,8 +26,9 @@ function chartValue(scene: ChartScene, value: number) {
   })
 }
 
-export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
+export function BarChart({ scene, accent, layoutNamespace, variant = 'scene' }: BarChartProps) {
   const reducedMotion = useReducedMotion()
+  const isElement = variant === 'element'
   const domain = resolveChartDomain(scene.data.map((datum) => datum.value), scene.domain)
   const ticks = createChartTicks(domain)
   const hasHighlights = scene.highlightIds.length > 0
@@ -49,23 +53,33 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
   const formatValue = (value: number) => chartValue(scene, value)
 
   return (
-    <div className={`scene-layout chart-layout chart-layout--bar chart-layout--${orientation}`}>
-      <motion.header
-        className="chart-header"
-        key={scene.id}
-        initial={reducedMotion ? false : { opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={reducedMotion ? { duration: 0 } : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-      >
-        {scene.eyebrow && <div className="scene-kicker">{scene.eyebrow}</div>}
-        <h1 className="chart-headline">{scene.headline}</h1>
-        {scene.supportingText && <p className="chart-supporting-text">{scene.supportingText}</p>}
-      </motion.header>
+    <div
+      className={`${isElement ? '' : 'scene-layout ' }chart-layout chart-layout--bar chart-layout--${orientation}${isElement ? ' chart-layout--element' : ''}`}
+      style={isElement ? { boxSizing: 'border-box', width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', padding: 0 } : undefined}
+    >
+      {!isElement && (
+        <motion.header
+          className="chart-header"
+          key={scene.id}
+          initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={reducedMotion ? { duration: 0 } : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+        >
+          {scene.eyebrow && <div className="scene-kicker">{scene.eyebrow}</div>}
+          <h1 className="chart-headline">{scene.headline}</h1>
+          {scene.supportingText && <p className="chart-supporting-text">{scene.supportingText}</p>}
+        </motion.header>
+      )}
 
-      <div className="chart-visual">
+      <div
+        className={`chart-visual${isElement ? ' chart-visual--element' : ''}`}
+        style={isElement ? { flex: '1 1 100%', width: '100%', height: '100%', minWidth: 0, minHeight: 0, margin: 0, overflow: 'hidden' } : undefined}
+      >
         <svg
-          className="chart-svg chart-svg--bar"
+          className={`chart-svg chart-svg--bar${isElement ? ' chart-svg--element' : ''}`}
           viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
+          preserveAspectRatio="xMidYMid meet"
+          style={isElement ? { width: '100%', height: '100%', overflow: 'hidden' } : undefined}
           role="img"
           aria-label={`${scene.headline}. Bar chart.`}
         >
@@ -204,7 +218,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
         </svg>
       </div>
 
-      {scene.source && <footer className="chart-source">Source: {scene.source}</footer>}
+      {!isElement && scene.source && <footer className="chart-source">Source: {scene.source}</footer>}
     </div>
   )
 }

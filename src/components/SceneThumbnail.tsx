@@ -30,5 +30,16 @@ export function SceneThumbnail({ scene, accent }: { scene: Scene; accent: string
       {scene.data.slice(0, 5).map((datum) => <i key={datum.id} style={{ '--bar-size': `${Math.max(8, Math.abs(datum.value) / maxMagnitude * 100)}%`, '--bar-color': highlighted.size === 0 || highlighted.has(datum.id) ? accent : '#b9c2ca' } as CSSProperties} />)}
     </div>
   }
+  if (scene.type === 'composition') {
+    return <div className="thumb thumb-composition" aria-hidden="true">
+      {scene.elements.filter((element) => !element.hidden).slice(-5).map((element, index) => {
+        const left = Math.max(0, Math.min(88, element.frame.x / 1080 * 100))
+        const top = Math.max(0, Math.min(92, element.frame.y / 1920 * 100))
+        const width = Math.max(7, Math.min(100 - left, element.frame.width / 1080 * 100))
+        const height = Math.max(4, Math.min(100 - top, element.frame.height / 1920 * 100))
+        return <i key={element.id} className={`thumb-composition-element thumb-composition-element--${element.type}`} style={{ left: `${left}%`, top: `${top}%`, width: `${width}%`, height: `${height}%`, borderColor: index === scene.elements.length - 1 ? accent : undefined, background: element.type === 'shape' ? ('fill' in element ? element.fill : undefined) : undefined }} />
+      })}
+    </div>
+  }
   return <div className="thumb thumb-copy"><b>{scene.headline}</b><i style={{ background: accent }} /></div>
 }

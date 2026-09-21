@@ -1,11 +1,13 @@
 import { motion, useReducedMotion } from 'motion/react'
 import type { ChartScene } from '../model'
+import type { ChartRenderVariant } from './BarChart'
 import { createChartTicks, createLinearScale, formatChartValue, resolveChartDomain } from './chartScale'
 
 export interface LineChartProps {
   scene: ChartScene
   accent: string
   layoutNamespace: string
+  variant?: ChartRenderVariant
 }
 
 const VIEWBOX_WIDTH = 840
@@ -19,8 +21,9 @@ function datumLayoutId(scene: ChartScene, layoutNamespace: string, datumId: stri
   return JSON.stringify([layoutNamespace, scene.chartId ?? scene.id, scene.chartType, datumId])
 }
 
-export function LineChart({ scene, accent, layoutNamespace }: LineChartProps) {
+export function LineChart({ scene, accent, layoutNamespace, variant = 'scene' }: LineChartProps) {
   const reducedMotion = useReducedMotion()
+  const isElement = variant === 'element'
   const orientation = scene.orientation ?? 'vertical'
   const domain = resolveChartDomain(scene.data.map((datum) => datum.value), scene.domain)
   const ticks = createChartTicks(domain)
@@ -45,23 +48,33 @@ export function LineChart({ scene, accent, layoutNamespace }: LineChartProps) {
   const path = points.map((point, position) => `${position === 0 ? 'M' : 'L'} ${point.x} ${point.y}`).join(' ')
 
   return (
-    <div className={`scene-layout chart-layout chart-layout--line chart-layout--${orientation}`}>
-      <motion.header
-        className="chart-header"
-        key={scene.id}
-        initial={reducedMotion ? false : { opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={reducedMotion ? { duration: 0 } : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-      >
-        {scene.eyebrow && <div className="scene-kicker">{scene.eyebrow}</div>}
-        <h1 className="chart-headline">{scene.headline}</h1>
-        {scene.supportingText && <p className="chart-supporting-text">{scene.supportingText}</p>}
-      </motion.header>
+    <div
+      className={`${isElement ? '' : 'scene-layout ' }chart-layout chart-layout--line chart-layout--${orientation}${isElement ? ' chart-layout--element' : ''}`}
+      style={isElement ? { boxSizing: 'border-box', width: '100%', height: '100%', minWidth: 0, minHeight: 0, overflow: 'hidden', padding: 0 } : undefined}
+    >
+      {!isElement && (
+        <motion.header
+          className="chart-header"
+          key={scene.id}
+          initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={reducedMotion ? { duration: 0 } : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+        >
+          {scene.eyebrow && <div className="scene-kicker">{scene.eyebrow}</div>}
+          <h1 className="chart-headline">{scene.headline}</h1>
+          {scene.supportingText && <p className="chart-supporting-text">{scene.supportingText}</p>}
+        </motion.header>
+      )}
 
-      <div className="chart-visual">
+      <div
+        className={`chart-visual${isElement ? ' chart-visual--element' : ''}`}
+        style={isElement ? { flex: '1 1 100%', width: '100%', height: '100%', minWidth: 0, minHeight: 0, margin: 0, overflow: 'hidden' } : undefined}
+      >
         <svg
-          className="chart-svg chart-svg--line"
+          className={`chart-svg chart-svg--line${isElement ? ' chart-svg--element' : ''}`}
           viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
+          preserveAspectRatio="xMidYMid meet"
+          style={isElement ? { width: '100%', height: '100%', overflow: 'hidden' } : undefined}
           role="img"
           aria-label={`${scene.headline}. Line chart.`}
         >
@@ -140,7 +153,7 @@ export function LineChart({ scene, accent, layoutNamespace }: LineChartProps) {
         </svg>
       </div>
 
-      {scene.source && <footer className="chart-source">Source: {scene.source}</footer>}
+      {!isElement && scene.source && <footer className="chart-source">Source: {scene.source}</footer>}
     </div>
   )
 }

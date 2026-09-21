@@ -1,4 +1,4 @@
-export { BarChart, type BarChartProps } from './BarChart'
+export { BarChart, type BarChartProps, type ChartRenderVariant } from './BarChart'
 export { LineChart, type LineChartProps } from './LineChart'
 export {
   createChartTicks,

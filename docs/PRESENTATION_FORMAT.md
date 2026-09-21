@@ -16,6 +16,7 @@ Every property below is required except `narration`.
 | `tagline` | string | May be empty. Shown as presentation metadata. |
 | `aspectRatio` | string | Must be `"9:16"` in version 1. |
 | `accent` | string | Six-digit hex color, for example `#ff554f`. |
+| `imageAssets` | array | Optional presentation-scoped PNG, JPEG, WebP, or SVG registry. Composition image elements reference these entries by stable ID. |
 | `scenes` | array | At least one valid scene. Scene IDs must be unique within the presentation. Array order is playback order. |
 | `narration` | object | Optional. Contains portable narration section structure as described below. |
 
@@ -61,7 +62,7 @@ Desktop export creates a hidden Electron offscreen renderer that contains only t
 | Property | Type | Rule |
 | --- | --- | --- |
 | `id` | string | Required, non-empty, and unique within the presentation. Keep it stable when editing content. |
-| `type` | string | One of the six discriminators below. |
+| `type` | string | One of the seven discriminators below. |
 | `title` | string | Required editor-facing scene name. May be empty while drafting. |
 | `duration` | number | Required; at least `1`, measured in seconds. |
 | `transition` | object | Required. `type` is `fade`, `slide`, or `scale`; `duration` is a non-negative number in seconds. |
@@ -115,6 +116,74 @@ Chart scenes store numeric source data, never rendered widths, coordinates, SVG 
 The automatic domain includes zero so bar lengths and line position are not visually exaggerated. It handles negative and constant datasets. Use `domain` only when the story requires an explicit comparable scale; never choose a tighter range simply to dramatize a change.
 
 Horizontal bars are recommended for category comparisons in a 9:16 frame. Vertical bars are supported for compact category sets. Line charts use the array order as the horizontal sequence and are intended for one ordered series, not multiple-series analysis.
+
+### `composition`
+
+A Composition scene is a bounded structured layout, not arbitrary HTML or a freeform drawing document. It has a fixed canonical canvas of `1080 × 1920` design units. Every element frame is stored in those units regardless of the editor's displayed Stage size.
+
+| Property | Type | Rule |
+| --- | --- | --- |
+| `background` | string | Optional: `presentation`, `light`, `dark`, `accent`, or a six-digit hex color. |
+| `elements` | array | Required; may be empty. Array order is authoritative back-to-front layer order. Element IDs and non-empty `sharedElementId` values must be unique inside the scene. |
+
+The common element fields are:
+
+| Property | Type | Rule |
+| --- | --- | --- |
+| `id` | string | Required, non-empty, stable, and unique inside the scene. Never use an array index. |
+| `type` | string | `text`, `image`, `chart`, `shape`, or `arrow`. |
+| `name` | string | Required non-empty editor-facing layer name. |
+| `frame` | object | Required `x`, `y`, positive `width`, and positive `height`; optional `rotation` from `-360` through `360` degrees and `opacity` from `0` through `1`. All values are finite canonical units. |
+| `locked` | boolean | Optional. A locked element renders but direct manipulation cannot move or resize it. |
+| `hidden` | boolean | Optional. A hidden element does not render in Edit, Present, Narration, Final Preview, or export. |
+| `sharedElementId` | string | Optional non-empty semantic identity used for compatible cross-scene Morphs. It is separate from `id`. |
+
+Elements may extend partly or completely outside the 1080×1920 canvas. Import does not clamp or repair them. Typical safe content is approximately `x: 80–1000` and `y: 120–1720`.
+
+#### Text element
+
+Required: `text` and `fontSize` (`1`–`512`). Optional: `role` (`headline`, `body`, `caption`, or `label`), integer `fontWeight` (`100`–`900`), `textAlign` (`left`, `center`, or `right`), `lineHeight` (`0.5`–`3`), and `letterSpacing` (`-20`–`100`). Text uses the application font stack. Rich spans, custom fonts, effects, gradients, and per-character formatting are not supported.
+
+#### Image element and asset registry
+
+An image element requires `assetId` and `fit` (`cover` or `contain`). Optional `position` is one of `center`, `top`, `bottom`, `left`, `right`, `top-left`, `top-right`, `bottom-left`, or `bottom-right`; `flipX` and `flipY` are optional booleans.
+
+Image bytes never live in an element. `presentation.imageAssets` is the minimal Phase 5B registry:
+
+```json
+{
+  "id": "stick-pointing-right",
+  "name": "stick-pointing-right.svg",
+  "mimeType": "image/svg+xml",
+  "source": "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20100'%3E%3Ccircle%20cx='50'%20cy='20'%20r='10'/%3E%3Cpath%20d='M50%2030V70M50%2045L85%2035M50%2070L30%2095M50%2070L70%2095'%20stroke='black'%20fill='none'/%3E%3C/svg%3E"
+}
+```
+
+`mimeType` must be `image/png`, `image/jpeg`, `image/webp`, or `image/svg+xml`, and `source` must be a non-empty data URL with the same MIME type. Every image element must reference a known asset; a missing reference blocks import and export readiness. This registry is intentionally not the future project-bundle/asset-library system.
+
+#### Chart element
+
+A chart element uses the same structured fields and validation as a standalone chart except it has no scene headline/source/supporting copy. Required: `chartType`, non-empty `data`, `highlightIds`, and `showValues`. Optional: `orientation`, `valuePrefix`, `valueSuffix`, `decimalPlaces`, `chartId`, and `domain`. The renderer reuses the Bar/Line chart implementation in a chart-only responsive mode. Use at least roughly `280 × 220` design units for legibility.
+
+#### Shape element
+
+Required `shape`: `rectangle`, `circle`, or `line`. Optional `fill`, `stroke` (six-digit hex colors), and non-negative `strokeWidth`. The editor intentionally provides no path, pen, or Bézier controls.
+
+#### Arrow element
+
+Optional `stroke` is a six-digit hex color; `strokeWidth` is positive; `startCap` is `none` or `dot`; `endCap` is `none` or `arrow`. The arrow follows its rectangular frame and rotation. It is a straight line only.
+
+#### Composition shared identity
+
+`sharedElementId` identifies where a semantic visual exists in a Composition layout. It does not replace the per-scene element `id`. Validation prevents one shared ID from being reused by incompatible representations anywhere in a presentation. Text matches text, image matches image, shapes require the same shape kind, and charts require compatible bar/line representation and bar orientation.
+
+For charts, keep all identity layers distinct:
+
+- `sharedElementId`: the whole chart's Composition placement and size;
+- `chartId`: the continuing visualization;
+- datum `id`: a continuing bar or point.
+
+Duplicating a Composition scene creates a new scene ID and new element IDs but preserves `sharedElementId`, asset IDs, chart IDs, and datum IDs. Duplicating one element inside a scene creates a new element ID, offsets it, and clears its shared identity.
 
 ## Shared-element / Morph IDs
 
@@ -198,6 +267,116 @@ The following abbreviated scene objects demonstrate the authoring pattern. They 
 ```
 
 For a line chart, use the same datum structure with `"chartType": "line"`; order points from left to right and give each point a stable ID such as a year or period slug.
+
+## Complete Composition example
+
+This importable example deliberately uses a playful offset rather than a perfect corporate grid. The transparent SVG is a normal image asset; the scene combines it with an arrow, chart, shape, headline, and sarcastic caption.
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "whimsical-composition-demo",
+  "title": "The Very Scientific Explanation",
+  "tagline": "A stick figure investigates the numbers.",
+  "aspectRatio": "9:16",
+  "accent": "#ff554f",
+  "imageAssets": [
+    {
+      "id": "stick-pointing-right",
+      "name": "stick-pointing-right.svg",
+      "mimeType": "image/svg+xml",
+      "source": "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20100%20140'%3E%3Cg%20fill='none'%20stroke='%23111821'%20stroke-width='5'%20stroke-linecap='round'%3E%3Ccircle%20cx='40'%20cy='20'%20r='13'/%3E%3Cpath%20d='M40%2034V88M40%2050L88%2038M40%2053L15%2075M40%2088L16%20132M40%2088L72%20130'/%3E%3C/g%3E%3C/svg%3E"
+    }
+  ],
+  "scenes": [
+    {
+      "id": "why-this-matters",
+      "type": "composition",
+      "title": "Why this matters",
+      "duration": 6,
+      "transition": { "type": "fade", "duration": 0.5 },
+      "background": "light",
+      "notes": "The character, chart, and caption are all structured elements.",
+      "elements": [
+        {
+          "id": "chart-backing",
+          "type": "shape",
+          "name": "Chart backing",
+          "shape": "rectangle",
+          "frame": { "x": 365, "y": 515, "width": 660, "height": 760, "rotation": 2, "opacity": 1 },
+          "fill": "#f3f6f8",
+          "stroke": "#d9e0e7",
+          "strokeWidth": 3
+        },
+        {
+          "id": "character-1",
+          "sharedElementId": "guide-character",
+          "type": "image",
+          "name": "Pointing character",
+          "assetId": "stick-pointing-right",
+          "frame": { "x": 68, "y": 790, "width": 285, "height": 430, "rotation": -6, "opacity": 1 },
+          "fit": "contain",
+          "position": "center",
+          "flipX": false,
+          "flipY": false
+        },
+        {
+          "id": "chart-1",
+          "sharedElementId": "main-chart",
+          "type": "chart",
+          "name": "Subscriber decline",
+          "frame": { "x": 390, "y": 560, "width": 620, "height": 680, "rotation": 2, "opacity": 1 },
+          "chartType": "bar",
+          "orientation": "horizontal",
+          "chartId": "subscriber-decline",
+          "data": [
+            { "id": "2024", "label": "2024", "value": 72 },
+            { "id": "2025", "label": "2025", "value": 54 }
+          ],
+          "highlightIds": ["2025"],
+          "valueSuffix": "%",
+          "showValues": true
+        },
+        {
+          "id": "arrow-1",
+          "type": "arrow",
+          "name": "Look over there",
+          "frame": { "x": 265, "y": 815, "width": 245, "height": 80, "rotation": -12, "opacity": 1 },
+          "stroke": "#ff554f",
+          "strokeWidth": 10,
+          "startCap": "dot",
+          "endCap": "arrow"
+        },
+        {
+          "id": "headline-1",
+          "sharedElementId": "question-headline",
+          "type": "text",
+          "name": "Headline",
+          "frame": { "x": 100, "y": 145, "width": 880, "height": 270, "rotation": 0, "opacity": 1 },
+          "text": "Okay... so what happened?",
+          "role": "headline",
+          "fontSize": 78,
+          "fontWeight": 700,
+          "textAlign": "center",
+          "lineHeight": 1.05
+        },
+        {
+          "id": "caption-1",
+          "type": "text",
+          "name": "Sarcastic caption",
+          "frame": { "x": 90, "y": 1370, "width": 900, "height": 180, "rotation": -2, "opacity": 0.9 },
+          "text": "Wait... THAT caused it? Cool. Totally normal.",
+          "role": "caption",
+          "fontSize": 42,
+          "fontWeight": 600,
+          "textAlign": "center",
+          "lineHeight": 1.2
+        }
+      ]
+    }
+  ]
+}
+```
 
 ## Complete example
 
@@ -289,9 +468,14 @@ This example includes all five non-chart scene types and can be imported as-is. 
 7. For related chart scenes, preserve `chartId` and every continuing datum `id`; change `highlightIds`, values, and array order to tell the next beat.
 8. Keep chart values numeric. Put units in `valuePrefix` or `valueSuffix`, not inside `value`.
 9. Prefer a few legible categories, concise labels, horizontal bars for ranked comparisons, and a single ordered line for trends.
-10. Ensure all JSON strings use double quotes and contain no trailing commas or comments.
-11. Import the file. If validation fails, use the reported property path to fix the malformed value.
+10. For Composition, author against `x: 0–1080` and `y: 0–1920`; keep important content approximately inside `x: 80–1000` and `y: 120–1720` unless an intentional off-canvas crop serves the story.
+11. Give every element a meaningful stable ID and layer name. Avoid accidental overlap, but use deliberate offsets and small rotations for playful scenes instead of forcing everything into a corporate grid.
+12. Preserve `sharedElementId` across duplicated scenes only for intended Morphs. Preserve `chartId` and datum IDs independently for continuing charts.
+13. Reference image bytes through `imageAssets`; never put a data URL directly in an element. Transparent PNG and SVG assets are appropriate for stick figures and illustrations.
+14. Keep chart frames at least about `280 × 220`, text frames large enough for their font size, and important text inside safe zones.
+15. Ensure all JSON strings use double quotes and contain no trailing commas or comments.
+16. Import the file. If validation fails, use the reported property path to fix the malformed value.
 
 ## Import behavior and errors
 
-Import parses JSON, requires schema version 1, validates all required presentation and scene fields, rejects zero scenes, duplicate scene IDs, duplicate chart datum IDs, non-finite chart values, and invalid highlight references, and reports the failing path. It never replaces an existing project: if the presentation `id` already exists, the imported copy receives `-2`, `-3`, and so on. A malformed file is not added to the library, and the current project remains open.
+Import parses JSON, requires schema version 1, validates all required presentation and scene fields, rejects zero scenes, duplicate scene/element/asset IDs, non-finite or non-positive frames, invalid opacity/rotation/typography, unknown asset references, duplicate or incompatible shared identities, duplicate chart datum IDs, non-finite chart values, invalid chart identity reuse, and invalid highlight references, and reports the failing path. It never replaces an existing project: if the presentation `id` already exists, the imported copy receives `-2`, `-3`, and so on. A malformed file is not added to the library, and the current project remains open.

@@ -1,8 +1,9 @@
 import { forwardRef } from 'react'
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import type { Variants } from 'motion/react'
-import type { Scene, TransitionType } from '../model'
+import type { PresentationImageAsset, Scene, TransitionType } from '../model'
 import { renderScene } from '../scenes/SceneRenderers'
+import type { CompositionEditorController } from '../scenes/CompositionSceneRenderer'
 
 interface StageProps {
   scene: Scene
@@ -13,6 +14,8 @@ interface StageProps {
   direction: 1 | -1
   className?: string
   renderInstanceKey?: string
+  imageAssets?: PresentationImageAsset[]
+  compositionEditor?: CompositionEditorController
 }
 
 const transitionVariants: Record<TransitionType, Variants> = {
@@ -31,7 +34,7 @@ function sceneFrameKey(scene: Scene, presentationId: string, renderInstanceKey =
   return JSON.stringify([presentationId, renderInstanceKey, 'scene', scene.id])
 }
 
-export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ scene, accent, presentationId, sceneNumber, sceneCount, direction, className = '', renderInstanceKey = 'default' }, ref) {
+export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ scene, accent, presentationId, sceneNumber, sceneCount, direction, className = '', renderInstanceKey = 'default', imageAssets, compositionEditor }, ref) {
   const reduceMotion = useReducedMotion()
   const variants = transitionVariants[reduceMotion ? 'fade' : scene.transition.type]
   const duration = reduceMotion ? 0.01 : scene.transition.duration
@@ -57,7 +60,7 @@ export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ sce
                 <i />
                 <span>{String(sceneNumber).padStart(2, '0')} / {String(sceneCount).padStart(2, '0')}</span>
               </div>
-              {renderScene(scene, accent, namespace)}
+              {renderScene(scene, accent, namespace, { imageAssets, compositionEditor })}
             </div>
           </motion.div>
         </AnimatePresence>

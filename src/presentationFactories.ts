@@ -1,4 +1,14 @@
-import type { Presentation, Scene } from './model'
+import type {
+  CompositionArrowElement,
+  CompositionChartElement,
+  CompositionElement,
+  CompositionImageElement,
+  CompositionShape,
+  CompositionShapeElement,
+  CompositionTextElement,
+  Presentation,
+  Scene,
+} from './model'
 
 export type SceneType = Scene['type']
 
@@ -9,6 +19,7 @@ export const sceneTypeOptions: ReadonlyArray<{ type: SceneType; label: string }>
   { type: 'comparison', label: 'Comparison' },
   { type: 'stat-detail', label: 'Stat Detail' },
   { type: 'chart', label: 'Chart' },
+  { type: 'composition', label: 'Composition' },
 ]
 
 function randomSuffix() {
@@ -70,6 +81,115 @@ export function createScene(type: SceneType): Scene {
         chartId,
       }
     }
+    case 'composition':
+      return {
+        ...base,
+        type,
+        title: 'Composition',
+        eyebrow: 'Custom layout',
+        background: 'presentation',
+        elements: [],
+      }
+  }
+}
+
+export type CompositionElementType = CompositionElement['type']
+
+export function createCompositionTextElement(): CompositionTextElement {
+  return {
+    id: createStableId('text'),
+    type: 'text',
+    name: 'Headline',
+    frame: { x: 140, y: 300, width: 800, height: 220, rotation: 0, opacity: 1 },
+    text: 'Add your text.',
+    role: 'headline',
+    fontSize: 78,
+    fontWeight: 700,
+    textAlign: 'center',
+    lineHeight: 1.05,
+    letterSpacing: 0,
+  }
+}
+
+export function createCompositionImageElement(assetId = ''): CompositionImageElement {
+  return {
+    id: createStableId('image'),
+    type: 'image',
+    name: 'Image',
+    frame: { x: 190, y: 500, width: 700, height: 700, rotation: 0, opacity: 1 },
+    assetId,
+    fit: 'contain',
+    position: 'center',
+    flipX: false,
+    flipY: false,
+  }
+}
+
+export function createCompositionChartElement(): CompositionChartElement {
+  return {
+    id: createStableId('chart'),
+    type: 'chart',
+    name: 'Bar Chart',
+    frame: { x: 100, y: 500, width: 880, height: 760, rotation: 0, opacity: 1 },
+    chartType: 'bar',
+    orientation: 'horizontal',
+    data: [
+      { id: createStableId('alpha'), label: 'Alpha', value: 28 },
+      { id: createStableId('beta'), label: 'Beta', value: 21 },
+      { id: createStableId('gamma'), label: 'Gamma', value: 13 },
+    ],
+    highlightIds: [],
+    valueSuffix: '%',
+    showValues: true,
+    chartId: createStableId('chart'),
+  }
+}
+
+export function createCompositionShapeElement(shape: CompositionShape = 'rectangle'): CompositionShapeElement {
+  const isLine = shape === 'line'
+  return {
+    id: createStableId(shape),
+    type: 'shape',
+    name: shape === 'rectangle' ? 'Rectangle' : shape === 'circle' ? 'Circle' : 'Line',
+    shape,
+    frame: isLine
+      ? { x: 240, y: 940, width: 600, height: 8, rotation: 0, opacity: 1 }
+      : { x: 290, y: 650, width: 500, height: 500, rotation: 0, opacity: 1 },
+    ...(isLine ? { stroke: '#ff554f', strokeWidth: 8 } : { fill: '#ff554f' }),
+  }
+}
+
+export function createCompositionArrowElement(): CompositionArrowElement {
+  return {
+    id: createStableId('arrow'),
+    type: 'arrow',
+    name: 'Arrow',
+    frame: { x: 240, y: 940, width: 600, height: 80, rotation: 0, opacity: 1 },
+    stroke: '#ff554f',
+    strokeWidth: 10,
+    startCap: 'none',
+    endCap: 'arrow',
+  }
+}
+
+export function createCompositionElement(type: CompositionElementType): CompositionElement {
+  switch (type) {
+    case 'text': return createCompositionTextElement()
+    case 'image': return createCompositionImageElement()
+    case 'chart': return createCompositionChartElement()
+    case 'shape': return createCompositionShapeElement()
+    case 'arrow': return createCompositionArrowElement()
+  }
+}
+
+export function duplicateCompositionElement(element: CompositionElement): CompositionElement {
+  const copy = structuredClone(element)
+  return {
+    ...copy,
+    id: createStableId(element.type),
+    name: `${element.name} copy`,
+    frame: { ...copy.frame, x: copy.frame.x + 24, y: copy.frame.y + 24 },
+    sharedElementId: undefined,
   }
 }
 
@@ -87,7 +207,16 @@ export function createBlankPresentation(title = 'Untitled Presentation'): Presen
 
 export function duplicateScene(scene: Scene): Scene {
   // elementId is intentionally preserved so adjacent copies can Morph together.
-  return { ...structuredClone(scene), id: createStableId(scene.type), title: `${scene.title} copy` }
+  const copy = structuredClone(scene)
+  if (copy.type === 'composition') {
+    return {
+      ...copy,
+      id: createStableId(scene.type),
+      title: `${scene.title} copy`,
+      elements: copy.elements.map((element) => ({ ...element, id: createStableId(element.type) })),
+    }
+  }
+  return { ...copy, id: createStableId(scene.type), title: `${scene.title} copy` }
 }
 
 export function duplicatePresentation(presentation: Presentation): Presentation {

@@ -1,12 +1,15 @@
 import { motion } from 'motion/react'
 import type { ComponentType } from 'react'
 import { BarChart, LineChart } from '../charts'
-import type { BigStatScene, ChartScene, ComparisonScene, Scene, StatDetailScene, TextScene, TitleScene } from '../model'
+import type { BigStatScene, ChartScene, ComparisonScene, PresentationImageAsset, Scene, StatDetailScene, TextScene, TitleScene } from '../model'
+import { CompositionSceneRenderer, type CompositionEditorController } from './CompositionSceneRenderer'
 
 interface SceneRendererProps<T extends Scene> {
   scene: T
   accent: string
   layoutNamespace: string
+  imageAssets?: PresentationImageAsset[]
+  compositionEditor?: CompositionEditorController
 }
 
 function Kicker({ children }: { children?: string }) {
@@ -125,9 +128,17 @@ export const sceneRendererRegistry: RendererMap = {
   comparison: ComparisonRenderer,
   'stat-detail': StatDetailRenderer,
   chart: ChartRenderer,
+  composition: ({ scene, accent, layoutNamespace, imageAssets, compositionEditor }) => (
+    <CompositionSceneRenderer scene={scene} accent={accent} layoutNamespace={layoutNamespace} imageAssets={imageAssets} editor={compositionEditor} />
+  ),
 }
 
-export function renderScene(scene: Scene, accent: string, layoutNamespace: string) {
+export function renderScene(
+  scene: Scene,
+  accent: string,
+  layoutNamespace: string,
+  options: { imageAssets?: PresentationImageAsset[]; compositionEditor?: CompositionEditorController } = {},
+) {
   const Renderer = sceneRendererRegistry[scene.type] as ComponentType<SceneRendererProps<Scene>>
-  return <Renderer scene={scene} accent={accent} layoutNamespace={layoutNamespace} />
+  return <Renderer scene={scene} accent={accent} layoutNamespace={layoutNamespace} {...options} />
 }

@@ -1,13 +1,14 @@
 {
-  "name": "video-essay-studio",
+  "name": "ai-presentation-studio",
   "private": true,
   "version": "0.1.0",
-  "description": "A desktop studio for creating narrated vertical video essays.",
-  "author": "Video Essay Studio",
+  "description": "An AI-first desktop presentation studio with narration and direct video export.",
+  "author": "AI Presentation Studio",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "vite",
+    "test": "vitest run",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "desktop:dev": "concurrently -k -s first \"vite --host 127.0.0.1 --port 5178 --strictPort\" \"vite build --watch --config vite.electron.config.ts\" \"wait-on http://127.0.0.1:5178 file:dist-electron/main.cjs && VITE_DEV_SERVER_URL=http://127.0.0.1:5178 electron .\"",
@@ -29,12 +30,13 @@
     "electron": "^44.4.3",
     "electron-builder": "^26.15.3",
     "ffmpeg-static": "^5.3.0",
-    "wait-on": "^9.1.0",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vitest": "^5.0.1",
+    "wait-on": "^9.1.0"
   },
   "build": {
     "appId": "com.videoessaystudio.app",
-    "productName": "Video Essay Studio",
+    "productName": "AI Presentation Studio",
     "afterPack": "electron/afterPack.cjs",
     "asar": true,
     "directories": {
@@ -57,11 +59,13 @@
       "target": [
         {
           "target": "dir",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         }
       ],
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Video Essay Studio uses the microphone to record narration for your video essays."
+        "NSMicrophoneUsageDescription": "AI Presentation Studio uses the microphone to record presentation narration."
       }
     }
   }

@@ -1,21 +1,21 @@
 import { forwardRef } from 'react'
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import type { Variants } from 'motion/react'
-import type { PresentationImageAsset, Scene, TransitionType } from '../model'
-import { renderScene } from '../scenes/SceneRenderers'
-import type { CompositionEditorController } from '../scenes/CompositionSceneRenderer'
+import type { PresentationImageAsset, PresentationTheme, Slide, SlideChartElement, TransitionType } from '../model'
+import { renderSlide } from '../scenes/SceneRenderers'
+import type { SlideEditorController } from '../scenes/CompositionSceneRenderer'
 
 interface StageProps {
-  scene: Scene
-  accent: string
+  slide: Slide
+  theme: PresentationTheme
   presentationId: string
-  sceneNumber: number
-  sceneCount: number
+  slideNumber: number
+  slideCount: number
   direction: 1 | -1
   className?: string
   renderInstanceKey?: string
   imageAssets?: PresentationImageAsset[]
-  compositionEditor?: CompositionEditorController
+  slideEditor?: SlideEditorController
 }
 
 const transitionVariants: Record<TransitionType, Variants> = {
@@ -24,29 +24,38 @@ const transitionVariants: Record<TransitionType, Variants> = {
   scale: { enter: () => ({ opacity: 0, scale: 1.07 }), center: { opacity: 1, scale: 1 }, exit: () => ({ opacity: 0, scale: 0.94 }) },
 }
 
-function sceneFrameKey(scene: Scene, presentationId: string, renderInstanceKey = 'default') {
-  if (scene.type === 'chart' && scene.chartId) {
-    const representation = scene.chartType === 'bar'
-      ? `${scene.chartType}:${scene.orientation ?? 'horizontal'}`
-      : scene.chartType
-    return JSON.stringify([presentationId, renderInstanceKey, 'chart', scene.chartId, representation])
-  }
-  return JSON.stringify([presentationId, renderInstanceKey, 'scene', scene.id])
+function continuingChartIdentity(slide: Slide) {
+  const charts = slide.elements.filter((element): element is SlideChartElement => element.type === 'chart' && !element.hidden && Boolean(element.chartId))
+  if (charts.length === 0) return undefined
+  const identities = charts.map((chart) => {
+    const representation = chart.chartType === 'bar'
+      ? `${chart.chartType}:${chart.orientation ?? 'horizontal'}`
+      : chart.chartType
+    return `${chart.chartId}:${representation}`
+  })
+  return JSON.stringify(identities.sort())
 }
 
-export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ scene, accent, presentationId, sceneNumber, sceneCount, direction, className = '', renderInstanceKey = 'default', imageAssets, compositionEditor }, ref) {
+export function slideFrameKey(slide: Slide, presentationId: string, renderInstanceKey = 'default') {
+  const chartIdentity = continuingChartIdentity(slide)
+  return chartIdentity
+    ? JSON.stringify([presentationId, renderInstanceKey, 'chart', chartIdentity])
+    : JSON.stringify([presentationId, renderInstanceKey, 'slide', slide.id])
+}
+
+export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ slide, theme, presentationId, slideNumber, slideCount, direction, className = '', renderInstanceKey = 'default', imageAssets, slideEditor }, ref) {
   const reduceMotion = useReducedMotion()
-  const variants = transitionVariants[reduceMotion ? 'fade' : scene.transition.type]
-  const duration = reduceMotion ? 0.01 : scene.transition.duration
+  const variants = transitionVariants[reduceMotion ? 'fade' : slide.transition.type]
+  const duration = reduceMotion ? 0.01 : slide.transition.duration
   const namespace = `presentation-${presentationId}-${renderInstanceKey}`
 
   return (
-    <div ref={ref} className={`stage ${className}`} aria-live="polite" aria-label={`Scene ${sceneNumber} of ${sceneCount}: ${scene.title}`}>
+    <div ref={ref} className={`stage ${className}`} aria-live="polite" aria-label={`Slide ${slideNumber} of ${slideCount}: ${slide.title}`}>
       <LayoutGroup id={namespace}>
         <AnimatePresence initial={false} custom={direction} mode="sync">
           <motion.div
-            className="scene-frame"
-            key={sceneFrameKey(scene, presentationId, renderInstanceKey)}
+            className="scene-frame slide-frame"
+            key={slideFrameKey(slide, presentationId, renderInstanceKey)}
             custom={direction}
             initial="enter"
             animate="center"
@@ -54,13 +63,8 @@ export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ sce
             variants={variants}
             transition={{ duration, ease: [0.22, 1, 0.36, 1] }}
           >
-            <div className="scene-canvas">
-              <div className="scene-page-meta">
-                <span>{scene.eyebrow ?? 'Video Essay Studio'}</span>
-                <i />
-                <span>{String(sceneNumber).padStart(2, '0')} / {String(sceneCount).padStart(2, '0')}</span>
-              </div>
-              {renderScene(scene, accent, namespace, { imageAssets, compositionEditor })}
+            <div className="scene-canvas slide-canvas" style={{ background: theme.background, color: theme.foreground, fontFamily: theme.fontFamily }}>
+              {renderSlide(slide, theme, namespace, { imageAssets, editor: slideEditor })}
             </div>
           </motion.div>
         </AnimatePresence>

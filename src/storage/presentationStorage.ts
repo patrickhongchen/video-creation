@@ -3,7 +3,8 @@ import type { Presentation } from '../model'
 import { samplePresentation } from '../samplePresentation'
 import { validatePresentation } from '../presentationValidation'
 
-const LIBRARY_KEY = 'video-essay-studio:library:v1'
+const LIBRARY_KEY = 'video-essay-studio:library:v2'
+const PREVIOUS_LIBRARY_KEY = 'video-essay-studio:library:v1'
 const LEGACY_KEY = 'video-essay-studio:presentation:v1'
 const CHART_SAMPLE_SEEDED_KEY = 'video-essay-studio:chart-sample-seeded:v1'
 
@@ -43,7 +44,7 @@ function initialLibrary(): PresentationLibrary {
 
 export function loadPresentationLibrary(): PresentationLibrary {
   try {
-    const source = localStorage.getItem(LIBRARY_KEY)
+    const source = localStorage.getItem(LIBRARY_KEY) ?? localStorage.getItem(PREVIOUS_LIBRARY_KEY)
     if (!source) return initialLibrary()
     const raw = JSON.parse(source) as Record<string, unknown>
     if (!Array.isArray(raw.presentations)) throw new Error('Invalid library')

@@ -41,8 +41,8 @@ export interface FinalPlaybackWarning {
   message: string
   sectionId?: string
   title?: string
-  sceneCount?: number
-  cuedSceneCount?: number
+  slideCount?: number
+  cuedSlideCount?: number
 }
 
 export interface FinalPlaybackPlan {
@@ -51,7 +51,7 @@ export interface FinalPlaybackPlan {
   readinessIssues: FinalPlaybackSectionReadiness[]
   warnings: FinalPlaybackWarning[]
   isReady: boolean
-  unassignedSceneCount: number
+  unassignedSlideCount: number
   contentDurationMs: number
   finalHoldMs: number
   totalDurationMs: number

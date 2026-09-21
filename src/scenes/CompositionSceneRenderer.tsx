@@ -3,29 +3,28 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { BarChart, LineChart } from '../charts'
 import { COMPOSITION_HEIGHT, COMPOSITION_WIDTH } from '../model'
 import type {
-  ChartScene,
-  CompositionChartElement,
-  CompositionElement,
-  CompositionScene,
   ElementFrame,
   PresentationImageAsset,
+  PresentationTheme,
+  Slide,
+  SlideElement,
 } from '../model'
 
-export interface CompositionEditorController {
+export interface SlideEditorController {
   selectedElementId: string | null
   grid: boolean
   guides: boolean
   snap: boolean
   onSelect: (elementId: string | null) => void
-  onElementChange: (element: CompositionElement) => void
+  onElementChange: (element: SlideElement) => void
 }
 
-interface CompositionSceneRendererProps {
-  scene: CompositionScene
-  accent: string
+interface SlideRendererProps {
+  slide: Slide
+  theme: PresentationTheme
   layoutNamespace: string
   imageAssets?: PresentationImageAsset[]
-  editor?: CompositionEditorController
+  editor?: SlideEditorController
 }
 
 type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
@@ -33,7 +32,7 @@ type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 interface Interaction {
   kind: 'drag' | 'resize'
   pointerId: number
-  element: CompositionElement
+  element: SlideElement
   frame: ElementFrame
   startX: number
   startY: number
@@ -48,7 +47,7 @@ interface SnapResult {
 
 const SAFE_ZONE = { left: 80, right: 1000, top: 120, bottom: 1720 }
 
-function minimumSize(element: CompositionElement) {
+function minimumSize(element: SlideElement) {
   switch (element.type) {
     case 'chart': return { width: 280, height: 220 }
     case 'text': return { width: 120, height: 80 }
@@ -71,7 +70,7 @@ function nearestSnap(value: number, targets: number[], tolerance: number) {
   return match
 }
 
-function snapTargets(scene: CompositionScene, excludedId: string) {
+function snapTargets(scene: Slide, excludedId: string) {
   const x = [COMPOSITION_WIDTH / 2, SAFE_ZONE.left, SAFE_ZONE.right]
   const y = [COMPOSITION_HEIGHT / 2, SAFE_ZONE.top, SAFE_ZONE.bottom]
   scene.elements.forEach((element) => {
@@ -82,7 +81,7 @@ function snapTargets(scene: CompositionScene, excludedId: string) {
   return { x, y }
 }
 
-function snapDraggedFrame(frame: ElementFrame, scene: CompositionScene, elementId: string, tolerance: number): SnapResult {
+function snapDraggedFrame(frame: ElementFrame, scene: Slide, elementId: string, tolerance: number): SnapResult {
   const targets = snapTargets(scene, elementId)
   const horizontalPoints = [frame.x, frame.x + frame.width / 2, frame.x + frame.width]
   const verticalPoints = [frame.y, frame.y + frame.height / 2, frame.y + frame.height]
@@ -109,7 +108,7 @@ function snapDraggedFrame(frame: ElementFrame, scene: CompositionScene, elementI
   return { frame: { ...frame, x: frame.x + xOffset, y: frame.y + yOffset }, guideX, guideY }
 }
 
-function snapResizedFrame(frame: ElementFrame, scene: CompositionScene, elementId: string, corner: Corner, tolerance: number): SnapResult {
+function snapResizedFrame(frame: ElementFrame, scene: Slide, elementId: string, corner: Corner, tolerance: number): SnapResult {
   const targets = snapTargets(scene, elementId)
   const fromLeft = corner.endsWith('left')
   const fromTop = corner.startsWith('top')
@@ -133,56 +132,52 @@ function snapResizedFrame(frame: ElementFrame, scene: CompositionScene, elementI
   return { frame: next, guideX, guideY }
 }
 
-function layoutId(element: CompositionElement, namespace: string) {
-  if (!element.sharedElementId) return undefined
+function layoutId(element: SlideElement, namespace: string) {
+  const sharedElementId = element.sharedElementId ?? (element.type === 'chart' ? element.chartId : undefined)
+  if (!sharedElementId) return undefined
   const compatibility = element.type === 'chart'
     ? `${element.type}:${element.chartType}:${element.chartType === 'bar' ? element.orientation ?? 'horizontal' : 'line'}`
     : element.type === 'shape'
       ? `${element.type}:${element.shape}`
       : element.type
-  return JSON.stringify([namespace, 'composition', compatibility, element.sharedElementId])
+  return JSON.stringify([namespace, 'slide', compatibility, sharedElementId])
+}
+
+function elementRenderKey(element: SlideElement) {
+  if (element.type !== 'chart' || !element.chartId) return element.id
+  const representation = element.chartType === 'bar'
+    ? `${element.chartType}:${element.orientation ?? 'horizontal'}`
+    : element.chartType
+  return JSON.stringify(['chart', element.chartId, representation])
 }
 
 function imagePosition(position: string | undefined) {
   return (position ?? 'center').replace('-', ' ')
 }
 
-function chartScene(element: CompositionChartElement): ChartScene {
-  return {
-    id: element.id,
-    type: 'chart',
-    title: element.name,
-    duration: 1,
-    transition: { type: 'fade', duration: 0 },
-    headline: element.name,
-    chartType: element.chartType,
-    orientation: element.orientation,
-    data: element.data,
-    highlightIds: element.highlightIds,
-    valuePrefix: element.valuePrefix,
-    valueSuffix: element.valueSuffix,
-    decimalPlaces: element.decimalPlaces,
-    showValues: element.showValues,
-    chartId: element.chartId,
-    domain: element.domain,
-  }
-}
-
-function ElementContent({ element, accent, layoutNamespace, imageAssets }: {
-  element: CompositionElement
-  accent: string
+function ElementContent({ element, theme, foreground, layoutNamespace, imageAssets }: {
+  element: SlideElement
+  theme: PresentationTheme
+  foreground: string
   layoutNamespace: string
   imageAssets?: PresentationImageAsset[]
 }) {
   switch (element.type) {
-    case 'text':
+    case 'text': {
+      const defaultStyle = element.role === 'headline' ? theme.defaultHeadlineStyle
+        : element.role === 'caption' ? theme.defaultCaptionStyle
+          : element.role === 'label' ? (theme.defaultLabelStyle ?? theme.defaultBodyStyle)
+            : theme.defaultBodyStyle
       return <div className={`composition-text composition-text--${element.role ?? 'body'}`} style={{
-        fontSize: element.fontSize,
-        fontWeight: element.fontWeight ?? 500,
+        color: element.color ?? defaultStyle.color ?? foreground,
+        fontFamily: element.fontFamily ?? defaultStyle.fontFamily ?? theme.fontFamily,
+        fontSize: element.fontSize ?? defaultStyle.fontSize,
+        fontWeight: element.fontWeight ?? defaultStyle.fontWeight,
         textAlign: element.textAlign ?? 'left',
-        lineHeight: element.lineHeight ?? 1.1,
-        letterSpacing: element.letterSpacing ?? 0,
+        lineHeight: element.lineHeight ?? defaultStyle.lineHeight ?? 1.1,
+        letterSpacing: element.letterSpacing ?? defaultStyle.letterSpacing ?? 0,
       }}>{element.text}</div>
+    }
     case 'image': {
       const asset = imageAssets?.find((candidate) => candidate.id === element.assetId)
       return asset
@@ -190,37 +185,36 @@ function ElementContent({ element, accent, layoutNamespace, imageAssets }: {
         : <div className="composition-missing-asset">Missing image</div>
     }
     case 'chart': {
-      const adapted = chartScene(element)
       return element.chartType === 'bar'
-        ? <BarChart scene={adapted} accent={accent} layoutNamespace={layoutNamespace} variant="element" />
-        : <LineChart scene={adapted} accent={accent} layoutNamespace={layoutNamespace} variant="element" />
+        ? <BarChart scene={element} accent={theme.accent} layoutNamespace={layoutNamespace} />
+        : <LineChart scene={element} accent={theme.accent} layoutNamespace={layoutNamespace} />
     }
     case 'shape':
       if (element.shape === 'line') {
-        return <svg className="composition-vector" viewBox={`0 0 ${Math.max(1, element.frame.width)} ${Math.max(1, element.frame.height)}`} preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1={element.frame.height / 2} x2={element.frame.width} y2={element.frame.height / 2} stroke={element.stroke ?? accent} strokeWidth={element.strokeWidth ?? 5} vectorEffect="non-scaling-stroke" /></svg>
+        return <svg className="composition-vector" viewBox={`0 0 ${Math.max(1, element.frame.width)} ${Math.max(1, element.frame.height)}`} preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1={element.frame.height / 2} x2={element.frame.width} y2={element.frame.height / 2} stroke={element.stroke ?? theme.accent} strokeWidth={element.strokeWidth ?? 5} vectorEffect="non-scaling-stroke" /></svg>
       }
-      return <div className={`composition-shape composition-shape--${element.shape}`} style={{ background: element.fill ?? (element.shape === 'circle' ? accent : `${accent}22`), borderColor: element.stroke ?? accent, borderWidth: element.strokeWidth ?? 3 }} />
+      return <div className={`composition-shape composition-shape--${element.shape}`} style={{ background: element.fill ?? (element.shape === 'circle' ? theme.accent : `${theme.accent}22`), borderColor: element.stroke ?? theme.accent, borderWidth: element.strokeWidth ?? 3 }} />
     case 'arrow': {
       const width = Math.max(1, element.frame.width)
       const height = Math.max(1, element.frame.height)
       const strokeWidth = element.strokeWidth ?? 6
       const endCap = element.endCap ?? 'arrow'
       return <svg className="composition-vector" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-        <line x1={strokeWidth} y1={height / 2} x2={width - (endCap === 'arrow' ? 28 : strokeWidth)} y2={height / 2} stroke={element.stroke ?? accent} strokeWidth={strokeWidth} vectorEffect="non-scaling-stroke" />
-        {element.startCap === 'dot' && <circle cx={strokeWidth} cy={height / 2} r={strokeWidth * 1.2} fill={element.stroke ?? accent} />}
-        {endCap === 'arrow' && <polygon points={`${width - 30},${Math.max(0, height / 2 - 22)} ${width},${height / 2} ${width - 30},${Math.min(height, height / 2 + 22)}`} fill={element.stroke ?? accent} />}
+        <line x1={strokeWidth} y1={height / 2} x2={width - (endCap === 'arrow' ? 28 : strokeWidth)} y2={height / 2} stroke={element.stroke ?? theme.accent} strokeWidth={strokeWidth} vectorEffect="non-scaling-stroke" />
+        {element.startCap === 'dot' && <circle cx={strokeWidth} cy={height / 2} r={strokeWidth * 1.2} fill={element.stroke ?? theme.accent} />}
+        {endCap === 'arrow' && <polygon points={`${width - 30},${Math.max(0, height / 2 - 22)} ${width},${height / 2} ${width - 30},${Math.min(height, height / 2 + 22)}`} fill={element.stroke ?? theme.accent} />}
       </svg>
     }
   }
 }
 
-function background(scene: CompositionScene, accent: string) {
+function background(scene: Slide, theme: PresentationTheme) {
   switch (scene.background) {
     case 'light': return '#fffdf9'
     case 'dark': return '#111821'
-    case 'accent': return accent
+    case 'accent': return theme.accent
     case 'presentation':
-    case undefined: return 'linear-gradient(150deg, #fff 0%, #fbfaf8 100%)'
+    case undefined: return theme.background
     default: return scene.background
   }
 }
@@ -236,7 +230,7 @@ function elementStyle(frame: ElementFrame): CSSProperties {
   }
 }
 
-export function CompositionSceneRenderer({ scene, accent, layoutNamespace, imageAssets, editor }: CompositionSceneRendererProps) {
+export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAssets, editor }: SlideRendererProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<Interaction | null>(null)
   const previewFrameRef = useRef<ElementFrame | null>(null)
@@ -334,14 +328,14 @@ export function CompositionSceneRenderer({ scene, accent, layoutNamespace, image
     }
   }, [editor, scene])
 
-  const startInteraction = (event: ReactPointerEvent, element: CompositionElement, kind: Interaction['kind'], corner?: Corner) => {
+  const startInteraction = (event: ReactPointerEvent, element: SlideElement, kind: Interaction['kind'], corner?: Corner) => {
     event.preventDefault()
     event.stopPropagation()
     editor?.onSelect(element.id)
     if (!editor || element.locked) return
     const rect = hostRef.current?.getBoundingClientRect()
     if (!rect) return
-    const frame = preview?.elementId === element.id ? preview.frame : element.frame
+    const frame = preview && preview.elementId === element.id ? preview.frame : element.frame
     interactionRef.current = {
       kind,
       pointerId: event.pointerId,
@@ -356,11 +350,12 @@ export function CompositionSceneRenderer({ scene, accent, layoutNamespace, image
 
   const logicalStyle = { width: COMPOSITION_WIDTH, height: COMPOSITION_HEIGHT, transform: `scale(${scale})` }
   const rootStyle = {
-    background: background(scene, accent),
-    color: scene.background === 'dark' || scene.background === 'accent' ? '#fff' : '#111821',
+    background: background(scene, theme),
+    color: scene.background === 'dark' || scene.background === 'accent' ? '#fff' : theme.foreground,
   }
+  const foreground = rootStyle.color
 
-  return <div ref={hostRef} className={`composition-host${editor ? ' is-editing' : ''}`} style={rootStyle} onPointerDown={() => editor?.onSelect(null)}>
+  return <div ref={hostRef} className={`composition-host${editor ? ' is-editing' : ''}`} style={rootStyle} onPointerDown={editor ? () => editor.onSelect(null) : undefined}>
     <div className="composition-logical-canvas" style={logicalStyle}>
       {editor?.grid && <div className="composition-grid" />}
       {editor?.guides && <>
@@ -375,15 +370,20 @@ export function CompositionSceneRenderer({ scene, accent, layoutNamespace, image
         const assetMissing = element.type === 'image' && !assetsById.has(element.assetId)
         return <motion.div
           className={`composition-element composition-element--${element.type}${selected ? ' is-selected' : ''}${element.locked ? ' is-locked' : ''}${assetMissing ? ' has-missing-asset' : ''}`}
-          key={element.id}
+          key={elementRenderKey(element)}
           layoutId={layoutId(element, layoutNamespace)}
           layout
           transition={{ type: 'spring', stiffness: 150, damping: 22 }}
-          style={elementStyle(frame)}
-          onPointerDown={(event) => startInteraction(event, element, 'drag')}
+          style={element.type === 'chart' ? {
+            ...elementStyle(frame),
+            color: scene.background === 'dark' || scene.background === 'accent' ? foreground : theme.chartStyle.foreground,
+            '--chart-grid': theme.chartStyle.grid,
+            '--chart-muted': theme.chartStyle.muted,
+          } as CSSProperties : elementStyle(frame)}
+          onPointerDown={editor ? (event) => startInteraction(event, element, 'drag') : undefined}
           aria-label={element.name}
         >
-          <ElementContent element={{ ...element, frame }} accent={accent} layoutNamespace={layoutNamespace} imageAssets={imageAssets} />
+          <ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} />
           {selected && editor && <div className="composition-selection" aria-hidden="true">
             {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as Corner[]).map((corner) => <button
               type="button"
@@ -400,3 +400,6 @@ export function CompositionSceneRenderer({ scene, accent, layoutNamespace, image
     </div>
   </div>
 }
+
+/** @deprecated Internal compatibility alias; every runtime visual is now a Slide. */
+export type CompositionEditorController = SlideEditorController

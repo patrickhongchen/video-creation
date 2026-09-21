@@ -14,7 +14,7 @@ import {
 
 interface OrderedSection {
   section: NarrationSection
-  firstSceneIndex: number
+  firstSlideIndex: number
   resolved: ReturnType<typeof resolveSection>
 }
 
@@ -25,11 +25,11 @@ function orderedSections(presentation: Presentation): OrderedSection[] {
       return {
         section,
         resolved,
-        firstSceneIndex: resolved.indices[0] ?? Number.POSITIVE_INFINITY,
+        firstSlideIndex: resolved.indices[0] ?? Number.POSITIVE_INFINITY,
       }
     })
     .sort((left, right) =>
-      left.firstSceneIndex - right.firstSceneIndex
+      left.firstSlideIndex - right.firstSlideIndex
       || left.section.id.localeCompare(right.section.id))
 }
 
@@ -71,15 +71,15 @@ export function buildFinalPlaybackPlan(
     if (!ready || !selectedTake) continue
     selectedTakes.set(section.id, selectedTake)
 
-    const cuedSceneCount = new Set(selectedTake.cues.map((cue) => cue.sceneId)).size
-    if (cuedSceneCount < resolved.scenes.length) {
+    const cuedSlideCount = new Set(selectedTake.cues.map((cue) => cue.sceneId)).size
+    if (cuedSlideCount < resolved.slides.length) {
       warnings.push({
         kind: 'incomplete-cue-coverage',
         sectionId: section.id,
         title: section.title,
-        sceneCount: resolved.scenes.length,
-        cuedSceneCount,
-        message: `“${section.title}” contains ${resolved.scenes.length} scenes but its selected take displays only ${cuedSceneCount} of them.`,
+        slideCount: resolved.slides.length,
+        cuedSlideCount,
+        message: `“${section.title}” contains ${resolved.slides.length} slides but its selected take displays only ${cuedSlideCount} of them.`,
       })
     }
   }
@@ -91,27 +91,27 @@ export function buildFinalPlaybackPlan(
     })
   }
 
-  const sectionBySceneId = new Map<string, OrderedSection>()
+  const sectionBySlideId = new Map<string, OrderedSection>()
   for (const entry of sections) {
-    for (const sceneId of entry.section.sceneIds) {
+    for (const slideId of entry.section.slideIds) {
       // Valid presentation data cannot overlap. The sorted order keeps recovery
       // deterministic if malformed in-memory data reaches this layer.
-      if (!sectionBySceneId.has(sceneId)) sectionBySceneId.set(sceneId, entry)
+      if (!sectionBySlideId.has(slideId)) sectionBySlideId.set(slideId, entry)
     }
   }
 
   const segments: FinalPlaybackSegment[] = []
   const addedSectionIds = new Set<string>()
-  let unassignedSceneCount = 0
+  let unassignedSlideCount = 0
 
-  for (const scene of presentation.scenes) {
-    const entry = sectionBySceneId.get(scene.id)
+  for (const slide of presentation.slides) {
+    const entry = sectionBySlideId.get(slide.id)
     if (!entry) {
-      unassignedSceneCount += 1
+      unassignedSlideCount += 1
       segments.push({
         type: 'silent-scene',
-        sceneId: scene.id,
-        durationMs: scene.duration * 1000,
+        sceneId: slide.id,
+        durationMs: slide.duration * 1000,
       })
       continue
     }
@@ -124,7 +124,7 @@ export function buildFinalPlaybackPlan(
       type: 'narration',
       sectionId: entry.section.id,
       title: entry.section.title,
-      sceneIds: entry.resolved.scenes.map((sectionScene) => sectionScene.id),
+      sceneIds: entry.resolved.slides.map((sectionSlide) => sectionSlide.id),
       take,
       durationMs: take.durationMs,
     })
@@ -138,7 +138,7 @@ export function buildFinalPlaybackPlan(
     readinessIssues,
     warnings,
     isReady: readinessIssues.length === 0,
-    unassignedSceneCount,
+    unassignedSlideCount,
     contentDurationMs,
     finalHoldMs: FINAL_VISUAL_HOLD_MS,
     totalDurationMs: contentDurationMs + FINAL_VISUAL_HOLD_MS,

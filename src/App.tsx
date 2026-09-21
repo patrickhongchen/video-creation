@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { CompositionElement, Presentation, Scene } from './model'
-import { createBlankPresentation, createScene, duplicateCompositionElement, duplicatePresentation, duplicateScene, makePresentationIdUnique, type SceneType } from './presentationFactories'
+import type { Presentation, Slide, SlideElement } from './model'
+import { createBlankPresentation, createSlideFromPreset, duplicatePresentation, duplicateSlide, duplicateSlideElement, makePresentationIdUnique, type SlidePreset } from './presentationFactories'
 import { downloadPresentation, readPresentationFile } from './presentationFiles'
 import { loadPresentationLibrary, savePresentationLibrary, type PresentationLibrary } from './storage/presentationStorage'
 import { Stage } from './components/Stage'
-import { SceneList } from './components/SceneList'
+import { SlideList } from './components/SceneList'
 import { Inspector } from './components/Inspector'
 import { CheckIcon, CloseIcon, PlayIcon } from './components/Icons'
 import { NarrationStudio } from './components/NarrationStudio'
@@ -13,8 +13,8 @@ import { FinalVideoStudio } from './components/FinalVideoStudio'
 
 type AppMode = 'edit' | 'present' | 'narrate' | 'final-video'
 
-function sectionIsContiguous(sceneIds: string[], orderedSceneIds: string[]) {
-  const positions = sceneIds.map((id) => orderedSceneIds.indexOf(id)).sort((left, right) => left - right)
+function sectionIsContiguous(slideIds: string[], orderedSlideIds: string[]) {
+  const positions = slideIds.map((id) => orderedSlideIds.indexOf(id)).sort((left, right) => left - right)
   return positions.every((position, index) => position >= 0 && (index === 0 || position === positions[index - 1] + 1))
 }
 
@@ -29,14 +29,14 @@ export function App() {
   const [projectName, setProjectName] = useState('')
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [compositionGrid, setCompositionGrid] = useState(false)
-  const [compositionGuides, setCompositionGuides] = useState(true)
+  const [compositionGuides, setCompositionGuides] = useState(false)
   const [compositionSnap, setCompositionSnap] = useState(true)
   const fileInput = useRef<HTMLInputElement>(null)
   const importReservations = useRef(new Set<string>())
-  const copiedElement = useRef<CompositionElement | null>(null)
+  const copiedElement = useRef<SlideElement | null>(null)
 
   const presentation = library.presentations.find((item) => item.id === library.activePresentationId) ?? library.presentations[0]
-  const selectedScene = presentation.scenes[selectedIndex] ?? presentation.scenes[0]
+  const selectedSlide = presentation.slides[selectedIndex] ?? presentation.slides[0]
 
   const updateCurrent = useCallback((update: (current: Presentation) => Presentation) => {
     setLibrary((current) => ({
@@ -45,19 +45,19 @@ export function App() {
     }))
   }, [])
 
-  const updateScene = useCallback((scene: Scene) => updateCurrent((current) => ({
+  const updateSlide = useCallback((slide: Slide) => updateCurrent((current) => ({
     ...current,
-    scenes: current.scenes.map((item, index) => index === selectedIndex ? scene : item),
+    slides: current.slides.map((item, index) => index === selectedIndex ? slide : item),
   })), [selectedIndex, updateCurrent])
 
-  const selectScene = useCallback((next: number) => {
-    const safeIndex = Math.max(0, Math.min(next, presentation.scenes.length - 1))
+  const selectSlide = useCallback((next: number) => {
+    const safeIndex = Math.max(0, Math.min(next, presentation.slides.length - 1))
     setDirection(safeIndex >= selectedIndex ? 1 : -1)
     setSelectedIndex(safeIndex)
-  }, [presentation.scenes.length, selectedIndex])
+  }, [presentation.slides.length, selectedIndex])
 
-  const previous = useCallback(() => selectScene(selectedIndex - 1), [selectScene, selectedIndex])
-  const next = useCallback(() => selectScene(selectedIndex + 1), [selectScene, selectedIndex])
+  const previous = useCallback(() => selectSlide(selectedIndex - 1), [selectSlide, selectedIndex])
+  const next = useCallback(() => selectSlide(selectedIndex + 1), [selectSlide, selectedIndex])
 
   useEffect(() => {
     try {
@@ -69,10 +69,10 @@ export function App() {
   }, [library])
 
   useEffect(() => {
-    if (selectedIndex >= presentation.scenes.length) setSelectedIndex(presentation.scenes.length - 1)
-  }, [presentation.scenes.length, selectedIndex])
+    if (selectedIndex >= presentation.slides.length) setSelectedIndex(presentation.slides.length - 1)
+  }, [presentation.slides.length, selectedIndex])
 
-  useEffect(() => setSelectedElementId(null), [selectedScene.id])
+  useEffect(() => setSelectedElementId(null), [selectedSlide.id])
 
   useEffect(() => {
     if (mode !== 'present') return
@@ -86,11 +86,11 @@ export function App() {
   }, [mode, next, previous])
 
   useEffect(() => {
-    if (mode !== 'edit' || selectedScene.type !== 'composition' || !selectedElementId) return
+    if (mode !== 'edit' || !selectedElementId) return
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable)) return
-      const element = selectedScene.elements.find((candidate) => candidate.id === selectedElementId)
+      const element = selectedSlide.elements.find((candidate) => candidate.id === selectedElementId)
       if (!element) return
       if (event.key.startsWith('Arrow') && !element.locked) {
         event.preventDefault()
@@ -100,13 +100,13 @@ export function App() {
         if (event.key === 'ArrowRight') frame.x += step
         if (event.key === 'ArrowUp') frame.y -= step
         if (event.key === 'ArrowDown') frame.y += step
-        updateScene({ ...selectedScene, elements: selectedScene.elements.map((candidate) => candidate.id === element.id ? { ...candidate, frame } : candidate) })
+        updateSlide({ ...selectedSlide, elements: selectedSlide.elements.map((candidate) => candidate.id === element.id ? { ...candidate, frame } : candidate) })
         return
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
         event.preventDefault()
-        const duplicate = duplicateCompositionElement(element)
-        updateScene({ ...selectedScene, elements: [...selectedScene.elements, duplicate] })
+        const duplicate = duplicateSlideElement(element)
+        updateSlide({ ...selectedSlide, elements: [...selectedSlide.elements, duplicate] })
         setSelectedElementId(duplicate.id)
         return
       }
@@ -117,20 +117,20 @@ export function App() {
       }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'v' && copiedElement.current) {
         event.preventDefault()
-        const pasted = duplicateCompositionElement(copiedElement.current)
-        updateScene({ ...selectedScene, elements: [...selectedScene.elements, pasted] })
+        const pasted = duplicateSlideElement(copiedElement.current)
+        updateSlide({ ...selectedSlide, elements: [...selectedSlide.elements, pasted] })
         setSelectedElementId(pasted.id)
         return
       }
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault()
-        updateScene({ ...selectedScene, elements: selectedScene.elements.filter((candidate) => candidate.id !== element.id) })
+        updateSlide({ ...selectedSlide, elements: selectedSlide.elements.filter((candidate) => candidate.id !== element.id) })
         setSelectedElementId(null)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [mode, selectedElementId, selectedScene, updateScene])
+  }, [mode, selectedElementId, selectedSlide, updateSlide])
 
   const openPresentation = (id: string) => {
     setLibrary((current) => ({ ...current, activePresentationId: id }))
@@ -206,69 +206,69 @@ export function App() {
     }
   }
 
-  const addScene = (type: SceneType) => {
-    const scene = createScene(type)
-    updateCurrent((current) => ({ ...current, scenes: [...current.scenes, scene] }))
+  const addSlide = (preset: SlidePreset) => {
+    const slide = createSlideFromPreset(preset, presentation.theme)
+    updateCurrent((current) => ({ ...current, slides: [...current.slides, slide] }))
     setDirection(1)
-    setSelectedIndex(presentation.scenes.length)
+    setSelectedIndex(presentation.slides.length)
   }
 
-  const copyScene = () => {
-    const copy = duplicateScene(selectedScene)
-    updateCurrent((current) => ({ ...current, scenes: [...current.scenes.slice(0, selectedIndex + 1), copy, ...current.scenes.slice(selectedIndex + 1)] }))
+  const copySlide = () => {
+    const copy = duplicateSlide(selectedSlide)
+    updateCurrent((current) => ({ ...current, slides: [...current.slides.slice(0, selectedIndex + 1), copy, ...current.slides.slice(selectedIndex + 1)] }))
     setDirection(1)
     setSelectedIndex(selectedIndex + 1)
   }
 
-  const deleteScene = () => {
-    if (presentation.scenes.length === 1) return
-    const deletedSceneId = selectedScene.id
+  const deleteSlide = () => {
+    if (presentation.slides.length === 1) return
+    const deletedSlideId = selectedSlide.id
     const affectedSectionIds = presentation.narration?.sections
-      .filter((section) => section.sceneIds.includes(deletedSceneId))
+      .filter((section) => section.slideIds.includes(deletedSlideId))
       .map((section) => section.id) ?? []
     updateCurrent((current) => {
       const sections = current.narration?.sections.flatMap((section) => {
-        const sceneIds = section.sceneIds.filter((id) => id !== deletedSceneId)
-        if (sceneIds.length === 0) return []
-        return [{ ...section, sceneIds }]
+        const slideIds = section.slideIds.filter((id) => id !== deletedSlideId)
+        if (slideIds.length === 0) return []
+        return [{ ...section, slideIds }]
       })
       return {
         ...current,
-        scenes: current.scenes.filter((_, index) => index !== selectedIndex),
+        slides: current.slides.filter((_, index) => index !== selectedIndex),
         ...(current.narration ? { narration: { sections: sections ?? [] } } : {}),
       }
     })
     affectedSectionIds.forEach((sectionId) => {
-      void deleteSectionTakes(presentation.id, sectionId).catch(() => setError('The scene was deleted, but an affected section’s local recordings could not be removed.'))
+      void deleteSectionTakes(presentation.id, sectionId).catch(() => setError('The slide was deleted, but an affected section’s local recordings could not be removed.'))
     })
     setDirection(-1)
-    setSelectedIndex(Math.max(0, Math.min(selectedIndex, presentation.scenes.length - 2)))
+    setSelectedIndex(Math.max(0, Math.min(selectedIndex, presentation.slides.length - 2)))
   }
 
-  const moveScene = (offset: -1 | 1) => {
+  const moveSlide = (offset: -1 | 1) => {
     const target = selectedIndex + offset
-    if (target < 0 || target >= presentation.scenes.length) return
-    const scenes = [...presentation.scenes]
-    ;[scenes[selectedIndex], scenes[target]] = [scenes[target], scenes[selectedIndex]]
-    const orderedSceneIds = scenes.map((scene) => scene.id)
-    const brokenSection = presentation.narration?.sections.find((section) => !sectionIsContiguous(section.sceneIds, orderedSceneIds))
+    if (target < 0 || target >= presentation.slides.length) return
+    const slides = [...presentation.slides]
+    ;[slides[selectedIndex], slides[target]] = [slides[target], slides[selectedIndex]]
+    const orderedSlideIds = slides.map((slide) => slide.id)
+    const brokenSection = presentation.narration?.sections.find((section) => !sectionIsContiguous(section.slideIds, orderedSlideIds))
     if (brokenSection) {
-      setError(`“${brokenSection.title || 'Untitled section'}” must stay contiguous. Edit or delete that narration section before moving this scene.`)
+      setError(`“${brokenSection.title || 'Untitled section'}” must stay contiguous. Edit or delete that narration section before moving this slide.`)
       return
     }
     const reorderedSectionIds = new Set<string>()
     const narrationSections = presentation.narration?.sections.map((section) => {
-      const sceneIds = [...section.sceneIds].sort((left, right) => orderedSceneIds.indexOf(left) - orderedSceneIds.indexOf(right))
-      if (sceneIds.some((sceneId, index) => sceneId !== section.sceneIds[index])) reorderedSectionIds.add(section.id)
-      return { ...section, sceneIds }
+      const slideIds = [...section.slideIds].sort((left, right) => orderedSlideIds.indexOf(left) - orderedSlideIds.indexOf(right))
+      if (slideIds.some((slideId, index) => slideId !== section.slideIds[index])) reorderedSectionIds.add(section.id)
+      return { ...section, slideIds }
     })
     updateCurrent((current) => ({
       ...current,
-      scenes,
+      slides,
       ...(current.narration ? { narration: { sections: narrationSections ?? [] } } : {}),
     }))
     reorderedSectionIds.forEach((sectionId) => {
-      void deleteSectionTakes(presentation.id, sectionId).catch(() => setError('Scenes were reordered, but stale narration recordings could not be removed.'))
+      void deleteSectionTakes(presentation.id, sectionId).catch(() => setError('Slides were reordered, but stale narration recordings could not be removed.'))
     })
     setDirection(offset)
     setSelectedIndex(target)
@@ -277,7 +277,7 @@ export function App() {
   if (mode === 'present') {
     return (
       <main className="present-mode">
-        <Stage scene={selectedScene} accent={presentation.accent} imageAssets={presentation.imageAssets} presentationId={presentation.id} sceneNumber={selectedIndex + 1} sceneCount={presentation.scenes.length} direction={direction} className="present-stage" />
+        <Stage slide={selectedSlide} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={selectedIndex + 1} slideCount={presentation.slides.length} direction={direction} className="present-stage" />
         <button className="exit-present" onClick={() => setMode('edit')} aria-label="Exit presentation"><CloseIcon /> Exit</button>
         <div className="present-hint" aria-hidden="true">← → navigate&nbsp;&nbsp; · &nbsp;&nbsp;Esc exit</div>
       </main>
@@ -288,7 +288,7 @@ export function App() {
     return (
       <NarrationStudio
         presentation={presentation}
-        initialSceneIndex={selectedIndex}
+        initialSlideIndex={selectedIndex}
         onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)}
         onExit={() => setMode('edit')}
         onError={setError}
@@ -310,7 +310,7 @@ export function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="project-picker">
-          <strong>Video Essay Studio</strong>
+          <strong>AI Presentation Studio</strong>
           <select aria-label="Open presentation" value={presentation.id} onChange={(event) => openPresentation(event.target.value)}>
             {library.presentations.map((item) => <option key={item.id} value={item.id}>{item.title || 'Untitled Presentation'}</option>)}
           </select>
@@ -361,35 +361,35 @@ export function App() {
       )}
 
       <div className="workspace">
-        <SceneList presentation={presentation} selectedIndex={selectedIndex} onSelect={selectScene} onPrevious={previous} onNext={next} onAdd={addScene} onDuplicate={copyScene} onDelete={deleteScene} onMove={moveScene} />
+        <SlideList presentation={presentation} selectedIndex={selectedIndex} onSelect={selectSlide} onPrevious={previous} onNext={next} onAdd={addSlide} onDuplicate={copySlide} onDelete={deleteSlide} onMove={moveSlide} />
         <main className="canvas-workspace">
           <Stage
-            scene={selectedScene}
-            accent={presentation.accent}
+            slide={selectedSlide}
+            theme={presentation.theme}
             imageAssets={presentation.imageAssets}
             presentationId={presentation.id}
-            sceneNumber={selectedIndex + 1}
-            sceneCount={presentation.scenes.length}
+            slideNumber={selectedIndex + 1}
+            slideCount={presentation.slides.length}
             direction={direction}
-            compositionEditor={selectedScene.type === 'composition' ? {
+            slideEditor={{
               selectedElementId,
               grid: compositionGrid,
               guides: compositionGuides,
               snap: compositionSnap,
               onSelect: setSelectedElementId,
-              onElementChange: (element) => updateScene({ ...selectedScene, elements: selectedScene.elements.map((candidate) => candidate.id === element.id ? element : candidate) }),
-            } : undefined}
+              onElementChange: (element) => updateSlide({ ...selectedSlide, elements: selectedSlide.elements.map((candidate) => candidate.id === element.id ? element : candidate) }),
+            }}
           />
         </main>
         <Inspector
-          scene={selectedScene}
-          onChange={updateScene}
+          slide={selectedSlide}
+          onChange={updateSlide}
           presentation={presentation}
           onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)}
           onPrevious={previous}
           onNext={next}
           hasPrevious={selectedIndex > 0}
-          hasNext={selectedIndex < presentation.scenes.length - 1}
+          hasNext={selectedIndex < presentation.slides.length - 1}
           selectedElementId={selectedElementId}
           compositionGrid={compositionGrid}
           compositionGuides={compositionGuides}
@@ -402,8 +402,8 @@ export function App() {
       </div>
 
       <footer className="statusbar">
-        <span>Scene {selectedIndex + 1} of {presentation.scenes.length}</span><i /><span>{selectedScene.title}</span><i /><span>{selectedScene.duration}s</span>
-        <span className="status-help">{selectedScene.type === 'composition' ? <>Nudge <kbd>←</kbd><kbd>→</kbd> · Shift = 10px · Alt disables snap</> : <>Arrow keys <kbd>←</kbd><kbd>→</kbd> navigate in Present mode</>}</span>
+        <span>Slide {selectedIndex + 1} of {presentation.slides.length}</span><i /><span>{selectedSlide.title}</span><i /><span>{selectedSlide.duration}s</span>
+        <span className="status-help">Nudge <kbd>←</kbd><kbd>→</kbd> · Shift = 10px · Alt disables snap</span>
       </footer>
     </div>
   )

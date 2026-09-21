@@ -16,7 +16,7 @@ import { Stage } from './Stage'
 
 interface NarrationStudioProps {
   presentation: Presentation
-  initialSceneIndex: number
+  initialSlideIndex: number
   onPresentationChange: (presentation: Presentation) => void
   onExit: () => void
   onError: (message: string) => void
@@ -41,23 +41,23 @@ function formatTimer(durationMs: number) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${totalTenths % 10}`
 }
 
-export function NarrationStudio({ presentation, initialSceneIndex, onPresentationChange, onExit, onError }: NarrationStudioProps) {
+export function NarrationStudio({ presentation, initialSlideIndex, onPresentationChange, onExit, onError }: NarrationStudioProps) {
   const sections = presentation.narration?.sections ?? EMPTY_SECTIONS
-  const safeInitialSceneIndex = Math.max(0, Math.min(initialSceneIndex, Math.max(0, presentation.scenes.length - 1)))
-  const initialSceneId = presentation.scenes[safeInitialSceneIndex]?.id
+  const safeInitialSlideIndex = Math.max(0, Math.min(initialSlideIndex, Math.max(0, presentation.slides.length - 1)))
+  const initialSlideId = presentation.slides[safeInitialSlideIndex]?.id
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(() =>
-    sections.find((section) => initialSceneId && section.sceneIds.includes(initialSceneId))?.id ?? sections[0]?.id ?? null)
+    sections.find((section) => initialSlideId && section.slideIds.includes(initialSlideId))?.id ?? sections[0]?.id ?? null)
   const [activeRelativeIndex, setActiveRelativeIndex] = useState(0)
   const activeRelativeIndexRef = useRef(0)
-  const [fallbackSceneIndex, setFallbackSceneIndex] = useState(safeInitialSceneIndex)
+  const [fallbackSlideIndex, setFallbackSlideIndex] = useState(safeInitialSlideIndex)
   const [direction, setDirection] = useState<1 | -1>(1)
   const [renderInstanceKey, setRenderInstanceKey] = useState(() => `narration-${Date.now()}`)
   const [takeMap, setTakeMap] = useState<Record<string, NarrationTake[]>>({})
   const takeMapRef = useRef(takeMap)
   const [localError, setLocalError] = useState('')
   const [editingNew, setEditingNew] = useState(false)
-  const [draftStart, setDraftStart] = useState(safeInitialSceneIndex)
-  const [draftEnd, setDraftEnd] = useState(safeInitialSceneIndex)
+  const [draftStart, setDraftStart] = useState(safeInitialSlideIndex)
+  const [draftEnd, setDraftEnd] = useState(safeInitialSlideIndex)
   const [draftTitle, setDraftTitle] = useState('')
   const recordingSectionIdRef = useRef<string | null>(null)
 
@@ -87,10 +87,10 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
   useEffect(() => {
     if (editingNew) return
     if (selectedSectionId && sections.some((section) => section.id === selectedSectionId)) return
-    const matching = sections.find((section) => initialSceneId && section.sceneIds.includes(initialSceneId))
+    const matching = sections.find((section) => initialSlideId && section.slideIds.includes(initialSlideId))
     setSelectedSectionId(matching?.id ?? sections[0]?.id ?? null)
     setActiveRelativeIndex(0)
-  }, [editingNew, initialSceneId, sections, selectedSectionId])
+  }, [editingNew, initialSlideId, sections, selectedSectionId])
 
   useEffect(() => { activeRelativeIndexRef.current = activeRelativeIndex }, [activeRelativeIndex])
 
@@ -104,11 +104,11 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
     setActiveRelativeIndex(0)
   }, [selectedSection, selectedResolved])
 
-  const showCueScene = useCallback((sceneId: string) => {
+  const showCueSlide = useCallback((sceneId: string) => {
     if (!selectedResolved) return
-    const nextIndex = selectedResolved.scenes.findIndex((scene) => scene.id === sceneId)
+    const nextIndex = selectedResolved.slides.findIndex((slide) => slide.id === sceneId)
     if (nextIndex < 0) {
-      showError('A saved cue points to a scene outside this section. Playback continued without changing the visual.')
+      showError('A saved cue points to a slide outside this section. Playback continued without changing the visual.')
       return
     }
     setDirection(nextIndex >= activeRelativeIndexRef.current ? 1 : -1)
@@ -116,7 +116,7 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
     setActiveRelativeIndex(nextIndex)
   }, [selectedResolved, showError])
 
-  const playback = useNarrationPlayback({ onSceneCue: showCueScene, onError: showError })
+  const playback = useNarrationPlayback({ onSceneCue: showCueSlide, onError: showError })
 
   const handleFinishedRecording = useCallback(async (recording: NarrationRecording) => {
     const sectionId = recordingSectionIdRef.current
@@ -172,32 +172,32 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
 
   const occupiedIds = useMemo(() => new Set(sections
     .filter((section) => editingNew || section.id !== selectedSectionId)
-    .flatMap((section) => section.sceneIds)), [editingNew, sections, selectedSectionId])
+    .flatMap((section) => section.slideIds)), [editingNew, sections, selectedSectionId])
   const rangeIds = draftStart <= draftEnd
-    ? presentation.scenes.slice(draftStart, draftEnd + 1).map((scene) => scene.id)
+    ? presentation.slides.slice(draftStart, draftEnd + 1).map((slide) => slide.id)
     : []
   const rangeOverlap = rangeIds.some((id) => occupiedIds.has(id))
   const rangeValid = rangeIds.length > 0 && !rangeOverlap
 
   const startNewSection = () => {
     if (recorderBusy) return
-    const currentScene = selectedResolved?.indices[activeRelativeIndex] ?? fallbackSceneIndex
-    const occupied = new Set(sections.flatMap((section) => section.sceneIds))
-    const availableIndices = presentation.scenes
-      .map((scene, index) => occupied.has(scene.id) ? -1 : index)
+    const currentSlide = selectedResolved?.indices[activeRelativeIndex] ?? fallbackSlideIndex
+    const occupied = new Set(sections.flatMap((section) => section.slideIds))
+    const availableIndices = presentation.slides
+      .map((slide, index) => occupied.has(slide.id) ? -1 : index)
       .filter((index) => index >= 0)
-    const targetScene = availableIndices.includes(currentScene)
-      ? currentScene
-      : availableIndices.find((index) => index > currentScene) ?? availableIndices[0]
-    if (targetScene === undefined) {
-      showError('Every scene already belongs to a narration section. Adjust or delete a section before creating another.')
+    const targetSlide = availableIndices.includes(currentSlide)
+      ? currentSlide
+      : availableIndices.find((index) => index > currentSlide) ?? availableIndices[0]
+    if (targetSlide === undefined) {
+      showError('Every slide already belongs to a narration section. Adjust or delete a section before creating another.')
       return
     }
     setEditingNew(true)
     setSelectedSectionId(null)
-    setFallbackSceneIndex(targetScene)
-    setDraftStart(targetScene)
-    setDraftEnd(targetScene)
+    setFallbackSlideIndex(targetSlide)
+    setDraftStart(targetSlide)
+    setDraftEnd(targetSlide)
     setDraftTitle(`Section ${sections.length + 1}`)
   }
 
@@ -205,13 +205,13 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
     if (!rangeValid) return
     const title = draftTitle.trim() || `Section ${editingNew ? sections.length + 1 : sections.findIndex((section) => section.id === selectedSectionId) + 1}`
     if (editingNew) {
-      const created = { id: makeId('section'), title, sceneIds: rangeIds }
+      const created = { id: makeId('section'), title, slideIds: rangeIds }
       updateSections([...sections, created])
       setSelectedSectionId(created.id)
       setEditingNew(false)
     } else if (selectedSection) {
-      const rangeChanged = selectedSection.sceneIds.length !== rangeIds.length
-        || selectedSection.sceneIds.some((sceneId, index) => sceneId !== rangeIds[index])
+      const rangeChanged = selectedSection.slideIds.length !== rangeIds.length
+        || selectedSection.slideIds.some((slideId, index) => slideId !== rangeIds[index])
       if (rangeChanged) {
         playback.stop()
         try {
@@ -223,7 +223,7 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
         }
       }
       updateSections(sections.map((section) => section.id === selectedSection.id
-        ? { ...section, title, sceneIds: rangeIds }
+        ? { ...section, title, slideIds: rangeIds }
         : section))
     }
     setActiveRelativeIndex(0)
@@ -251,10 +251,10 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
   const moveVisual = useCallback((offset: -1 | 1, recordCue = false) => {
     if (!selectedResolved?.valid) return
     const current = activeRelativeIndexRef.current
-    const next = Math.max(0, Math.min(current + offset, selectedResolved.scenes.length - 1))
+    const next = Math.max(0, Math.min(current + offset, selectedResolved.slides.length - 1))
     if (next === current) return
     setDirection(offset)
-    if (recordCue) recorder.addCue(selectedResolved.scenes[next].id)
+    if (recordCue) recorder.addCue(selectedResolved.slides[next].id)
     activeRelativeIndexRef.current = next
     setActiveRelativeIndex(next)
   }, [recorder.addCue, selectedResolved])
@@ -275,10 +275,10 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
   }, [moveVisual, recorder.status])
 
   const beginTake = () => {
-    if (!selectedSection || !selectedResolved?.valid || !selectedResolved.scenes[0]) return
+    if (!selectedSection || !selectedResolved?.valid || !selectedResolved.slides[0]) return
     playback.stop()
     recordingSectionIdRef.current = selectedSection.id
-    recorder.startRecording(selectedResolved.scenes[0].id)
+    recorder.startRecording(selectedResolved.slides[0].id)
   }
 
   const playTake = async (take: NarrationTake) => {
@@ -316,11 +316,11 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
   }
 
   const selectedSectionIndex = sections.findIndex((section) => section.id === selectedSectionId)
-  const currentScene = selectedResolved?.scenes[activeRelativeIndex]
-    ?? presentation.scenes[fallbackSceneIndex]
-    ?? presentation.scenes[0]
-  const currentOverallIndex = currentScene ? presentation.scenes.findIndex((scene) => scene.id === currentScene.id) : -1
-  const nextScene = selectedResolved?.scenes[activeRelativeIndex + 1]
+  const currentSlide = selectedResolved?.slides[activeRelativeIndex]
+    ?? presentation.slides[fallbackSlideIndex]
+    ?? presentation.slides[0]
+  const currentOverallIndex = currentSlide ? presentation.slides.findIndex((slide) => slide.id === currentSlide.id) : -1
+  const nextSlide = selectedResolved?.slides[activeRelativeIndex + 1]
   const selectedTakes = selectedSection ? takeMap[selectedSection.id] ?? [] : []
   const readyCount = sections.filter((section) => {
     const resolved = resolveSection(section, presentation)
@@ -339,35 +339,35 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
 
       <div className="narration-layout">
         <aside className="narration-sections" aria-label="Narration sections">
-          <div className="narration-panel-heading"><h2>Sections</h2><button onClick={startNewSection} disabled={recorderBusy || presentation.scenes.length === 0}>New section</button></div>
-          {sections.length === 0 && <p className="narration-empty">Create a section from the current scene to begin.</p>}
+          <div className="narration-panel-heading"><h2>Sections</h2><button onClick={startNewSection} disabled={recorderBusy || presentation.slides.length === 0}>New section</button></div>
+          {sections.length === 0 && <p className="narration-empty">Create a section from the current slide to begin.</p>}
           <ol className="narration-section-list">
             {sections.map((section, index) => {
               const resolved = resolveSection(section, presentation)
               const isReady = (takeMap[section.id] ?? []).some((take) => take.selected && takeIsUsable(take, resolved))
               return <li key={section.id}><button className={section.id === selectedSectionId ? 'is-active' : ''} onClick={() => selectSection(section.id)} disabled={recorderBusy}>
                 <span className={`narration-ready-dot ${isReady ? 'is-ready' : ''}`}>{isReady ? <CheckIcon /> : '○'}</span>
-                <span><strong>{section.title || `Section ${index + 1}`}</strong><small>{resolved.valid ? `Scenes ${resolved.indices[0] + 1}–${resolved.indices.at(-1)! + 1}` : 'Needs repair'}</small></span>
+                <span><strong>{section.title || `Section ${index + 1}`}</strong><small>{resolved.valid ? `Slides ${resolved.indices[0] + 1}–${resolved.indices.at(-1)! + 1}` : 'Needs repair'}</small></span>
               </button></li>
             })}
           </ol>
         </aside>
 
         <section className="narration-stage-panel">
-          {currentScene ? <Stage
-            scene={currentScene}
-            accent={presentation.accent}
+          {currentSlide ? <Stage
+            slide={currentSlide}
+            theme={presentation.theme}
             imageAssets={presentation.imageAssets}
             presentationId={presentation.id}
-            sceneNumber={currentOverallIndex + 1}
-            sceneCount={presentation.scenes.length}
+            slideNumber={currentOverallIndex + 1}
+            slideCount={presentation.slides.length}
             direction={direction}
             renderInstanceKey={renderInstanceKey}
             className="narration-stage"
-          /> : <div className="narration-empty-stage">Add a scene before recording narration.</div>}
+          /> : <div className="narration-empty-stage">Add a slide before recording narration.</div>}
           <div className="narration-progress">
-            {selectedResolved && <span>Scene {Math.min(activeRelativeIndex + 1, selectedResolved.scenes.length)} / {selectedResolved.scenes.length} in section</span>}
-            {currentOverallIndex >= 0 && <span>Presentation scene {currentOverallIndex + 1} / {presentation.scenes.length}</span>}
+            {selectedResolved && <span>Slide {Math.min(activeRelativeIndex + 1, selectedResolved.slides.length)} / {selectedResolved.slides.length} in section</span>}
+            {currentOverallIndex >= 0 && <span>Presentation slide {currentOverallIndex + 1} / {presentation.slides.length}</span>}
           </div>
         </section>
 
@@ -377,20 +377,20 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
             <h2>{selectedSection?.title ?? (editingNew ? 'New section' : 'No section selected')}</h2>
           </div>
           {selectedResolved && !selectedResolved.valid && <div className="narration-section-warning" role="status">{selectedResolved.issue}</div>}
-          <section className="narration-notes current-notes"><span>Current speaker notes</span><p>{currentScene?.notes?.trim() || 'No speaker notes for this scene.'}</p></section>
-          <section className="narration-notes next-notes"><span>Next scene{nextScene ? ` · ${nextScene.title}` : ''}</span><p>{nextScene?.notes?.trim() || (nextScene ? 'No speaker notes for the next scene.' : 'End of this section.')}</p></section>
+          <section className="narration-notes current-notes"><span>Current speaker notes</span><p>{currentSlide?.notes?.trim() || 'No speaker notes for this slide.'}</p></section>
+          <section className="narration-notes next-notes"><span>Next slide{nextSlide ? ` · ${nextSlide.title}` : ''}</span><p>{nextSlide?.notes?.trim() || (nextSlide ? 'No speaker notes for the next slide.' : 'End of this section.')}</p></section>
 
           {(selectedSection || editingNew) && <div className="narration-section-editor">
             <label><span>Section name</span><input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} disabled={recorderBusy} /></label>
             <div className="narration-range-fields">
               <label><span>Start</span><select value={draftStart} onChange={(event) => setDraftStart(Number(event.target.value))} disabled={recorderBusy}>
-                {presentation.scenes.map((scene, index) => <option key={scene.id} value={index}>Scene {index + 1}: {scene.title}</option>)}
+                {presentation.slides.map((slide, index) => <option key={slide.id} value={index}>Slide {index + 1}: {slide.title}</option>)}
               </select></label>
               <label><span>End</span><select value={draftEnd} onChange={(event) => setDraftEnd(Number(event.target.value))} disabled={recorderBusy}>
-                {presentation.scenes.map((scene, index) => <option key={scene.id} value={index}>Scene {index + 1}: {scene.title}</option>)}
+                {presentation.slides.map((slide, index) => <option key={slide.id} value={index}>Slide {index + 1}: {slide.title}</option>)}
               </select></label>
             </div>
-            {draftStart > draftEnd && <p className="field-error">The end scene must be at or after the start scene.</p>}
+            {draftStart > draftEnd && <p className="field-error">The end slide must be at or after the start slide.</p>}
             {rangeOverlap && <p className="field-error">This range overlaps another narration section.</p>}
             <div className="narration-editor-actions">
               {editingNew && <button onClick={() => { setEditingNew(false); setSelectedSectionId(sections[0]?.id ?? null) }}>Cancel</button>}
@@ -415,8 +415,8 @@ export function NarrationStudio({ presentation, initialSceneIndex, onPresentatio
           {recorder.status === 'countdown' && <><strong className="record-countdown">{recorder.countdown}</strong><span>Get ready…</span><button onClick={recorder.cancel}>Cancel Take</button></>}
           {recorder.status === 'recording' && <>
             <strong className="recording-timer">● REC {formatTimer(recorder.elapsedMs)}</strong>
-            <button onClick={() => moveVisual(-1, true)} disabled={activeRelativeIndex <= 0}><ArrowLeftIcon /> Previous visual</button>
-            <button onClick={() => moveVisual(1, true)} disabled={!selectedResolved || activeRelativeIndex >= selectedResolved.scenes.length - 1}>Next visual <ArrowRightIcon /></button>
+            <button onClick={() => moveVisual(-1, true)} disabled={activeRelativeIndex <= 0}><ArrowLeftIcon /> Previous slide</button>
+            <button onClick={() => moveVisual(1, true)} disabled={!selectedResolved || activeRelativeIndex >= selectedResolved.slides.length - 1}>Next slide <ArrowRightIcon /></button>
             <span className="recording-shortcuts">Space / → next · ← previous</span>
             <button className="stop-recording" onClick={recorder.stopRecording}>Stop Recording</button>
             <button onClick={recorder.cancel}>Cancel Take</button>

@@ -40,7 +40,7 @@ function assertSegment(value: unknown, sceneIds: Set<string>): asserts value is 
 
   if (value.type === 'silent-scene') {
     if (!isNonEmptyString(value.sceneId) || !sceneIds.has(value.sceneId)) {
-      throw new Error('A silent export segment references an unknown scene.')
+      throw new Error('A silent export segment references an unknown slide.')
     }
     return
   }
@@ -52,12 +52,12 @@ function assertSegment(value: unknown, sceneIds: Set<string>): asserts value is 
   const segmentSceneIds = value.sceneIds
   if (!Array.isArray(segmentSceneIds) || segmentSceneIds.length === 0
     || !segmentSceneIds.every((id) => isNonEmptyString(id) && sceneIds.has(id))) {
-    throw new Error(`Narration section “${value.title}” references an unknown scene.`)
+    throw new Error(`Narration section “${value.title}” references an unknown slide.`)
   }
   const cues = value.cues
   if (!Array.isArray(cues) || !cues.every(isCue)
     || !cues.every((cue) => segmentSceneIds.includes(cue.sceneId) && cue.timeMs <= segmentDurationMs)) {
-    throw new Error(`Narration section “${value.title}” contains invalid scene cues.`)
+    throw new Error(`Narration section “${value.title}” contains invalid slide cues.`)
   }
   const audio = value.audio
   if (!isRecord(audio)
@@ -77,23 +77,23 @@ export function validateExportJob(value: unknown): asserts value is DesktopExpor
     throw new Error('The desktop export job is invalid.')
   }
   const presentation = value.presentation
-  if (presentation.schemaVersion !== 1
+  if (presentation.schemaVersion !== 2
     || !isNonEmptyString(presentation.id)
     || !isNonEmptyString(presentation.title)
-    || !Array.isArray(presentation.scenes)
-    || presentation.scenes.length === 0) {
+    || !Array.isArray(presentation.slides)
+    || presentation.slides.length === 0) {
     throw new Error('The export presentation is invalid or unsupported.')
   }
-  const sceneIds = new Set<string>()
-  for (const scene of presentation.scenes) {
-    if (!isRecord(scene) || !isNonEmptyString(scene.id) || sceneIds.has(scene.id)) {
-      throw new Error('The export presentation contains an invalid scene list.')
+  const slideIds = new Set<string>()
+  for (const slide of presentation.slides) {
+    if (!isRecord(slide) || !isNonEmptyString(slide.id) || slideIds.has(slide.id)) {
+      throw new Error('The export presentation contains an invalid slide list.')
     }
-    sceneIds.add(scene.id)
+    slideIds.add(slide.id)
   }
   const segments = value.segments
   if (!Array.isArray(segments)) throw new Error('The export playback plan is missing.')
-  segments.forEach((segment) => assertSegment(segment, sceneIds))
+  segments.forEach((segment) => assertSegment(segment, slideIds))
   if (typeof value.editorViewportWidth !== 'number'
     || !Number.isFinite(value.editorViewportWidth)
     || value.editorViewportWidth < 320

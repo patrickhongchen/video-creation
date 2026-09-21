@@ -1,4 +1,5 @@
-import type { Presentation } from './model'
+import type { LegacyPresentation } from './model'
+import { migratePresentationV1ToV2 } from './presentationMigration'
 
 const audienceData = [
   { id: 'horizon', label: 'Horizon', value: 31 },
@@ -7,7 +8,7 @@ const audienceData = [
   { id: 'common', label: 'Common', value: 11 },
 ]
 
-export const samplePresentation: Presentation = {
+const legacySamplePresentation: LegacyPresentation = {
   schemaVersion: 1,
   id: 'chart-story-lab',
   title: 'Chart Story Lab',
@@ -140,3 +141,5 @@ export const samplePresentation: Presentation = {
     },
   ],
 }
+
+export const samplePresentation = migratePresentationV1ToV2(legacySamplePresentation)

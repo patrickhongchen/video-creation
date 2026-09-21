@@ -35,7 +35,7 @@ export interface DesktopExportJob {
     schemaVersion: number
     id: string
     title: string
-    scenes: Array<{ id: string; [key: string]: unknown }>
+    slides: Array<{ id: string; [key: string]: unknown }>
     [key: string]: unknown
   }
   segments: ExportSegment[]

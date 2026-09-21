@@ -231,7 +231,7 @@ export function useFinalPlayback({ plan, onError, onComplete }: UseFinalPlayback
     stopFrame()
     releaseCurrentAudio()
     if (planRef.current.segments.length === 0) {
-      failPlayback('The presentation has no playable scenes.')
+      failPlayback('The presentation has no playable slides.')
       return
     }
     try {

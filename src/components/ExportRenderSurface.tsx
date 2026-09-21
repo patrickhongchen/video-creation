@@ -8,7 +8,7 @@ export function ExportRenderSurface() {
   const [job, setJob] = useState<DesktopExportJob | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
   const frameRef = useRef<number | null>(null)
-  const previousSceneIndexRef = useRef(0)
+  const previousSlideIndexRef = useRef(0)
 
   useEffect(() => {
     if (!bridge) return
@@ -22,7 +22,7 @@ export function ExportRenderSurface() {
     return bridge.onRenderJob((nextJob) => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
       frameRef.current = null
-      previousSceneIndexRef.current = 0
+      previousSlideIndexRef.current = 0
       setElapsedMs(0)
       setJob(nextJob)
     })
@@ -56,8 +56,8 @@ export function ExportRenderSurface() {
   }, [])
 
   const visual = useMemo(() => job ? resolvePlaybackVisual(job, elapsedMs) : null, [elapsedMs, job])
-  const direction: 1 | -1 = visual && visual.sceneIndex < previousSceneIndexRef.current ? -1 : 1
-  if (visual) previousSceneIndexRef.current = visual.sceneIndex
+  const direction: 1 | -1 = visual && visual.slideIndex < previousSlideIndexRef.current ? -1 : 1
+  if (visual) previousSlideIndexRef.current = visual.slideIndex
 
   if (!job || !visual) {
     return (
@@ -74,12 +74,12 @@ export function ExportRenderSurface() {
       style={{ '--stage-vw': `${job.editorViewportWidth / 100}px` } as CSSProperties}
     >
       <Stage
-        scene={visual.scene}
-        accent={job.presentation.accent}
+        slide={visual.slide}
+        theme={job.presentation.theme}
         imageAssets={job.presentation.imageAssets}
         presentationId={job.presentation.id}
-        sceneNumber={visual.sceneIndex + 1}
-        sceneCount={job.presentation.scenes.length}
+        slideNumber={visual.slideIndex + 1}
+        slideCount={job.presentation.slides.length}
         direction={direction}
         renderInstanceKey={`desktop-export-${job.jobId}`}
         className="export-stage"

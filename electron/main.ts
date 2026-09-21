@@ -6,7 +6,10 @@ import { VideoExporter } from './export/videoExporter'
 import { validateCompletedVideoPath, validateExportJob, validateJobId } from './export/validation'
 
 app.commandLine.appendSwitch('force-device-scale-factor', '1')
-app.setName('Video Essay Studio')
+// Keep the existing Chromium profile path so Phase 5B projects and narration
+// remain available after the user-facing product rename.
+app.setPath('userData', path.join(app.getPath('appData'), 'Video Essay Studio'))
+app.setName('AI Presentation Studio')
 
 let mainWindow: BrowserWindow | null = null
 let exporter: VideoExporter | null = null

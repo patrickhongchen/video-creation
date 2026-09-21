@@ -1,26 +1,26 @@
 import { useRef, type ChangeEvent } from 'react'
 import type {
-  CompositionChartElement,
-  CompositionElement,
-  CompositionImageElement,
-  CompositionScene,
-  CompositionShape,
   ElementFrame,
   Presentation,
   PresentationImageMimeType,
+  Slide,
+  SlideChartElement,
+  SlideElement,
+  SlideImageElement,
+  SlideShape,
 } from '../model'
 import {
-  createCompositionArrowElement,
-  createCompositionChartElement,
-  createCompositionShapeElement,
-  createCompositionTextElement,
-  createCompositionImageElement,
+  createSlideArrowElement,
+  createSlideChartElement,
+  createSlideShapeElement,
+  createSlideTextElement,
+  createSlideImageElement,
   createStableId,
-  duplicateCompositionElement,
+  duplicateSlideElement,
 } from '../presentationFactories'
 
-interface CompositionInspectorProps {
-  scene: CompositionScene
+interface SlideElementInspectorProps {
+  slide: Slide
   presentation: Presentation
   selectedElementId: string | null
   grid: boolean
@@ -30,7 +30,7 @@ interface CompositionInspectorProps {
   onGuidesChange: (value: boolean) => void
   onSnapChange: (value: boolean) => void
   onSelect: (elementId: string | null) => void
-  onSceneChange: (scene: CompositionScene) => void
+  onSlideChange: (slide: Slide) => void
   onPresentationChange: (presentation: Presentation) => void
 }
 
@@ -61,7 +61,7 @@ function Numeric({ label, value, onChange, min, max, step = 1 }: {
   }} /></label>
 }
 
-function minimumSize(element: CompositionElement) {
+function minimumSize(element: SlideElement) {
   if (element.type === 'chart') return { width: 280, height: 220 }
   if (element.type === 'text') return { width: 120, height: 80 }
   if (element.type === 'image') return { width: 80, height: 80 }
@@ -73,7 +73,7 @@ function normalizedRotation(value: number) {
   return ((value + 180) % 360 + 360) % 360 - 180
 }
 
-function fallbackName(element: CompositionElement) {
+function fallbackName(element: SlideElement) {
   if (element.type === 'text') return 'Text'
   if (element.type === 'image') return 'Image'
   if (element.type === 'chart') return element.chartType === 'bar' ? 'Bar Chart' : 'Line Chart'
@@ -99,8 +99,8 @@ function readImageRatio(source: string) {
   })
 }
 
-function chartEditor(element: CompositionChartElement, update: (next: CompositionChartElement) => void) {
-  const updateDatum = (index: number, value: Partial<CompositionChartElement['data'][number]>) => update({
+function chartEditor(element: SlideChartElement, update: (next: SlideChartElement) => void) {
+  const updateDatum = (index: number, value: Partial<SlideChartElement['data'][number]>) => update({
     ...element,
     data: element.data.map((datum, datumIndex) => datumIndex === index ? { ...datum, ...value } : datum),
   })
@@ -109,8 +109,8 @@ function chartEditor(element: CompositionChartElement, update: (next: Compositio
     update({ ...element, data: [...element.data, { id: createStableId(`datum-${ordinal}`), label: `Item ${ordinal}`, value: 0 }] })
   }
   return <>
-    <label className="field-row"><span>Chart type</span><select value={element.chartType} onChange={(event) => update({ ...element, chartType: event.target.value as CompositionChartElement['chartType'], name: event.target.value === 'bar' ? 'Bar Chart' : 'Line Chart' })}><option value="bar">Bar</option><option value="line">Line</option></select></label>
-    {element.chartType === 'bar' && <label className="field-row"><span>Orientation</span><select value={element.orientation ?? 'horizontal'} onChange={(event) => update({ ...element, orientation: event.target.value as CompositionChartElement['orientation'] })}><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option></select></label>}
+    <label className="field-row"><span>Chart type</span><select value={element.chartType} onChange={(event) => update({ ...element, chartType: event.target.value as SlideChartElement['chartType'], name: event.target.value === 'bar' ? 'Bar Chart' : 'Line Chart' })}><option value="bar">Bar</option><option value="line">Line</option></select></label>
+    {element.chartType === 'bar' && <label className="field-row"><span>Orientation</span><select value={element.orientation ?? 'horizontal'} onChange={(event) => update({ ...element, orientation: event.target.value as SlideChartElement['orientation'] })}><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option></select></label>}
     <div className="chart-format-row">
       <label className="field-row"><span>Prefix</span><input value={element.valuePrefix ?? ''} onChange={(event) => update({ ...element, valuePrefix: event.target.value })} /></label>
       <label className="field-row"><span>Suffix</span><input value={element.valueSuffix ?? ''} onChange={(event) => update({ ...element, valueSuffix: event.target.value })} /></label>
@@ -131,8 +131,8 @@ function chartEditor(element: CompositionChartElement, update: (next: Compositio
   </>
 }
 
-export function CompositionInspector({
-  scene,
+export function SlideElementInspector({
+  slide,
   presentation,
   selectedElementId,
   grid,
@@ -142,33 +142,33 @@ export function CompositionInspector({
   onGuidesChange,
   onSnapChange,
   onSelect,
-  onSceneChange,
+  onSlideChange,
   onPresentationChange,
-}: CompositionInspectorProps) {
+}: SlideElementInspectorProps) {
   const imageInput = useRef<HTMLInputElement>(null)
   const imageAction = useRef<'add' | 'replace'>('add')
-  const selected = scene.elements.find((element) => element.id === selectedElementId) ?? null
+  const selected = slide.elements.find((element) => element.id === selectedElementId) ?? null
 
-  const updateElement = (element: CompositionElement) => onSceneChange({
-    ...scene,
-    elements: scene.elements.map((candidate) => candidate.id === element.id ? element : candidate),
+  const updateElement = (element: SlideElement) => onSlideChange({
+    ...slide,
+    elements: slide.elements.map((candidate) => candidate.id === element.id ? element : candidate),
   })
-  const addElement = (element: CompositionElement) => {
-    onSceneChange({ ...scene, elements: [...scene.elements, element] })
+  const addElement = (element: SlideElement) => {
+    onSlideChange({ ...slide, elements: [...slide.elements, element] })
     onSelect(element.id)
   }
   const removeSelected = () => {
     if (!selected) return
-    onSceneChange({ ...scene, elements: scene.elements.filter((element) => element.id !== selected.id) })
+    onSlideChange({ ...slide, elements: slide.elements.filter((element) => element.id !== selected.id) })
     onSelect(null)
   }
   const duplicateSelected = () => {
     if (!selected) return
-    addElement(duplicateCompositionElement(selected))
+    addElement(duplicateSlideElement(selected))
   }
   const moveSelected = (action: 'forward' | 'backward' | 'front' | 'back') => {
     if (!selected) return
-    const elements = [...scene.elements]
+    const elements = [...slide.elements]
     const index = elements.findIndex((element) => element.id === selected.id)
     const [element] = elements.splice(index, 1)
     const target = action === 'front' ? elements.length
@@ -176,7 +176,7 @@ export function CompositionInspector({
         : action === 'forward' ? Math.min(elements.length, index + 1)
           : Math.max(0, index - 1)
     elements.splice(target, 0, element)
-    onSceneChange({ ...scene, elements })
+    onSlideChange({ ...slide, elements })
   }
 
   const pickImage = (action: 'add' | 'replace') => {
@@ -195,7 +195,7 @@ export function CompositionInspector({
     if (imageAction.current === 'replace' && selected?.type === 'image') updateElement({ ...selected, assetId: asset.id })
     else {
       const ratio = await readImageRatio(source)
-      const element = createCompositionImageElement(asset.id)
+      const element = createSlideImageElement(asset.id)
       const width = Math.round(ratio >= 1 ? 700 : 700 * ratio)
       const height = Math.round(ratio >= 1 ? 700 / ratio : 700)
       addElement({ ...element, frame: { ...element.frame, x: (1080 - width) / 2, y: (1920 - height) / 2, width, height } })
@@ -215,18 +215,17 @@ export function CompositionInspector({
 
   return <>
     <section className="composition-controls">
-      <div className="section-heading"><h3>Add Element</h3><span>1080 × 1920</span></div>
+      <div className="section-heading"><h3>Elements</h3><span>1080 × 1920</span></div>
       <div className="composition-add-grid">
-        <button type="button" onClick={() => addElement(createCompositionTextElement())}>+ Text</button>
+        <button type="button" onClick={() => addElement(createSlideTextElement())}>+ Text</button>
         <button type="button" onClick={() => pickImage('add')}>+ Image</button>
-        <button type="button" onClick={() => addElement(createCompositionChartElement())}>+ Chart</button>
-        <button type="button" onClick={() => addElement({ ...createCompositionShapeElement('rectangle'), fill: presentation.accent })}>+ Rectangle</button>
-        <button type="button" onClick={() => addElement({ ...createCompositionShapeElement('circle'), fill: presentation.accent })}>+ Circle</button>
-        <button type="button" onClick={() => addElement({ ...createCompositionShapeElement('line'), stroke: presentation.accent })}>+ Line</button>
-        <button type="button" onClick={() => addElement({ ...createCompositionArrowElement(), stroke: presentation.accent })}>+ Arrow</button>
+        <button type="button" onClick={() => addElement(createSlideChartElement())}>+ Chart</button>
+        <button type="button" onClick={() => addElement({ ...createSlideShapeElement('rectangle'), fill: presentation.theme.accent })}>+ Rectangle</button>
+        <button type="button" onClick={() => addElement({ ...createSlideShapeElement('circle'), fill: presentation.theme.accent })}>+ Circle</button>
+        <button type="button" onClick={() => addElement({ ...createSlideShapeElement('line'), stroke: presentation.theme.accent })}>+ Line</button>
+        <button type="button" onClick={() => addElement({ ...createSlideArrowElement(), stroke: presentation.theme.accent })}>+ Arrow</button>
       </div>
       <input ref={imageInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" onChange={(event) => void acceptImage(event)} />
-      <label className="field-row"><span>Background</span><select value={scene.background ?? 'presentation'} onChange={(event) => onSceneChange({ ...scene, background: event.target.value as CompositionScene['background'] })}><option value="presentation">Presentation</option><option value="light">Light</option><option value="dark">Dark</option><option value="accent">Accent</option></select></label>
       <div className="composition-view-options">
         <label><input type="checkbox" checked={grid} onChange={(event) => onGridChange(event.target.checked)} /> Grid</label>
         <label><input type="checkbox" checked={guides} onChange={(event) => onGuidesChange(event.target.checked)} /> Guides</label>
@@ -236,10 +235,10 @@ export function CompositionInspector({
     </section>
 
     <section className="composition-layers">
-      <div className="section-heading"><h3>Layers</h3><span>{scene.elements.length}</span></div>
-      {scene.elements.length === 0 && <p className="composition-empty">Add an element to start composing.</p>}
+      <div className="section-heading"><h3>Layers</h3><span>{slide.elements.length}</span></div>
+      {slide.elements.length === 0 && <p className="composition-empty">This blank slide has no elements yet.</p>}
       <div className="composition-layer-list">
-        {[...scene.elements].reverse().map((element) => <div className={`composition-layer-row${element.id === selectedElementId ? ' is-selected' : ''}`} key={element.id}>
+        {[...slide.elements].reverse().map((element) => <div className={`composition-layer-row${element.id === selectedElementId ? ' is-selected' : ''}`} key={element.id}>
           <input className="composition-layer-select" aria-label={`Layer name for ${element.name}`} value={element.name} onFocus={() => onSelect(element.id)} onChange={(event) => updateElement({ ...element, name: event.target.value })} onBlur={() => { if (!element.name.trim()) updateElement({ ...element, name: fallbackName(element) }) }} />
           <button type="button" title={element.hidden ? 'Show layer' : 'Hide layer'} onClick={() => updateElement({ ...element, hidden: !element.hidden })}>{element.hidden ? '○' : '●'}</button>
           <button type="button" title={element.locked ? 'Unlock layer' : 'Lock layer'} onClick={() => updateElement({ ...element, locked: !element.locked })}>{element.locked ? '🔒' : '◇'}</button>
@@ -276,26 +275,26 @@ export function CompositionInspector({
       {selected.type === 'text' && <>
         <label className="field-row"><span>Text</span><textarea rows={4} value={selected.text} onChange={(event) => updateElement({ ...selected, text: event.target.value })} /></label>
         <label className="field-row"><span>Role</span><select value={selected.role ?? 'body'} onChange={(event) => updateElement({ ...selected, role: event.target.value as typeof selected.role })}><option value="headline">Headline</option><option value="body">Body</option><option value="caption">Caption</option><option value="label">Label</option></select></label>
-        <Numeric label="Font size" value={selected.fontSize} min={1} max={512} onChange={(fontSize) => updateElement({ ...selected, fontSize })} />
+        <Numeric label="Font size" value={selected.fontSize ?? (selected.role === 'headline' ? presentation.theme.defaultHeadlineStyle.fontSize : selected.role === 'caption' ? presentation.theme.defaultCaptionStyle.fontSize : selected.role === 'label' ? (presentation.theme.defaultLabelStyle ?? presentation.theme.defaultBodyStyle).fontSize : presentation.theme.defaultBodyStyle.fontSize)} min={1} max={512} onChange={(fontSize) => updateElement({ ...selected, fontSize })} />
         <Numeric label="Font weight" value={selected.fontWeight ?? 500} min={100} max={900} step={100} onChange={(fontWeight) => updateElement({ ...selected, fontWeight })} />
         <Numeric label="Line height" value={selected.lineHeight ?? 1.1} min={0.5} max={3} step={0.05} onChange={(lineHeight) => updateElement({ ...selected, lineHeight })} />
         <label className="field-row"><span>Align</span><select value={selected.textAlign ?? 'left'} onChange={(event) => updateElement({ ...selected, textAlign: event.target.value as typeof selected.textAlign })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
       </>}
       {selected.type === 'image' && <>
         <button type="button" className="composition-replace-image" onClick={() => pickImage('replace')}>Replace Image</button>
-        <label className="field-row"><span>Fit</span><select value={selected.fit} onChange={(event) => updateElement({ ...selected, fit: event.target.value as CompositionImageElement['fit'] })}><option value="contain">Contain</option><option value="cover">Cover</option></select></label>
-        <label className="field-row"><span>Position</span><select value={selected.position ?? 'center'} onChange={(event) => updateElement({ ...selected, position: event.target.value as CompositionImageElement['position'] })}>{['center', 'top', 'bottom', 'left', 'right', 'top-left', 'top-right', 'bottom-left', 'bottom-right'].map((position) => <option key={position} value={position}>{position}</option>)}</select></label>
+        <label className="field-row"><span>Fit</span><select value={selected.fit} onChange={(event) => updateElement({ ...selected, fit: event.target.value as SlideImageElement['fit'] })}><option value="contain">Contain</option><option value="cover">Cover</option></select></label>
+        <label className="field-row"><span>Position</span><select value={selected.position ?? 'center'} onChange={(event) => updateElement({ ...selected, position: event.target.value as SlideImageElement['position'] })}>{['center', 'top', 'bottom', 'left', 'right', 'top-left', 'top-right', 'bottom-left', 'bottom-right'].map((position) => <option key={position} value={position}>{position}</option>)}</select></label>
         <div className="composition-view-options"><label><input type="checkbox" checked={selected.flipX ?? false} onChange={(event) => updateElement({ ...selected, flipX: event.target.checked })} /> Flip horizontal</label><label><input type="checkbox" checked={selected.flipY ?? false} onChange={(event) => updateElement({ ...selected, flipY: event.target.checked })} /> Flip vertical</label></div>
       </>}
       {selected.type === 'chart' && chartEditor(selected, updateElement)}
       {selected.type === 'shape' && <>
-        <label className="field-row"><span>Shape</span><select value={selected.shape} onChange={(event) => updateElement({ ...selected, shape: event.target.value as CompositionShape })}><option value="rectangle">Rectangle</option><option value="circle">Circle</option><option value="line">Line</option></select></label>
-        {selected.shape !== 'line' && <label className="field-row"><span>Fill</span><input type="color" value={selected.fill ?? presentation.accent} onChange={(event) => updateElement({ ...selected, fill: event.target.value })} /></label>}
-        <label className="field-row"><span>Stroke</span><input type="color" value={selected.stroke ?? presentation.accent} onChange={(event) => updateElement({ ...selected, stroke: event.target.value })} /></label>
+        <label className="field-row"><span>Shape</span><select value={selected.shape} onChange={(event) => updateElement({ ...selected, shape: event.target.value as SlideShape })}><option value="rectangle">Rectangle</option><option value="circle">Circle</option><option value="line">Line</option></select></label>
+        {selected.shape !== 'line' && <label className="field-row"><span>Fill</span><input type="color" value={selected.fill ?? presentation.theme.accent} onChange={(event) => updateElement({ ...selected, fill: event.target.value })} /></label>}
+        <label className="field-row"><span>Stroke</span><input type="color" value={selected.stroke ?? presentation.theme.accent} onChange={(event) => updateElement({ ...selected, stroke: event.target.value })} /></label>
         <Numeric label="Stroke width" value={selected.strokeWidth ?? 3} min={0} onChange={(strokeWidth) => updateElement({ ...selected, strokeWidth })} />
       </>}
       {selected.type === 'arrow' && <>
-        <label className="field-row"><span>Color</span><input type="color" value={selected.stroke ?? presentation.accent} onChange={(event) => updateElement({ ...selected, stroke: event.target.value })} /></label>
+        <label className="field-row"><span>Color</span><input type="color" value={selected.stroke ?? presentation.theme.accent} onChange={(event) => updateElement({ ...selected, stroke: event.target.value })} /></label>
         <Numeric label="Stroke width" value={selected.strokeWidth ?? 6} min={1} onChange={(strokeWidth) => updateElement({ ...selected, strokeWidth })} />
         <label className="field-row"><span>Start cap</span><select value={selected.startCap ?? 'none'} onChange={(event) => updateElement({ ...selected, startCap: event.target.value as typeof selected.startCap })}><option value="none">None</option><option value="dot">Dot</option></select></label>
         <label className="field-row"><span>End cap</span><select value={selected.endCap ?? 'arrow'} onChange={(event) => updateElement({ ...selected, endCap: event.target.value as typeof selected.endCap })}><option value="arrow">Arrow</option><option value="none">Line only</option></select></label>

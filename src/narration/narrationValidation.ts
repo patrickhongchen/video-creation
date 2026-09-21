@@ -1,10 +1,10 @@
-import type { NarrationSection, Presentation, Scene } from '../model'
+import type { NarrationSection, Presentation, Slide } from '../model'
 import type { NarrationTake } from './narrationTypes'
 
 export const NARRATION_CUE_DURATION_TOLERANCE_MS = 100
 
 export interface ResolvedNarrationSection {
-  scenes: Scene[]
+  slides: Slide[]
   indices: number[]
   valid: boolean
   issue: string
@@ -14,41 +14,41 @@ export function resolveSection(
   section: NarrationSection,
   presentation: Presentation,
 ): ResolvedNarrationSection {
-  const indices = section.sceneIds.map((id) =>
-    presentation.scenes.findIndex((scene) => scene.id === id))
+  const indices = section.slideIds.map((id) =>
+    presentation.slides.findIndex((slide) => slide.id === id))
   const missingCount = indices.filter((index) => index < 0).length
   const foundIndices = indices.filter((index) => index >= 0)
   const orderedIndices = [...foundIndices].sort((left, right) => left - right)
-  const scenes = orderedIndices.map((index) => presentation.scenes[index])
+  const slides = orderedIndices.map((index) => presentation.slides[index])
 
-  if (section.sceneIds.length === 0) {
+  if (section.slideIds.length === 0) {
     return {
-      scenes,
+      slides,
       indices: orderedIndices,
       valid: false,
-      issue: 'This section has no scenes. Choose a start and end scene to repair it.',
+      issue: 'This section has no slides. Choose a start and end slide to repair it.',
     }
   }
   if (missingCount > 0) {
     return {
-      scenes,
+      slides,
       indices: orderedIndices,
       valid: false,
-      issue: `${missingCount} referenced scene${missingCount === 1 ? ' is' : 's are'} missing. Save a new range to repair this section.`,
+      issue: `${missingCount} referenced slide${missingCount === 1 ? ' is' : 's are'} missing. Save a new range to repair this section.`,
     }
   }
   const contiguous = indices.every((index, position) =>
     position === 0 || index === indices[position - 1] + 1)
   if (!contiguous) {
     return {
-      scenes,
+      slides,
       indices: orderedIndices,
       valid: false,
-      issue: 'These scenes are no longer a contiguous range. Save a new range to repair this section.',
+      issue: 'These slides are no longer a contiguous range. Save a new range to repair this section.',
     }
   }
   return {
-    scenes: indices.map((index) => presentation.scenes[index]),
+    slides: indices.map((index) => presentation.slides[index]),
     indices,
     valid: true,
     issue: '',
@@ -64,16 +64,16 @@ export function getTakeUsabilityIssue(
   if (!(take.blob instanceof Blob)) return 'The selected take is missing its audio.'
   if (take.blob.size === 0) return 'The selected take has no audio data.'
   if (!Array.isArray(take.cues) || take.cues.length === 0) {
-    return 'The selected take has no scene cues.'
+    return 'The selected take has no slide cues.'
   }
   if (take.cues[0].timeMs !== 0) return 'The selected take must begin with a cue at 0 ms.'
-  if (take.cues[0].sceneId !== section.scenes[0]?.id) {
-    return 'The selected take does not begin on this section\'s first scene.'
+  if (take.cues[0].sceneId !== section.slides[0]?.id) {
+    return 'The selected take does not begin on this section\'s first slide.'
   }
 
-  const sceneIds = new Set(section.scenes.map((scene) => scene.id))
-  if (take.cues.some((cue) => !sceneIds.has(cue.sceneId))) {
-    return 'The selected take contains a cue for a scene outside this section.'
+  const slideIds = new Set(section.slides.map((slide) => slide.id))
+  if (take.cues.some((cue) => !slideIds.has(cue.sceneId))) {
+    return 'The selected take contains a cue for a slide outside this section.'
   }
   if (take.cues.some((cue) =>
     !(cue.timeMs >= 0

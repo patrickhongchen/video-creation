@@ -58,10 +58,9 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
       validatePresentation(presentation)
       return ''
     } catch (problem) {
-      return problem instanceof Error ? problem.message : 'The presentation contains invalid Composition data.'
+      return problem instanceof Error ? problem.message : 'The presentation contains invalid slide data.'
     }
   }, [presentation])
-  const compositionSceneCount = useMemo(() => presentation.scenes.filter((scene) => scene.type === 'composition').length, [presentation.scenes])
 
   useEffect(() => {
     let cancelled = false
@@ -128,11 +127,11 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
     void playback.disposeAudio()
   }, [playback.stop, playback.disposeAudio])
 
-  const activeSceneIndex = Math.max(0, presentation.scenes.findIndex((scene) => scene.id === playback.activeSceneId))
-  const activeScene = presentation.scenes[activeSceneIndex] ?? presentation.scenes[0]
-  const previousSceneIndexRef = useRef(activeSceneIndex)
-  const direction: 1 | -1 = activeSceneIndex >= previousSceneIndexRef.current ? 1 : -1
-  useEffect(() => { previousSceneIndexRef.current = activeSceneIndex }, [activeSceneIndex])
+  const activeSlideIndex = Math.max(0, presentation.slides.findIndex((slide) => slide.id === playback.activeSceneId))
+  const activeSlide = presentation.slides[activeSlideIndex] ?? presentation.slides[0]
+  const previousSlideIndexRef = useRef(activeSlideIndex)
+  const direction: 1 | -1 = activeSlideIndex >= previousSlideIndexRef.current ? 1 : -1
+  useEffect(() => { previousSlideIndexRef.current = activeSlideIndex }, [activeSlideIndex])
 
   const decodeIssueCount = Object.keys(decodeIssues).length
   const readinessIssueCount = plan.readinessIssues.length
@@ -217,8 +216,8 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
 
   const elapsedMs = exportProgress?.elapsedMs ?? 0
   const progress = exportProgress?.percent ?? 0
-  const progressSceneIndex = exportProgress?.activeSceneId
-    ? presentation.scenes.findIndex((scene) => scene.id === exportProgress.activeSceneId)
+  const progressSlideIndex = exportProgress?.activeSceneId
+    ? presentation.slides.findIndex((slide) => slide.id === exportProgress.activeSceneId)
     : -1
 
   return (
@@ -246,27 +245,27 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
             })}
           </ol>
           {plan.readiness.length === 0 && takesStatus === 'ready' ? <p className="final-notice">No narration sections. This will be a completely silent visual video.</p> : null}
-          {compositionSceneCount > 0 ? <p className={presentationIssue ? 'final-blocked-note' : 'final-notice'}><strong>{presentationIssue ? 'Composition preflight failed.' : `${compositionSceneCount} Composition scene${compositionSceneCount === 1 ? '' : 's'} ready.`}</strong>{presentationIssue ? ` ${presentationIssue}` : ' Image assets, element frames, charts, and shared identities are valid.'}</p> : null}
+          {presentation.slides.length > 0 ? <p className={presentationIssue ? 'final-blocked-note' : 'final-notice'}><strong>{presentationIssue ? 'Slide preflight failed.' : `${presentation.slides.length} slide${presentation.slides.length === 1 ? '' : 's'} ready.`}</strong>{presentationIssue ? ` ${presentationIssue}` : ' Image assets, element frames, charts, and shared identities are valid.'}</p> : null}
           {readinessIssueCount > 0 ? <p className="final-blocked-note"><strong>{readinessIssueCount} narration section{readinessIssueCount === 1 ? '' : 's'} need{readinessIssueCount === 1 ? 's' : ''} attention.</strong> Final playback and export stay blocked until every section is ready.</p> : null}
           {decodeIssueCount > 0 ? <p className="final-warning">Final Playback Preview is unavailable for selected audio that Chromium cannot decode. Desktop export will ask FFmpeg to decode the original take.</p> : null}
           <button className="final-secondary-button" onClick={onOpenNarration} disabled={busy}>Open Narration Studio</button>
           <div className="final-summary-card">
-            <div><span>Scenes</span><strong>{presentation.scenes.length}</strong></div>
-            <div><span>Silent beats</span><strong>{plan.unassignedSceneCount}</strong></div>
+            <div><span>Slides</span><strong>{presentation.slides.length}</strong></div>
+            <div><span>Silent beats</span><strong>{plan.unassignedSlideCount}</strong></div>
             <div><span>Run time</span><strong>{formatTime(plan.totalDurationMs)}</strong></div>
           </div>
-          {plan.unassignedSceneCount > 0 ? <p className="final-notice">{plan.unassignedSceneCount} scene{plan.unassignedSceneCount === 1 ? ' has' : 's have'} no narration and will play as silent visual beat{plan.unassignedSceneCount === 1 ? '' : 's'}.</p> : null}
+          {plan.unassignedSlideCount > 0 ? <p className="final-notice">{plan.unassignedSlideCount} slide{plan.unassignedSlideCount === 1 ? ' has' : 's have'} no narration and will play as silent visual beat{plan.unassignedSlideCount === 1 ? '' : 's'}.</p> : null}
           {plan.warnings.filter((warning) => warning.kind === 'incomplete-cue-coverage').map((warning) => <p key={warning.sectionId} className="final-warning">{warning.message}</p>)}
         </aside>
 
         <section className="final-stage-panel">
           <div className="final-panel-heading"><span>02</span><div><small>Playback source</small><h2>Final Playback Preview</h2></div></div>
           <div className="final-stage-well">
-            <Stage scene={activeScene} accent={presentation.accent} imageAssets={presentation.imageAssets} presentationId={presentation.id} sceneNumber={activeSceneIndex + 1} sceneCount={presentation.scenes.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} className="final-stage" />
+            <Stage slide={activeSlide} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={activeSlideIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} className="final-stage" />
           </div>
           <div className="final-playback-status">
             <span>{formatTime(playback.currentTimeMs)} / {formatTime(playback.totalDurationMs)}</span>
-            <span>Scene {activeSceneIndex + 1} / {presentation.scenes.length}</span>
+            <span>Slide {activeSlideIndex + 1} / {presentation.slides.length}</span>
             <span>{playback.activeSegment?.type === 'narration' ? `Section: ${playback.activeSegment.title}` : playback.activeSegment ? 'Silent visual beat' : 'Ready'}</span>
           </div>
           <div className="final-progress-track" aria-label={`${Math.round(previewProgress)} percent complete`}><i style={{ width: `${previewProgress}%` }} /></div>
@@ -289,14 +288,14 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
           {!desktop ? <div className="final-desktop-required"><strong>Desktop app required for direct MP4 export.</strong><span>Edit, Present, Narration, and Final Playback Preview remain available in this browser.</span></div> : null}
 
           {desktop && exportState === 'ready' ? <>
-            <p className="final-export-help">Choose a destination, then Video Essay Studio will render the presentation in a dedicated 1080 × 1920 desktop surface. No screen-sharing permission is used.</p>
+            <p className="final-export-help">Choose a destination, then AI Presentation Studio will render the presentation in a dedicated 1080 × 1920 desktop surface. No screen-sharing permission is used.</p>
             <button className="final-render-button" onClick={() => void startExport()} disabled={!exportReady}>Export Final Video</button>
           </> : null}
 
           {desktop && busy ? <div className="final-render-state">
             <span>● Rendering video…</span>
             <strong>{formatTime(elapsedMs)} / {formatTime(plan.totalDurationMs)}</strong>
-            <small>{progressSceneIndex >= 0 ? `Scene ${progressSceneIndex + 1} / ${presentation.scenes.length}` : 'Preparing hidden renderer…'}{exportProgress?.activeSectionTitle ? ` · Section: ${exportProgress.activeSectionTitle}` : ''}</small>
+            <small>{progressSlideIndex >= 0 ? `Slide ${progressSlideIndex + 1} / ${presentation.slides.length}` : 'Preparing hidden renderer…'}{exportProgress?.activeSectionTitle ? ` · Section: ${exportProgress.activeSectionTitle}` : ''}</small>
             <div className="final-progress-track" aria-label={`${Math.round(progress)} percent exported`}><i style={{ width: `${progress}%` }} /></div>
             <button className="final-danger-button" onClick={() => void cancelExport()}>Cancel Export</button>
           </div> : null}

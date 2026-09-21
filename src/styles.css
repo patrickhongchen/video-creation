@@ -90,6 +90,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .scene-row-copy b { font-size: 14px; line-height: 1.16; letter-spacing: -.015em; }
 .scene-row-copy small { font-size: 12px; color: #718096; }
 .thumb { width: 68px; aspect-ratio: 9/12; border: 1px solid #dce2e7; border-radius: 3px; background: linear-gradient(145deg, #fff 0%, #f1f3f4 100%); padding: 9px 7px; display: flex; position: relative; overflow: hidden; box-shadow: 0 1px 3px rgba(20,30,40,.04); }
+.thumb-slide { aspect-ratio: 9/16; padding: 0; display: block; background: #fff; }
 .thumb-copy { flex-direction: column; justify-content: center; }
 .thumb-copy b { font-size: 9px; line-height: .98; white-space: pre-line; letter-spacing: -.05em; }
 .thumb-copy i, .thumb-stat i { width: 19px; height: 2px; margin-top: 8px; }
@@ -125,69 +126,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .stage { height: min(820px, calc(100vh - 168px)); aspect-ratio: 9 / 16; position: relative; overflow: hidden; flex: none; background: #fcfbfa; box-shadow: 0 7px 25px rgba(29,43,55,.16), 0 0 0 1px rgba(44,59,69,.07); border-radius: 3px; }
 .scene-frame { position: absolute; inset: 0; overflow: hidden; }
 .scene-canvas { width: 100%; height: 100%; position: relative; overflow: hidden; background: linear-gradient(150deg, #fff 0%, #fbfaf8 100%); padding: 9% 7.7% 7%; }
-.scene-page-meta { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 20px; height: 20px; font-size: 8px; font-weight: 750; letter-spacing: .24em; text-transform: uppercase; color: #273444; }
-.scene-page-meta i { height: 1px; background: #64707a; opacity: .75; }
-.scene-page-meta span:last-child { letter-spacing: .11em; }
-.scene-layout { height: calc(100% - 20px); position: relative; }
-.scene-kicker { font-size: 7px; line-height: 1.45; text-transform: uppercase; letter-spacing: .26em; font-weight: 800; color: #374453; }
-.scene-rule { width: 77px; height: 7px; }
-.title-layout { display: flex; flex-direction: column; padding-top: 17%; }
-.title-copy { margin-top: auto; margin-bottom: 34%; }
-.title-copy h1, .text-copy h1, .detail-copy h1, .comparison-layout h1 { margin: 0; font-size: clamp(40px, calc(var(--stage-vw) * 4.3), 66px); line-height: .88; letter-spacing: -.075em; white-space: pre-line; font-weight: 850; }
-.title-copy .scene-rule { margin: 30px 0 24px; }
-.title-copy p { margin: 0; max-width: 78%; font-size: 16px; line-height: 1.45; color: #344252; }
-.editorial-index { position: absolute; bottom: 1%; right: 0; font-size: 8px; letter-spacing: .25em; font-weight: 800; writing-mode: vertical-rl; }
-.text-layout { padding-top: 10%; }
-.text-copy { position: absolute; left: 0; top: 23%; }
-.text-copy h1 { font-size: clamp(36px, calc(var(--stage-vw) * 3.7), 58px); }
-.text-copy .scene-rule { margin: 28px 0 24px; }
-.text-copy p { margin: 0; max-width: 89%; font-size: 17px; line-height: 1.48; color: #354353; }
-.scene-callout { position: absolute; bottom: 3%; left: 0; width: 100%; border-top: 1px solid #9ca5ae; padding-top: 13px; font-size: 8px; font-weight: 800; letter-spacing: .22em; text-transform: uppercase; }
-.stat-layout { padding-top: 8%; }
-.stat-layout > .scene-kicker { display: none; }
-.shared-stat { width: max-content; position: relative; z-index: 2; }
-.stat-layout > .shared-stat, .stat-layout > .stat-cluster { margin-top: 12%; }
-.stat-layout > .shared-stat { width: 100%; }
-.stat-value { font-size: clamp(120px, calc(var(--stage-vw) * 12), 190px); line-height: .78; letter-spacing: -.11em; font-weight: 880; }
-.stat-label { max-width: 94%; margin-top: 19px; font-size: clamp(38px, calc(var(--stage-vw) * 4), 62px); line-height: .91; letter-spacing: -.065em; font-weight: 850; overflow-wrap: normal; }
-.stat-support { margin: 28px 0 0; max-width: 82%; font-size: 16px; line-height: 1.45; color: #3b4957; }
-.bottom-lockup { position: absolute; bottom: 1%; display: grid; gap: 19px; }
-.bottom-lockup span { font-size: 7px; line-height: 1.6; letter-spacing: .27em; font-weight: 800; }
-.detail-layout { padding-top: 8%; }
-.detail-shared { margin-top: 9%; }
-.detail-stat-cluster { display: flex; align-items: end; gap: 12px; }
-.detail-stat-value { font-size: 72px; line-height: .75; letter-spacing: -.1em; font-weight: 880; }
-.detail-stat-label { max-width: 90px; font-size: 15px; line-height: .95; letter-spacing: -.03em; font-weight: 800; }
-.detail-copy { position: absolute; top: 41%; }
-.detail-copy h1 { font-size: clamp(34px, calc(var(--stage-vw) * 3.45), 54px); }
-.detail-copy .scene-rule { margin: 24px 0 22px; }
-.detail-copy p { margin: 0; max-width: 91%; font-size: 16px; line-height: 1.48; color: #3b4957; }
-.comparison-layout { padding-top: 9%; }
-.comparison-layout h1 { margin-top: 14%; font-size: clamp(34px, calc(var(--stage-vw) * 3.5), 54px); }
-.comparison-grid { position: absolute; inset: 41% 0 auto; display: grid; grid-template-columns: 1fr 1fr; }
-.comparison-item { min-height: 195px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 15px; }
-.comparison-item + .comparison-item { border-left: 1px solid #aab2ba; }
-.comparison-number { font-size: 100px; line-height: .75; letter-spacing: -.08em; font-weight: 850; }
-.comparison-label { font-size: 11px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
-.comparison-caption { position: absolute; bottom: 1%; left: 0; right: 0; padding-top: 15px; border-top: 1px solid #aab2ba; font-size: 7px; font-weight: 800; letter-spacing: .25em; }
-.chart-layout { display: flex; flex-direction: column; min-height: 0; padding-top: 7%; }
-.chart-header { flex: 0 0 auto; }
-.chart-headline { max-width: 94%; margin: 14px 0 0; font-size: clamp(28px, calc(var(--stage-vw) * 3.05), 46px); line-height: .92; letter-spacing: -.06em; white-space: pre-line; font-weight: 850; }
-.chart-supporting-text { max-width: 91%; margin: 14px 0 0; color: #526071; font-size: 12px; line-height: 1.4; }
-.chart-visual { flex: 1 1 auto; min-height: 0; margin: 15px -3% 0; color: #25313e; }
+.chart-layout { display: flex; flex-direction: column; min-height: 0; }
+.chart-visual { flex: 1 1 auto; min-height: 0; color: currentColor; }
 .chart-svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.chart-grid-line { stroke: #dce2e7; stroke-width: 1; vector-effect: non-scaling-stroke; }
-.chart-zero-line { stroke: #6e7b89; stroke-width: 1.25; vector-effect: non-scaling-stroke; }
-.chart-tick-label { fill: #7c8793; font-size: 16px; font-weight: 650; }
-.chart-category-label { fill: #263340; font-size: 22px; font-weight: 760; letter-spacing: -.02em; }
+.chart-grid-line { stroke: var(--chart-grid, #dce2e7); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart-zero-line { stroke: var(--chart-muted, #6e7b89); stroke-width: 1.25; vector-effect: non-scaling-stroke; }
+.chart-tick-label { fill: var(--chart-muted, #7c8793); font-size: 16px; font-weight: 650; }
+.chart-category-label { fill: currentColor; font-size: 22px; font-weight: 760; letter-spacing: -.02em; }
 .chart-category-label--vertical, .chart-category-label--line { font-size: 18px; }
-.chart-value-label { fill: #263340; font-size: 20px; font-weight: 820; }
-.chart-bar { color: #263340; }
-.chart-bar--muted, .chart-point--muted { color: #6f7b87; }
+.chart-value-label { fill: currentColor; font-size: 20px; font-weight: 820; }
+.chart-bar { color: currentColor; }
+.chart-bar--muted, .chart-point--muted { color: var(--chart-muted, #6f7b87); }
 .chart-line { stroke-width: 4px; stroke-linecap: round; stroke-linejoin: round; }
 .chart-point { color: #263340; stroke: #fcfbfa; stroke-width: 4px; vector-effect: non-scaling-stroke; transform-box: fill-box; transform-origin: center; }
 .chart-point--highlighted { stroke-width: 5px; }
-.chart-source { flex: 0 0 auto; min-height: 22px; padding-top: 10px; border-top: 1px solid #cdd4da; color: #667382; font-size: 7px; line-height: 1.35; font-weight: 720; letter-spacing: .08em; text-transform: uppercase; }
 .chart-layout--element { width: 100%; height: 100%; min-height: 0; padding: 0; overflow: hidden; }
 .chart-visual--element { width: 100%; height: 100%; min-height: 0; margin: 0; overflow: hidden; }
 .chart-svg--element { width: 100%; height: 100%; overflow: hidden; }

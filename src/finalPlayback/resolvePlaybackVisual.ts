@@ -1,4 +1,4 @@
-import type { Scene } from '../model'
+import type { Slide } from '../model'
 import type { DesktopExportJob, DesktopExportSegment } from '../desktop/desktopTypes'
 
 function firstSceneId(segment: DesktopExportSegment | undefined) {
@@ -9,8 +9,8 @@ function firstSceneId(segment: DesktopExportSegment | undefined) {
 }
 
 export interface ResolvedPlaybackVisual {
-  scene: Scene
-  sceneIndex: number
+  slide: Slide
+  slideIndex: number
   segmentIndex: number
   segment: DesktopExportSegment | undefined
 }
@@ -44,11 +44,11 @@ export function resolvePlaybackVisual(job: Pick<DesktopExportJob, 'presentation'
     segmentStartMs = segmentEndMs
   }
 
-  sceneId ??= firstSceneId(segments[0]) ?? presentation.scenes[0]?.id
-  const sceneIndex = Math.max(0, presentation.scenes.findIndex((scene) => scene.id === sceneId))
+  sceneId ??= firstSceneId(segments[0]) ?? presentation.slides[0]?.id
+  const slideIndex = Math.max(0, presentation.slides.findIndex((slide) => slide.id === sceneId))
   return {
-    scene: presentation.scenes[sceneIndex] ?? presentation.scenes[0],
-    sceneIndex,
+    slide: presentation.slides[slideIndex] ?? presentation.slides[0],
+    slideIndex,
     segmentIndex,
     segment: activeSegment,
   }

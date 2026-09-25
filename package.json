@@ -38,6 +38,7 @@
   "build": {
     "appId": "com.videoessaystudio.app",
     "productName": "AI Presentation Studio",
+    "electronDist": "node_modules/electron/dist",
     "afterPack": "electron/afterPack.cjs",
     "asar": true,
     "directories": {

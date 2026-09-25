@@ -25,7 +25,7 @@ my-presentation/
 
 `presentation.json` is canonical. It contains the presentation model described below and is saved as readable, two-space-indented JSON with a final newline. It does not contain absolute filesystem paths, image binary data, runtime asset URLs, narration Blob bytes, generated videos, current selection, zoom, panel state, or temporary export information.
 
-`AGENTS.md` is a short authoring guide for Codex and other tools: keep JSON valid, use the fixed coordinate system, store images below `assets/`, preserve stable IDs, and maintain Morph/chart identities. It is guidance rather than application state. The `assets/` directory contains the presentation's portable visual files. Moving the complete folder is supported because the JSON refers to these files only through project-relative paths.
+`AGENTS.md` is a concise authoring guide for Codex and other tools: keep JSON valid, use the fixed coordinate system, store images below `assets/`, preserve stable IDs, and maintain Morph/chart identities. It also directs an author to outline the story first, keep one main idea per slide, prefer visual explanation to paragraphs, vary layouts intentionally, and run the Project validator. It is guidance rather than application state. The `assets/` directory contains the presentation's portable visual files. Moving the complete folder is supported because the JSON refers to these files only through project-relative paths.
 
 ## Presentation
 
@@ -324,17 +324,11 @@ Import and local persistence accept schema v1, validate it, and deterministicall
 
 Slide IDs, notes, duration, transition, image asset IDs, narration section IDs, and narration membership are preserved. `sceneIds` becomes `slideIds` without changing its values. All newly saved/exported presentations use schema v2 and `slides`; legacy types exist only at the import boundary.
 
-## Codex authoring recommendations
+## Codex authoring
 
-- Choose layout from communication intent, not a rigid scene type.
-- Need a dramatic number? Use one large text element.
-- Need two photos? Use two image elements with explicit frames.
-- Need a playful explanation? Combine an image or stick figure, arrow, chart, and caption.
-- Need a chart? Keep it as one semantic chart element and place it where the composition needs it.
-- Need continuity? Preserve `sharedElementId`; preserve `chartId` and datum IDs independently.
-- Put desktop images below `assets/`, give them readable filenames, and register project-relative `path` values. Never write absolute machine paths.
-- Keep JSON readable: meaningful element IDs/names, explicit numeric frames, shallow arrays, and no hidden wrapper objects.
-- Put citations and delivery notes in `notes`. Verify factual claims before publication.
+Use [CODEX_AUTHORING.md](CODEX_AUTHORING.md) as the canonical practical guide. It covers narrative planning, visual hierarchy, layout recipes, playful work, image and chart choices, theme personalities, Morph restraint, narration notes, prompt patterns, anti-patterns, and the finish checklist.
+
+Its core rules are: choose composition from communication intent rather than a rigid scene type; communicate one main idea per slide; keep visible copy short; put citations and delivery notes in `notes`; and preserve stable identities when a concept continues. The reference Projects in [`examples/`](../examples/) demonstrate these patterns using only ordinary slides and elements.
 
 ## Validation and import
 

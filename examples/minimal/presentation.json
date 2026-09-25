@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 2,
+  "id": "minimal-example",
+  "title": "Less, but clearer",
+  "tagline": "A minimal reference project.",
+  "aspectRatio": "9:16",
+  "theme": {
+    "id": "minimal", "name": "Minimal", "background": "#f7f4ed", "foreground": "#1c1b18", "accent": "#5b6cff", "fontFamily": "Inter, system-ui, sans-serif",
+    "defaultHeadlineStyle": { "fontSize": 108, "fontWeight": 800, "lineHeight": 1, "letterSpacing": -3 },
+    "defaultBodyStyle": { "fontSize": 38, "fontWeight": 400, "lineHeight": 1.35 },
+    "defaultCaptionStyle": { "fontSize": 26, "fontWeight": 600, "lineHeight": 1.2 },
+    "chartStyle": { "foreground": "#1c1b18", "muted": "#b9b6ae", "grid": "#dedbd3" }
+  },
+  "slides": [
+    { "id": "less", "title": "Opening", "duration": 4, "notes": "Pause after the statement.", "transition": { "type": "fade", "duration": 0.5 }, "elements": [
+      { "id": "statement", "type": "text", "name": "Statement", "frame": { "x": 100, "y": 590, "width": 880, "height": 410 }, "text": "Less, but clearer.", "role": "headline", "fontSize": 132 },
+      { "id": "label", "type": "text", "name": "Label", "frame": { "x": 105, "y": 1080, "width": 500, "height": 60 }, "text": "A minimal presentation", "role": "caption", "color": "#5b6cff" }
+    ] },
+    { "id": "focus", "title": "Focus", "duration": 4, "notes": "One message has room to land.", "transition": { "type": "scale", "duration": 0.5 }, "elements": [
+      { "id": "focus-word", "type": "text", "name": "Focus", "frame": { "x": 100, "y": 750, "width": 880, "height": 240 }, "text": "Focus.", "role": "headline", "fontSize": 170, "textAlign": "center" },
+      { "id": "rule", "type": "shape", "name": "Rule", "frame": { "x": 405, "y": 1050, "width": 270, "height": 10 }, "shape": "line", "stroke": "#5b6cff", "strokeWidth": 10 }
+    ] }
+  ]
+}

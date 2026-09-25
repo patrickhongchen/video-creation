@@ -47,6 +47,9 @@ describe('ProjectStore', () => {
     const project = await store.createAt(root, presentationWithDataAsset())
 
     expect((await readdir(root)).sort()).toEqual(['AGENTS.md', 'assets', 'presentation.json'])
+    const instructions = await readFile(path.join(root, 'AGENTS.md'), 'utf8')
+    expect(instructions).toContain('one main communication idea per Slide')
+    expect(instructions).toContain('npm run validate-project')
     expect(await readdir(path.join(root, 'assets'))).toEqual(['hero-art.svg'])
     expect(project.presentation.imageAssets?.[0]).toMatchObject({
       id: 'hero-art',
@@ -60,6 +63,14 @@ describe('ProjectStore', () => {
     expect(source).toContain('"path": "assets/hero-art.svg"')
     expect(source).not.toContain('data:image')
     expect(source).not.toContain('ves-asset:')
+  })
+
+  it('does not replace existing Project instructions when creating a Project', async () => {
+    const root = path.join(await temporaryDirectory(), 'with-instructions')
+    await mkdir(root)
+    await writeFile(path.join(root, 'AGENTS.md'), '# My custom instructions\n')
+    await new ProjectStore().createAt(root, createBlankPresentation())
+    expect(await readFile(path.join(root, 'AGENTS.md'), 'utf8')).toBe('# My custom instructions\n')
   })
 
   it('rejects traversal and malformed Project JSON without replacing the active Project', async () => {

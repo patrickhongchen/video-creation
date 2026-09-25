@@ -1,0 +1,182 @@
+{
+  "schemaVersion": 2,
+  "id": "playful-example",
+  "title": "The snack tax",
+  "tagline": "A playful reference project.",
+  "aspectRatio": "9:16",
+  "theme": {
+    "id": "playful",
+    "name": "Playful",
+    "background": "#fff3c7",
+    "foreground": "#2c2840",
+    "accent": "#ff5b52",
+    "fontFamily": "Arial Rounded MT Bold, system-ui, sans-serif",
+    "defaultHeadlineStyle": {
+      "fontSize": 100,
+      "fontWeight": 800,
+      "lineHeight": 1.02
+    },
+    "defaultBodyStyle": {
+      "fontSize": 38,
+      "fontWeight": 400,
+      "lineHeight": 1.3
+    },
+    "defaultCaptionStyle": {
+      "fontSize": 27,
+      "fontWeight": 700,
+      "lineHeight": 1.2
+    },
+    "chartStyle": {
+      "foreground": "#2c2840",
+      "muted": "#f6b9a2",
+      "grid": "#e9dcae"
+    }
+  },
+  "imageAssets": [
+    {
+      "id": "stick",
+      "name": "Worried stick figure",
+      "mimeType": "image/svg+xml",
+      "path": "assets/stick-figure.svg"
+    }
+  ],
+  "slides": [
+    {
+      "id": "snack",
+      "title": "The problem",
+      "duration": 4,
+      "notes": "Set up the joke, then point to the total.",
+      "transition": {
+        "type": "fade",
+        "duration": 0.5
+      },
+      "elements": [
+        {
+          "id": "headline",
+          "type": "text",
+          "name": "Headline",
+          "frame": {
+            "x": 95,
+            "y": 170,
+            "width": 890,
+            "height": 260
+          },
+          "text": "One tiny movie snack\u2026",
+          "role": "headline",
+          "fontSize": 94
+        },
+        {
+          "id": "figure",
+          "type": "image",
+          "name": "Worried customer",
+          "frame": {
+            "x": 90,
+            "y": 710,
+            "width": 350,
+            "height": 510
+          },
+          "assetId": "stick",
+          "fit": "contain",
+          "sharedElementId": "worried-customer"
+        },
+        {
+          "id": "price",
+          "type": "text",
+          "name": "Price",
+          "frame": {
+            "x": 480,
+            "y": 720,
+            "width": 470,
+            "height": 230
+          },
+          "text": "$19",
+          "role": "headline",
+          "fontSize": 190,
+          "color": "#ff5b52"
+        },
+        {
+          "id": "arrow",
+          "type": "arrow",
+          "name": "Point to price",
+          "frame": {
+            "x": 345,
+            "y": 900,
+            "width": 150,
+            "height": 12
+          },
+          "stroke": "#2c2840",
+          "strokeWidth": 12,
+          "startCap": "dot",
+          "endCap": "arrow"
+        },
+        {
+          "id": "caption",
+          "type": "text",
+          "name": "Caption",
+          "frame": {
+            "x": 475,
+            "y": 1030,
+            "width": 420,
+            "height": 100,
+            "rotation": -5
+          },
+          "text": "well, that\u2019s not ideal",
+          "role": "caption"
+        }
+      ]
+    },
+    {
+      "id": "conclusion",
+      "title": "Punchline",
+      "duration": 4,
+      "transition": {
+        "type": "slide",
+        "duration": 0.55
+      },
+      "elements": [
+        {
+          "id": "ending",
+          "type": "text",
+          "name": "Ending",
+          "frame": {
+            "x": 100,
+            "y": 700,
+            "width": 880,
+            "height": 330
+          },
+          "text": "Popcorn should not require financing.",
+          "role": "headline",
+          "fontSize": 106,
+          "textAlign": "center"
+        },
+        {
+          "id": "dot",
+          "type": "shape",
+          "name": "Accent dot",
+          "frame": {
+            "x": 485,
+            "y": 1120,
+            "width": 110,
+            "height": 110
+          },
+          "shape": "circle",
+          "fill": "#ff5b52"
+        },
+        {
+          "id": "figure-after",
+          "type": "image",
+          "name": "Customer exits",
+          "sharedElementId": "worried-customer",
+          "frame": {
+            "x": 740,
+            "y": 1260,
+            "width": 220,
+            "height": 320
+          },
+          "assetId": "stick",
+          "fit": "contain"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 2,
+  "id": "image-story-example",
+  "title": "A room before work",
+  "tagline": "An image-led reference project.",
+  "aspectRatio": "9:16",
+  "theme": {
+    "id": "notebook",
+    "name": "Notebook",
+    "background": "#f7f6f0",
+    "foreground": "#26344a",
+    "accent": "#1d77c9",
+    "fontFamily": "Georgia, serif",
+    "defaultHeadlineStyle": {
+      "fontSize": 92,
+      "fontWeight": 700,
+      "lineHeight": 1.04
+    },
+    "defaultBodyStyle": {
+      "fontSize": 38,
+      "fontWeight": 400,
+      "lineHeight": 1.32
+    },
+    "defaultCaptionStyle": {
+      "fontSize": 25,
+      "fontWeight": 600,
+      "lineHeight": 1.2
+    },
+    "chartStyle": {
+      "foreground": "#26344a",
+      "muted": "#93a5ad",
+      "grid": "#d5dddb"
+    }
+  },
+  "imageAssets": [
+    {
+      "id": "sunrise",
+      "name": "Sunrise mountains",
+      "mimeType": "image/svg+xml",
+      "path": "assets/sunrise.svg"
+    },
+    {
+      "id": "desk",
+      "name": "Quiet desk",
+      "mimeType": "image/svg+xml",
+      "path": "assets/desk.svg"
+    }
+  ],
+  "slides": [
+    {
+      "id": "morning",
+      "title": "Morning image",
+      "duration": 5,
+      "notes": "Let the image carry the opening. Read the caption softly.",
+      "transition": {
+        "type": "fade",
+        "duration": 0.6
+      },
+      "elements": [
+        {
+          "id": "sunrise-image",
+          "type": "image",
+          "name": "Sunrise",
+          "sharedElementId": "morning-sunrise",
+          "frame": {
+            "x": 0,
+            "y": 0,
+            "width": 1080,
+            "height": 1120
+          },
+          "assetId": "sunrise",
+          "fit": "cover",
+          "position": "center"
+        },
+        {
+          "id": "caption",
+          "type": "text",
+          "name": "Caption",
+          "frame": {
+            "x": 100,
+            "y": 1280,
+            "width": 880,
+            "height": 160
+          },
+          "text": "Before the tabs. Before the pings.",
+          "role": "headline",
+          "fontSize": 74
+        }
+      ]
+    },
+    {
+      "id": "desk-slide",
+      "title": "Desk image",
+      "duration": 5,
+      "notes": "Now bring the viewer into the room.",
+      "transition": {
+        "type": "slide",
+        "duration": 0.55
+      },
+      "elements": [
+        {
+          "id": "small-sunrise",
+          "type": "image",
+          "name": "Sunrise memory",
+          "sharedElementId": "morning-sunrise",
+          "frame": {
+            "x": 720,
+            "y": 110,
+            "width": 260,
+            "height": 180
+          },
+          "assetId": "sunrise",
+          "fit": "cover",
+          "position": "center"
+        },
+        {
+          "id": "desk-image",
+          "type": "image",
+          "name": "Desk",
+          "frame": {
+            "x": 100,
+            "y": 480,
+            "width": 880,
+            "height": 880
+          },
+          "assetId": "desk",
+          "fit": "contain",
+          "sharedElementId": "work-desk"
+        },
+        {
+          "id": "headline",
+          "type": "text",
+          "name": "Headline",
+          "frame": {
+            "x": 100,
+            "y": 130,
+            "width": 590,
+            "height": 240
+          },
+          "text": "Then the room wakes up.",
+          "role": "headline",
+          "fontSize": 82
+        },
+        {
+          "id": "annotation",
+          "type": "text",
+          "name": "Annotation",
+          "frame": {
+            "x": 160,
+            "y": 1470,
+            "width": 700,
+            "height": 80
+          },
+          "text": "The calm has a short half-life.",
+          "role": "caption",
+          "color": "#1d77c9"
+        }
+      ]
+    },
+    {
+      "id": "side-by-side",
+      "title": "Two-image comparison",
+      "duration": 5,
+      "notes": "Compare the quiet morning with the busy work space. Ask which setting gives an idea more room.",
+      "transition": {
+        "type": "fade",
+        "duration": 0.5
+      },
+      "background": "presentation",
+      "elements": [
+        {
+          "id": "comparison-headline",
+          "type": "text",
+          "name": "Comparison headline",
+          "frame": {
+            "x": 100,
+            "y": 180,
+            "width": 880,
+            "height": 240
+          },
+          "text": "Two kinds of morning.",
+          "role": "headline",
+          "fontSize": 76
+        },
+        {
+          "id": "comparison-sunrise",
+          "type": "image",
+          "name": "Quiet morning",
+          "sharedElementId": "morning-sunrise",
+          "frame": {
+            "x": 80,
+            "y": 600,
+            "width": 440,
+            "height": 650
+          },
+          "assetId": "sunrise",
+          "fit": "cover"
+        },
+        {
+          "id": "comparison-desk",
+          "type": "image",
+          "name": "Busy desk",
+          "sharedElementId": "work-desk",
+          "frame": {
+            "x": 560,
+            "y": 600,
+            "width": 440,
+            "height": 650
+          },
+          "assetId": "desk",
+          "fit": "cover"
+        },
+        {
+          "id": "quiet-label",
+          "type": "text",
+          "name": "Quiet label",
+          "frame": {
+            "x": 80,
+            "y": 1320,
+            "width": 440,
+            "height": 100
+          },
+          "text": "Room to think",
+          "role": "label",
+          "fontSize": 40
+        },
+        {
+          "id": "busy-label",
+          "type": "text",
+          "name": "Busy label",
+          "frame": {
+            "x": 560,
+            "y": 1320,
+            "width": 440,
+            "height": 100
+          },
+          "text": "Room to react",
+          "role": "label",
+          "fontSize": 40
+        }
+      ]
+    }
+  ]
+}

@@ -32,16 +32,21 @@ export const PROJECT_ASSETS_DIRECTORY = 'assets'
 export const PROJECT_INSTRUCTIONS_FILE_NAME = 'AGENTS.md'
 export const PROJECT_ASSET_PROTOCOL = 'ves-asset'
 
-export const PROJECT_AGENTS_MD = `# Video Presentation Studio Project
+export const PROJECT_AGENTS_MD = `# AI Presentation Studio Project
 
-- \`presentation.json\` is the source of truth.
-- Slides use a fixed 1080×1920 coordinate system.
-- Assets belong under \`assets/\`, and asset paths are relative to this Project root.
-- Preserve existing Slide and element IDs when modifying them.
-- Use \`sharedElementId\` when the same visual should Morph across Slides.
-- Preserve \`chartId\` and datum IDs for continuing charts.
-- Do not edit narration recordings; the desktop app manages them separately.
-- Keep \`presentation.json\` valid JSON.
+\`presentation.json\` is the source of truth. Its Slides are the presentation timeline; each Slide contains ordinary Text, Image, Chart, Shape, or Arrow Elements. Element frames use a fixed 1080×1920 coordinate system. \`assets/\` holds visual files registered in \`imageAssets\` with safe Project-relative paths. Inspect both the JSON and existing assets before editing.
+
+## Authoring workflow
+
+1. Understand the requested story, audience, tone, and length. Outline one main communication idea per Slide before composing elements.
+2. Give each Slide a clear focal point. Prefer a short headline, labels, and strong visuals to visible paragraphs. Put explanation, sources, and delivery cues in \`notes\`.
+3. Choose layouts for the idea: a statement, image, comparison, explanation, chart, or visual joke. Vary scale and composition intentionally; leave useful whitespace. Important content is usually within x ≈ 80–1000 and y ≈ 120–1720, but deliberate crops and asymmetry are welcome.
+4. Use charts only when numeric relationships matter. Never invent factual values for appearance; label illustrative data. Use \`contain\` for illustrations and \`cover\` for photos. Reuse existing assets before adding new files under \`assets/\`.
+5. Use \`sharedElementId\` only when the viewer should perceive the same concept moving or changing across Slides. For continuing charts, preserve \`chartId\` and datum IDs as well. Slides, not timestamps, define motion.
+6. Preserve \`presentation.id\`, surviving Slide and element IDs, narration section IDs, asset IDs, chart identities, and shared identities when revising an existing Project. Create readable unique IDs for genuinely new objects. The app manages narration recordings separately.
+7. Run \`npm run validate-project -- /path/to/this/project\` from the AI Presentation Studio repository. Fix errors and review actionable warnings, then check the story, readability, visual variety, and factual accuracy. The user loads external edits with **Reload Project**.
+
+Keep \`presentation.json\` valid JSON. Do not use remote image URLs or add a separate layout type.
 `
 
 const IMAGE_EXTENSIONS: Record<PresentationImageMimeType, string> = {

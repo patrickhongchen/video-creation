@@ -1,8 +1,8 @@
-# AI Presentation Studio — Phase 6A
+# AI Presentation Studio
 
 An Electron desktop application for AI-first, PowerPoint-like presentations with flexible 1080×1920 slides, structured editable elements, automatic Morph animation, narration recording, direct MP4 export, and normal file-based project folders.
 
-The intended workflow is simple: AI or a preset creates a slide, the user accepts it, and direct manipulation remains available for quick corrections. This is not a general-purpose graphics or video editor.
+The intended workflow is simple: Codex authors a Project folder, the user reloads it, makes quick corrections when needed, narrates, and exports an MP4. This is not a general-purpose graphics or video editor.
 
 ## Run
 
@@ -46,6 +46,8 @@ my-presentation/
 `presentation.json` is the canonical, human- and AI-readable source of truth for presentation metadata, theme, slides, elements, explicit frames, charts, Morph identities, narration section structure, and the asset registry. Desktop saves use formatted, two-space-indented JSON with project-relative asset paths such as `assets/theater.jpg`; they do not persist image bytes, absolute machine paths, runtime URLs, editor state, export state, or narration recordings. Because the paths are relative, the whole project folder can be moved and reopened elsewhere without breaking its visual assets.
 
 New Project creates the JSON file, a concise project-specific `AGENTS.md`, and the `assets/` directory. Open Project validates the document and required assets before replacing the current presentation. Save writes `presentation.json` safely, tracks unsaved changes, and protects against silent loss when switching projects or closing the app.
+
+New Projects receive the current authoring guidance. Existing Project `AGENTS.md` files are not modified automatically; update them deliberately when their instructions need to change.
 
 Normal image editing does not require managing `assets/` by hand. Choosing an image, pasting an image onto the slide with Cmd+V—including an image copied from a web browser—or dropping an image from Finder copies or writes a PNG, JPEG, WebP, or SVG under the project's `assets/` directory, assigns a readable duplicate-safe filename, registers the asset, creates an image element, and selects it. The original external file is never retained as an absolute dependency. Deleting an image element does not automatically delete its potentially shared asset file.
 
@@ -94,4 +96,27 @@ The seeded **Small Screens, Bigger Questions** and **Chart Story Lab** presentat
 
 There is no built-in LLM/chat UI, Codex/OpenAI API integration, automatic file watching, arbitrary JSON merging, stock search, video element, music, captions, timeline, keyframes, grouping, nested components, symbol system, theme editor, plugin system, cloud backend, or collaboration. Phase 6A supplies the transparent project-folder foundation for later AI workflows; slides remain the animation timeline and narration remains the source of narrated timing.
 
-See [docs/PRESENTATION_FORMAT.md](docs/PRESENTATION_FORMAT.md) for the schema, complete example, migration mapping, validation rules, and Codex authoring recommendations.
+See [docs/PRESENTATION_FORMAT.md](docs/PRESENTATION_FORMAT.md) for the schema, complete example, migration mapping, and validation rules. See [docs/CODEX_AUTHORING.md](docs/CODEX_AUTHORING.md) for the practical Codex workflow, design recipes, prompt patterns, theme guidance, anti-patterns, and completion checklist.
+
+## Codex authoring workflow
+
+Create or open a Project in the desktop app, then give Codex its folder and a presentation request. Codex reads `AGENTS.md`, `presentation.json`, and `assets/`, plans the story, edits ordinary Slides and Elements, and validates its work. Choose **Reload Project** to load those edits, make any quick corrections, save, narrate, preview, and export MP4. See the [prompt patterns](docs/CODEX_AUTHORING.md#prompt-patterns) for creation and redesign requests.
+
+```bash
+npm run validate-project -- /path/to/project
+npm run validate-project -- /path/to/project/presentation.json --json
+npm run validate-project -- /path/to/project --strict
+```
+
+The validator runs without Electron. Errors cover invalid JSON/schema and unavailable or unsafe required assets and exit with status 1. Quality warnings cover likely readability, placement, overlap, and chart-continuity mistakes; they leave normal validation at status 0. `--strict` also exits 1 for warnings. For clean JSON on stdout without npm's command banner, run `node scripts/validate-project.mjs /path/to/project --json` or `npm run --silent validate-project -- /path/to/project --json`.
+
+## Authoring references
+
+The repository includes valid, portable Project folders under [`examples/`](examples/):
+
+- [`minimal/`](examples/minimal/) — sparse typographic slides and intentional whitespace.
+- [`playful/`](examples/playful/) — a friendly SVG illustration, arrow annotation, and a visual joke.
+- [`chart-story/`](examples/chart-story/) — a three-slide chart progression that preserves chart, datum, and Morph identities.
+- [`image-story/`](examples/image-story/) — image-led slides with project-relative SVG assets and a continued image.
+
+Use an example as a composition reference, not as a new slide type. Each one is ordinary schema v2 Slides and Elements.

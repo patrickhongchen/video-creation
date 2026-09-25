@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 2, "id": "chart-story-example", "title": "Where the minutes went", "tagline": "A chart storytelling reference project.", "aspectRatio": "9:16",
+  "theme": { "id": "dark-lime", "name": "Dark Lime", "background": "#10131b", "foreground": "#f4f1e8", "accent": "#e7ff5b", "fontFamily": "Inter, system-ui, sans-serif", "defaultHeadlineStyle": { "fontSize": 88, "fontWeight": 800, "lineHeight": 1.03 }, "defaultBodyStyle": { "fontSize": 38, "fontWeight": 400, "lineHeight": 1.3 }, "defaultCaptionStyle": { "fontSize": 25, "fontWeight": 600, "lineHeight": 1.2 }, "chartStyle": { "foreground": "#f4f1e8", "muted": "#59616d", "grid": "#303744" } },
+  "slides": [
+    { "id": "all-minutes", "title": "All categories", "duration": 5, "notes": "Let the full relationship land before calling out video.", "transition": { "type": "fade", "duration": 0.5 }, "elements": [
+      { "id": "headline-a", "type": "text", "name": "Headline", "frame": { "x": 100, "y": 140, "width": 880, "height": 240 }, "text": "Where did the free time go?", "role": "headline" },
+      { "id": "chart-a", "type": "chart", "name": "Daily minutes", "sharedElementId": "minutes-chart", "frame": { "x": 100, "y": 520, "width": 880, "height": 870 }, "chartType": "bar", "orientation": "horizontal", "chartId": "daily-minutes", "data": [{ "id": "video", "label": "Short video", "value": 96 }, { "id": "tv", "label": "TV", "value": 74 }, { "id": "games", "label": "Games", "value": 49 }, { "id": "reading", "label": "Reading", "value": 21 }], "highlightIds": [], "valueSuffix": " min", "showValues": true, "domain": { "min": 0, "max": 100 } },
+      { "id": "source-a", "type": "text", "name": "Source note", "frame": { "x": 100, "y": 1500, "width": 880, "height": 70 }, "text": "Illustrative daily minutes", "role": "caption" }
+    ] },
+    { "id": "video-minutes", "title": "Video highlight", "duration": 5, "notes": "Highlighting changes the question from all leisure to one dominant habit.", "transition": { "type": "fade", "duration": 0.5 }, "elements": [
+      { "id": "headline-b", "type": "text", "name": "Headline", "frame": { "x": 100, "y": 140, "width": 880, "height": 240 }, "text": "One habit takes the lead.", "role": "headline" },
+      { "id": "chart-b", "type": "chart", "name": "Daily minutes", "sharedElementId": "minutes-chart", "frame": { "x": 100, "y": 520, "width": 880, "height": 870 }, "chartType": "bar", "orientation": "horizontal", "chartId": "daily-minutes", "data": [{ "id": "video", "label": "Short video", "value": 96 }, { "id": "tv", "label": "TV", "value": 74 }, { "id": "games", "label": "Games", "value": 49 }, { "id": "reading", "label": "Reading", "value": 21 }], "highlightIds": ["video"], "valueSuffix": " min", "showValues": true, "domain": { "min": 0, "max": 100 } },
+      { "id": "takeaway", "type": "text", "name": "Takeaway", "frame": { "x": 100, "y": 1470, "width": 880, "height": 140 }, "text": "96 minutes is the story.", "role": "body", "fontSize": 48, "fontWeight": 700, "color": "#e7ff5b" }
+    ] },
+    { "id": "video-focus", "title": "Video focus", "duration": 4, "transition": { "type": "scale", "duration": 0.5 }, "elements": [
+      { "id": "headline-c", "type": "text", "name": "Headline", "frame": { "x": 100, "y": 160, "width": 880, "height": 240 }, "text": "That’s more than an hour and a half.", "role": "headline", "fontSize": 80 },
+      { "id": "chart-c", "type": "chart", "name": "Daily minutes", "sharedElementId": "minutes-chart", "frame": { "x": 160, "y": 650, "width": 760, "height": 500 }, "chartType": "bar", "orientation": "horizontal", "chartId": "daily-minutes", "data": [{ "id": "video", "label": "Short video", "value": 96 }, { "id": "tv", "label": "TV", "value": 74 }, { "id": "games", "label": "Games", "value": 49 }, { "id": "reading", "label": "Reading", "value": 21 }], "highlightIds": ["video"], "valueSuffix": " min", "showValues": true, "domain": { "min": 0, "max": 100 } }
+    ] }
+  ]
+}

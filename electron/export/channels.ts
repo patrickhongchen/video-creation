@@ -13,6 +13,8 @@ export const CHANNELS = {
   projectNewRequested: 'video-essay:project:new-requested',
   projectOpenRequested: 'video-essay:project:open-requested',
   projectSaveRequested: 'video-essay:project:save-requested',
+  undoRequested: 'video-essay:edit:undo-requested',
+  redoRequested: 'video-essay:edit:redo-requested',
   exportStart: 'video-essay:export:start',
   exportCancel: 'video-essay:export:cancel',
   exportProgress: 'video-essay:export:progress',

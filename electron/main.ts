@@ -144,7 +144,16 @@ function installApplicationMenu() {
         { role: 'close' },
       ],
     },
-    { role: 'editMenu' },
+    {
+      label: 'Edit',
+      submenu: [
+        { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => send(CHANNELS.undoRequested) },
+        { label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', click: () => send(CHANNELS.redoRequested) },
+        { label: 'Redo (Alternate)', accelerator: 'CmdOrCtrl+Y', click: () => send(CHANNELS.redoRequested) },
+        { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+      ],
+    },
     { role: 'viewMenu' },
     { role: 'windowMenu' },
   ]))

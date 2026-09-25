@@ -124,6 +124,8 @@ export interface VideoEssayDesktopApi {
   onProjectNewRequested: (listener: () => void) => () => void
   onProjectOpenRequested: (listener: () => void) => () => void
   onProjectSaveRequested: (listener: () => void) => () => void
+  onUndoRequested: (listener: () => void) => () => void
+  onRedoRequested: (listener: () => void) => () => void
   exportVideo: (job: DesktopExportJob) => Promise<DesktopExportResult>
   cancelExport: () => Promise<void>
   onExportProgress: (listener: (progress: DesktopExportProgress) => void) => () => void

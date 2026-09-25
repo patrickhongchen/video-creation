@@ -30,6 +30,8 @@ const CHANNELS = {
   projectNewRequested: 'video-essay:project:new-requested',
   projectOpenRequested: 'video-essay:project:open-requested',
   projectSaveRequested: 'video-essay:project:save-requested',
+  undoRequested: 'video-essay:edit:undo-requested',
+  redoRequested: 'video-essay:edit:redo-requested',
   exportStart: 'video-essay:export:start',
   exportCancel: 'video-essay:export:cancel',
   exportProgress: 'video-essay:export:progress',
@@ -68,6 +70,8 @@ const videoEssayDesktop = Object.freeze({
   onProjectNewRequested: (listener: () => void) => subscribe(CHANNELS.projectNewRequested, listener),
   onProjectOpenRequested: (listener: () => void) => subscribe(CHANNELS.projectOpenRequested, listener),
   onProjectSaveRequested: (listener: () => void) => subscribe(CHANNELS.projectSaveRequested, listener),
+  onUndoRequested: (listener: () => void) => subscribe(CHANNELS.undoRequested, listener),
+  onRedoRequested: (listener: () => void) => subscribe(CHANNELS.redoRequested, listener),
   exportVideo: (job: DesktopExportJob): Promise<DesktopExportResult> => ipcRenderer.invoke(CHANNELS.exportStart, job),
   cancelExport: (): Promise<void> => ipcRenderer.invoke(CHANNELS.exportCancel),
   onExportProgress: (listener: (progress: DesktopExportProgress) => void) =>

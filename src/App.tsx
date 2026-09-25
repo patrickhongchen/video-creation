@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
 import type { Presentation, PresentationImageMimeType, Slide, SlideElement } from './model'
 import { createBlankPresentation, createSlideFromPreset, createSlideImageElement, duplicatePresentation, duplicateSlide, duplicateSlideElement, makePresentationIdUnique, type SlidePreset } from './presentationFactories'
 import { downloadPresentation, readPresentationFile } from './presentationFiles'
@@ -12,6 +12,7 @@ import { deletePresentationTakes, deleteSectionTakes } from './narration/narrati
 import { FinalVideoStudio } from './components/FinalVideoStudio'
 import { getDesktopBridge } from './desktop/desktopBridge'
 import type { DesktopImportedAsset, DesktopProjectSnapshot } from './desktop/desktopTypes'
+import { presentationHistoryReducer } from './presentationHistory'
 
 type AppMode = 'edit' | 'present' | 'narrate' | 'final-video'
 type PendingChoice = 'save' | 'discard' | 'cancel'
@@ -56,7 +57,11 @@ function sectionIsContiguous(slideIds: string[], orderedSlideIds: string[]) {
 
 export function App() {
   const desktop = getDesktopBridge()
-  const [library, setLibrary] = useState<PresentationLibrary>(loadPresentationLibrary)
+  const [history, dispatchHistory] = useReducer(presentationHistoryReducer, undefined, () => ({ library: loadPresentationLibrary(), past: [], future: [] }))
+  const library = history.library
+  const setLibrary = useCallback((update: (library: PresentationLibrary) => PresentationLibrary) => {
+    dispatchHistory({ type: 'replace', update })
+  }, [])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [direction, setDirection] = useState<1 | -1>(1)
   const [mode, setMode] = useState<AppMode>('edit')
@@ -78,20 +83,26 @@ export function App() {
   const internalCopyIsCurrent = useRef(false)
   const unsavedResolver = useRef<((choice: PendingChoice) => void) | null>(null)
   const conflictResolver = useRef<((choice: 'reload' | 'overwrite' | 'cancel') => void) | null>(null)
+  const savedPresentation = useRef<Presentation | null>(null)
 
   const presentation = library.presentations.find((item) => item.id === library.activePresentationId) ?? library.presentations[0]
   const selectedSlide = presentation.slides[selectedIndex] ?? presentation.slides[0]
 
   const updateCurrent = useCallback((update: (current: Presentation) => Presentation) => {
-    setLibrary((current) => ({
-      ...current,
-      presentations: current.presentations.map((item) => item.id === current.activePresentationId ? update(item) : item),
-    }))
+    dispatchHistory({ type: 'edit', update })
     if (currentProject) {
       setDirty(true)
       void desktop?.setProjectDirty(currentProject.projectId, true)
     }
   }, [currentProject, desktop])
+
+  const travelHistory = useCallback((direction: 'undo' | 'redo') => {
+    const source = direction === 'undo' ? history.past : history.future
+    const restored = source[source.length - 1]
+    if (!restored) return
+    dispatchHistory({ type: direction })
+    if (currentProject) setDirty(JSON.stringify(restored) !== JSON.stringify(savedPresentation.current))
+  }, [currentProject, history.future, history.past])
 
   const updateSlide = useCallback((slide: Slide) => updateCurrent((current) => ({
     ...current,
@@ -191,6 +202,7 @@ export function App() {
   }, [])
 
   const applyProjectSnapshot = useCallback((project: DesktopProjectSnapshot, preferredSlideId?: string) => {
+    savedPresentation.current = project.presentation
     setCurrentProject(project)
     setLibrary((current) => {
       const withoutSameId = current.presentations.filter((item) => item.id !== project.presentation.id)
@@ -238,6 +250,7 @@ export function App() {
         result = await desktop.saveProject({ projectId: currentProject.projectId, presentation, overwriteExternal: true })
       }
       if (result.status !== 'saved') return false
+      savedPresentation.current = presentation
       setCurrentProject(result.project)
       setDirty(false)
       setSaveTime(new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date()))
@@ -318,9 +331,31 @@ export function App() {
   }, [createDesktopProject, currentProject, desktop, mode, openDesktopProject, presentation, saveDesktopProject])
 
   useEffect(() => {
+    if (!desktop) return
+    const handleHistoryRequest = (direction: 'undo' | 'redo') => {
+      const target = document.activeElement
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) {
+        document.execCommand(direction)
+      } else if (mode === 'edit') {
+        travelHistory(direction)
+      }
+    }
+    const unsubscribeUndo = desktop.onUndoRequested(() => handleHistoryRequest('undo'))
+    const unsubscribeRedo = desktop.onRedoRequested(() => handleHistoryRequest('redo'))
+    return () => { unsubscribeUndo(); unsubscribeRedo() }
+  }, [desktop, mode, travelHistory])
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey)) return
       const key = event.key.toLowerCase()
+      if (mode === 'edit' && (key === 'z' || key === 'y')) {
+        const target = event.target
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable)) return
+        event.preventDefault()
+        travelHistory(key === 'y' || event.shiftKey ? 'redo' : 'undo')
+        return
+      }
       if (key === 's') {
         event.preventDefault()
         if (currentProject) void saveDesktopProject()
@@ -338,7 +373,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [createDesktopProject, currentProject, desktop, mode, openDesktopProject, presentation, saveDesktopProject])
+  }, [createDesktopProject, currentProject, desktop, mode, openDesktopProject, presentation, saveDesktopProject, travelHistory])
 
   const openPresentation = (id: string) => {
     setLibrary((current) => ({ ...current, activePresentationId: id }))
@@ -430,13 +465,12 @@ export function App() {
       width,
       height,
     }
-    let nextElementId = image.id
+    const selected = selectedSlide.elements.find((element) => element.id === selectedElementId)
+    const nextElementId = action === 'replace' && selected?.type === 'image' ? selected.id : image.id
     updateCurrent((current) => {
       const slide = current.slides[selectedIndex] ?? current.slides[0]
-      const selected = slide.elements.find((element) => element.id === selectedElementId)
       let elements: SlideElement[]
       if (action === 'replace' && selected?.type === 'image') {
-        nextElementId = selected.id
         elements = slide.elements.map((element) => element.id === selected.id ? { ...selected, assetId: asset.id } : element)
       } else {
         elements = [...slide.elements, { ...image, frame }]
@@ -448,7 +482,7 @@ export function App() {
       }
     })
     setSelectedElementId(nextElementId)
-  }, [selectedElementId, selectedIndex, updateCurrent])
+  }, [selectedElementId, selectedIndex, selectedSlide.elements, updateCurrent])
 
   const chooseProjectImage = useCallback(async (action: 'add' | 'replace') => {
     if (!desktop || !currentProject) return
@@ -811,7 +845,7 @@ export function App() {
 
       <footer className="statusbar">
         <span>Slide {selectedIndex + 1} of {presentation.slides.length}</span><i /><span>{selectedSlide.title}</span><i /><span>{selectedSlide.duration}s</span>
-        <span className="status-help">Nudge <kbd>←</kbd><kbd>→</kbd> · Shift = 10px · Alt disables snap</span>
+        <span className="status-help">Nudge <kbd>←</kbd><kbd>→</kbd> · Shift = 10px · Alt disables snap · Undo <kbd>⌘Z</kbd> · Redo <kbd>⌘Y</kbd></span>
       </footer>
     </div>
   )

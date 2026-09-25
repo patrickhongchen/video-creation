@@ -32,6 +32,7 @@ interface SlideElementInspectorProps {
   onSelect: (elementId: string | null) => void
   onSlideChange: (slide: Slide) => void
   onPresentationChange: (presentation: Presentation) => void
+  onImportImage?: (action: 'add' | 'replace') => void
 }
 
 const IMAGE_MIME_TYPES = new Set<PresentationImageMimeType>(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
@@ -144,6 +145,7 @@ export function SlideElementInspector({
   onSelect,
   onSlideChange,
   onPresentationChange,
+  onImportImage,
 }: SlideElementInspectorProps) {
   const imageInput = useRef<HTMLInputElement>(null)
   const imageAction = useRef<'add' | 'replace'>('add')
@@ -180,6 +182,10 @@ export function SlideElementInspector({
   }
 
   const pickImage = (action: 'add' | 'replace') => {
+    if (onImportImage) {
+      onImportImage(action)
+      return
+    }
     imageAction.current = action
     imageInput.current?.click()
   }
@@ -225,7 +231,7 @@ export function SlideElementInspector({
         <button type="button" onClick={() => addElement({ ...createSlideShapeElement('line'), stroke: presentation.theme.accent })}>+ Line</button>
         <button type="button" onClick={() => addElement({ ...createSlideArrowElement(), stroke: presentation.theme.accent })}>+ Arrow</button>
       </div>
-      <input ref={imageInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" onChange={(event) => void acceptImage(event)} />
+      {!onImportImage && <input ref={imageInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" onChange={(event) => void acceptImage(event)} />}
       <div className="composition-view-options">
         <label><input type="checkbox" checked={grid} onChange={(event) => onGridChange(event.target.checked)} /> Grid</label>
         <label><input type="checkbox" checked={guides} onChange={(event) => onGuidesChange(event.target.checked)} /> Guides</label>

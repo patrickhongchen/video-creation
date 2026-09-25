@@ -17,6 +17,7 @@ import type {
   ThemeTextStyle,
 } from './model'
 import { migratePresentationV1ToV2 } from './presentationMigration'
+import { isSafeProjectAssetPath } from './projectAssets'
 
 export class PresentationValidationError extends Error {
   constructor(message: string) {
@@ -376,17 +377,26 @@ function imageAssets(value: unknown): PresentationImageAsset[] | undefined {
     if (!IMAGE_MIME_TYPES.includes(mimeType as PresentationImageMimeType)) {
       fail(`${path}.mimeType`, `expected one of ${IMAGE_MIME_TYPES.join(', ')}`)
     }
-    const source = string(data.source, `${path}.source`)
-    const dataUrl = /^data:([^;,]+)(?:;[^,]*)?,(.+)$/is.exec(source)
-    if (!dataUrl) fail(`${path}.source`, 'expected a non-empty data URL')
-    if (dataUrl[1].toLowerCase() !== mimeType.toLowerCase()) {
-      fail(`${path}.source`, `expected a data URL with MIME type ${mimeType}`)
+    const projectPath = data.path === undefined ? undefined : string(data.path, `${path}.path`)
+    const source = data.source === undefined ? undefined : string(data.source, `${path}.source`)
+    if (projectPath !== undefined && !isSafeProjectAssetPath(projectPath)) {
+      fail(`${path}.path`, 'expected a safe project-relative path under assets/')
     }
+    if (source !== undefined) {
+      const dataUrl = /^data:([^;,]+)(?:;[^,]*)?,(.+)$/is.exec(source)
+      const runtimeUrl = /^ves-asset:\/\//i.test(source)
+      if (!dataUrl && !runtimeUrl) fail(`${path}.source`, 'expected a non-empty data URL or managed project asset URL')
+      if (dataUrl && dataUrl[1].toLowerCase() !== mimeType.toLowerCase()) {
+        fail(`${path}.source`, `expected a data URL with MIME type ${mimeType}`)
+      }
+    }
+    if (projectPath === undefined && source === undefined) fail(path, 'expected either path or source')
     return {
       id: assetId,
       name: nonEmptyString(data.name, `${path}.name`),
       mimeType: mimeType as PresentationImageMimeType,
-      source,
+      ...(projectPath ? { path: projectPath } : {}),
+      ...(source ? { source } : {}),
     }
   })
 }

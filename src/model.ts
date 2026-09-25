@@ -170,7 +170,10 @@ export interface PresentationImageAsset {
   id: string
   name: string
   mimeType: PresentationImageMimeType
-  source: string
+  /** Canonical project-relative path, for example assets/theater.jpg. */
+  path?: string
+  /** Runtime URL or legacy browser data URL. Desktop project saves omit runtime URLs. */
+  source?: string
 }
 
 export interface NarrationSection {

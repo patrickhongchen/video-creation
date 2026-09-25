@@ -1,4 +1,18 @@
 export const CHANNELS = {
+  projectCreate: 'video-essay:project:create',
+  projectOpen: 'video-essay:project:open',
+  projectSave: 'video-essay:project:save',
+  projectReload: 'video-essay:project:reload',
+  projectReveal: 'video-essay:project:reveal',
+  projectChooseImage: 'video-essay:project:choose-image',
+  projectImportImage: 'video-essay:project:import-image',
+  projectImportRemoteImage: 'video-essay:project:import-remote-image',
+  projectImportClipboardImage: 'video-essay:project:import-clipboard-image',
+  projectSaveImageBytes: 'video-essay:project:save-image-bytes',
+  projectSetDirty: 'video-essay:project:set-dirty',
+  projectNewRequested: 'video-essay:project:new-requested',
+  projectOpenRequested: 'video-essay:project:open-requested',
+  projectSaveRequested: 'video-essay:project:save-requested',
   exportStart: 'video-essay:export:start',
   exportCancel: 'video-essay:export:cancel',
   exportProgress: 'video-essay:export:progress',
@@ -10,4 +24,3 @@ export const CHANNELS = {
   renderReady: 'video-essay:render:ready',
   renderStarted: 'video-essay:render:started',
 } as const
-

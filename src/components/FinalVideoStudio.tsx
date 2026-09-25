@@ -11,6 +11,7 @@ import type { DesktopExportProgress } from '../desktop/desktopTypes'
 import { Stage } from './Stage'
 import { CheckIcon, CloseIcon, PlayIcon } from './Icons'
 import { validatePresentation } from '../presentationValidation'
+import { decodePresentationAssets, findMissingPresentationAssets } from '../projectAssetReadiness'
 
 interface FinalVideoStudioProps {
   presentation: Presentation
@@ -61,6 +62,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
       return problem instanceof Error ? problem.message : 'The presentation contains invalid slide data.'
     }
   }, [presentation])
+  const assetIssues = useMemo(() => findMissingPresentationAssets(presentation), [presentation])
 
   useEffect(() => {
     let cancelled = false
@@ -135,7 +137,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
 
   const decodeIssueCount = Object.keys(decodeIssues).length
   const readinessIssueCount = plan.readinessIssues.length
-  const exportReady = takesStatus === 'ready' && plan.isReady && !presentationIssue
+  const exportReady = takesStatus === 'ready' && plan.isReady && !presentationIssue && assetIssues.length === 0
   const previewReady = exportReady && decodeStatus === 'ready' && decodeIssueCount === 0
   const busy = exportState === 'preparing' || exportState === 'rendering'
   const previewProgress = playback.totalDurationMs > 0
@@ -152,6 +154,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
     setExportProgress(null)
     setExportState('preparing')
     try {
+      await decodePresentationAssets(presentation)
       const sourceSegments = plan.segments.map((segment) => segment.type === 'silent-scene'
         ? { ...segment }
         : {
@@ -245,7 +248,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
             })}
           </ol>
           {plan.readiness.length === 0 && takesStatus === 'ready' ? <p className="final-notice">No narration sections. This will be a completely silent visual video.</p> : null}
-          {presentation.slides.length > 0 ? <p className={presentationIssue ? 'final-blocked-note' : 'final-notice'}><strong>{presentationIssue ? 'Slide preflight failed.' : `${presentation.slides.length} slide${presentation.slides.length === 1 ? '' : 's'} ready.`}</strong>{presentationIssue ? ` ${presentationIssue}` : ' Image assets, element frames, charts, and shared identities are valid.'}</p> : null}
+          {presentation.slides.length > 0 ? <p className={presentationIssue || assetIssues.length ? 'final-blocked-note' : 'final-notice'}><strong>{presentationIssue || assetIssues.length ? 'Slide preflight failed.' : `${presentation.slides.length} slide${presentation.slides.length === 1 ? '' : 's'} ready.`}</strong>{presentationIssue ? ` ${presentationIssue}` : assetIssues.length ? ` ${assetIssues.join(' ')}` : ' Image assets, element frames, charts, and shared identities are valid.'}</p> : null}
           {readinessIssueCount > 0 ? <p className="final-blocked-note"><strong>{readinessIssueCount} narration section{readinessIssueCount === 1 ? '' : 's'} need{readinessIssueCount === 1 ? 's' : ''} attention.</strong> Final playback and export stay blocked until every section is ready.</p> : null}
           {decodeIssueCount > 0 ? <p className="final-warning">Final Playback Preview is unavailable for selected audio that Chromium cannot decode. Desktop export will ask FFmpeg to decode the original take.</p> : null}
           <button className="final-secondary-button" onClick={onOpenNarration} disabled={busy}>Open Narration Studio</button>

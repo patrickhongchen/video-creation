@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import type { DesktopExportJob } from '../desktop/desktopTypes'
 import { resolvePlaybackVisual } from '../finalPlayback/resolvePlaybackVisual'
 import { Stage } from './Stage'
+import { decodePresentationAssets } from '../projectAssetReadiness'
 
 export function ExportRenderSurface() {
   const bridge = window.videoEssayDesktop
@@ -30,8 +31,15 @@ export function ExportRenderSurface() {
 
   useLayoutEffect(() => {
     if (!bridge || !job) return
-    const frame = requestAnimationFrame(() => bridge.renderReady(job.jobId))
-    return () => cancelAnimationFrame(frame)
+    let cancelled = false
+    let frame: number | null = null
+    void decodePresentationAssets(job.presentation).then(() => {
+      if (!cancelled) frame = requestAnimationFrame(() => bridge.renderReady(job.jobId))
+    })
+    return () => {
+      cancelled = true
+      if (frame !== null) cancelAnimationFrame(frame)
+    }
   }, [bridge, job])
 
   useEffect(() => {

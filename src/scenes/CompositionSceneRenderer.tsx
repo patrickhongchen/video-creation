@@ -180,7 +180,7 @@ function ElementContent({ element, theme, foreground, layoutNamespace, imageAsse
     }
     case 'image': {
       const asset = imageAssets?.find((candidate) => candidate.id === element.assetId)
-      return asset
+      return asset?.source
         ? <img className="composition-image" src={asset.source} alt="" draggable={false} style={{ objectFit: element.fit, objectPosition: imagePosition(element.position), transform: `scale(${element.flipX ? -1 : 1}, ${element.flipY ? -1 : 1})` }} />
         : <div className="composition-missing-asset">Missing image</div>
     }

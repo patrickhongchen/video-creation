@@ -40,6 +40,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .topbar { display: grid; grid-template-columns: minmax(250px, 1fr) auto minmax(190px, 1fr); gap: 18px; align-items: center; padding: 0 20px 0 24px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.96); z-index: 5; }
 .project-picker { display: flex; align-items: center; min-width: 0; gap: 15px; }
 .project-picker strong { font-size: 18px; letter-spacing: -.025em; white-space: nowrap; }
+.project-identity { min-width: 0; display: grid; gap: 2px; }
+.project-identity b, .project-identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-identity b { font-size: 13px; }
+.project-identity small { max-width: 330px; color: #718096; font-size: 9px; }
 .project-picker select { min-width: 0; max-width: 240px; border: 1px solid #cbd5df; border-radius: 5px; background: #fff; padding: 8px 28px 8px 10px; font-size: 13px; }
 .project-actions { display: flex; align-items: center; gap: 3px; }
 .project-actions button { border: 0; border-radius: 4px; background: transparent; padding: 7px 8px; color: #475569; font-size: 12px; }
@@ -48,6 +52,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .topbar-end { justify-self: end; display: flex; align-items: center; gap: 16px; }
 .save-state { display: flex; align-items: center; color: #627084; gap: 6px; font-size: 12px; white-space: nowrap; }
 .save-state svg { width: 16px; color: var(--ink); }
+.save-state.is-dirty { color: #9a5a13; font-weight: 700; }
 .visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; clip-path: inset(50%); }
 .error-banner { position: fixed; z-index: 10; top: 80px; left: 50%; transform: translateX(-50%); width: min(680px, calc(100vw - 32px)); display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px 10px 16px; border: 1px solid #efb5ad; border-radius: 6px; background: #fff6f4; color: #8e2f26; box-shadow: 0 5px 18px rgba(51,25,20,.12); font-size: 13px; }
 .error-banner button { display: grid; place-items: center; border: 0; background: transparent; color: inherit; }
@@ -65,6 +70,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .project-dialog-actions button { border: 1px solid #c9d3dd; border-radius: 5px; background: #fff; padding: 8px 12px; font-size: 13px; }
 .project-dialog-actions button[type="submit"] { border-color: var(--ink); background: var(--ink); color: #fff; }
 .project-dialog-actions .danger-button { border-color: #b83a30; background: #b83a30; color: #fff; }
+.project-dialog-actions .primary-button { border-color: var(--ink); background: var(--ink); color: #fff; }
 .present-button { justify-self: end; display: flex; align-items: center; gap: 8px; border: 0; border-radius: 5px; background: #111821; color: #fff; font-size: 14px; font-weight: 650; padding: 10px 20px; box-shadow: 0 2px 6px rgba(13,24,36,.15); }
 .present-button:hover { background: #26313e; }
 .present-button svg { width: 14px; }

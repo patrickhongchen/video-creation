@@ -8,6 +8,10 @@ export function desktopExportIsAvailable() {
   return getDesktopBridge() !== null
 }
 
+export function desktopProjectsAreAvailable() {
+  return getDesktopBridge() !== null
+}
+
 export async function buildDesktopExportJob(job: Omit<DesktopExportJob, 'segments'> & {
   segments: Array<
     | DesktopExportJob['segments'][number]
@@ -42,4 +46,3 @@ export async function buildDesktopExportJob(job: Omit<DesktopExportJob, 'segment
   }))
   return { ...job, segments }
 }
-

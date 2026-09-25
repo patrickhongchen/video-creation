@@ -20,6 +20,7 @@ interface InspectorProps {
   onCompositionGridChange: (value: boolean) => void
   onCompositionGuidesChange: (value: boolean) => void
   onCompositionSnapChange: (value: boolean) => void
+  onImportImage?: (action: 'add' | 'replace') => void
 }
 
 function Field({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {
@@ -28,7 +29,7 @@ function Field({ label, value, onChange, multiline = false }: { label: string; v
     : <input value={value} onChange={(event) => onChange(event.target.value)} />}</label>
 }
 
-export function Inspector({ slide, onChange, presentation, onPresentationChange, onPrevious, onNext, hasPrevious, hasNext, selectedElementId, compositionGrid, compositionGuides, compositionSnap, onSelectElement, onCompositionGridChange, onCompositionGuidesChange, onCompositionSnapChange }: InspectorProps) {
+export function Inspector({ slide, onChange, presentation, onPresentationChange, onPrevious, onNext, hasPrevious, hasNext, selectedElementId, compositionGrid, compositionGuides, compositionSnap, onSelectElement, onCompositionGridChange, onCompositionGuidesChange, onCompositionSnapChange, onImportImage }: InspectorProps) {
   const update = <K extends keyof Slide>(key: K, value: Slide[K]) => onChange({ ...slide, [key]: value })
   const updateTransition = (event: ChangeEvent<HTMLSelectElement>) => onChange({ ...slide, transition: { ...slide.transition, type: event.target.value as TransitionType } })
   const updateDuration = (value: string) => {
@@ -71,6 +72,7 @@ export function Inspector({ slide, onChange, presentation, onPresentationChange,
       onSelect={onSelectElement}
       onSlideChange={onChange}
       onPresentationChange={onPresentationChange}
+      onImportImage={onImportImage}
     />
 
     <section>

@@ -1,4 +1,4 @@
-import type { Slide, SlideChartElement, SlideEntranceAnimation } from './model'
+import type { Slide, SlideChartElement, SlideElement, SlideEntranceAnimation } from './model'
 
 export interface EntranceState {
   opacity: number
@@ -50,15 +50,52 @@ export function chartMorphKey(chart: SlideChartElement) {
   return JSON.stringify([chart.chartId, chart.chartType, chart.chartType === 'bar' ? chart.orientation ?? 'horizontal' : 'line'])
 }
 
-/** Chart IDs are assigned by default; only compatible IDs on neighboring slides can Morph. */
-export function continuingChartKeys(slides: readonly Slide[]) {
-  const keysBySlide = slides.map((slide) => new Set(slide.elements.flatMap((element) =>
-    element.type === 'chart' && element.chartId && !element.hidden ? [chartMorphKey(element)] : [])))
-  const continuing = new Set<string>()
-  for (let index = 1; index < keysBySlide.length; index += 1) {
-    for (const key of keysBySlide[index]) {
-      if (keysBySlide[index - 1].has(key)) continuing.add(key)
-    }
+/** Matches the element-kind compatibility used for shared Motion layout IDs. */
+export function morphCompatibilityKey(element: SlideElement) {
+  if (element.type === 'chart') return `${element.type}:${element.chartType}:${element.chartType === 'bar' ? element.orientation ?? 'horizontal' : 'line'}`
+  if (element.type === 'shape') return `${element.type}:${element.shape}`
+  return element.type
+}
+
+export function previousSlideFor(slides: readonly Slide[], slide: Slide): Slide | undefined {
+  const index = slides.findIndex((candidate) => candidate.id === slide.id)
+  return index > 0 ? slides[index - 1] : undefined
+}
+
+export type EntranceSuppressionReason = 'shared-element' | 'continuing-chart'
+
+/** An entrance is skipped only when this slide receives a compatible Morph identity. */
+export function entranceSuppressionReason(element: SlideElement, previousSlide?: Slide): EntranceSuppressionReason | null {
+  if (!previousSlide || element.hidden) return null
+  if (element.sharedElementId && previousSlide.elements.some((candidate) =>
+    !candidate.hidden && candidate.sharedElementId === element.sharedElementId && morphCompatibilityKey(candidate) === morphCompatibilityKey(element))) {
+    return 'shared-element'
   }
-  return continuing
+  if (element.type === 'chart' && element.chartId && previousSlide.elements.some((candidate) =>
+    candidate.type === 'chart' && !candidate.hidden && candidate.chartId && chartMorphKey(candidate) === chartMorphKey(element))) {
+    return 'continuing-chart'
+  }
+  return null
+}
+
+/** Last playable entrance on a slide, excluding hidden and incoming Morph elements. */
+export function slideEntranceEndMs(slide: Slide, previousSlide?: Slide): number | null {
+  let endMs: number | null = null
+  for (const element of slide.elements) {
+    const animation = element.animation
+    if (!animation || element.hidden || entranceSuppressionReason(element, previousSlide)) continue
+    const end = animation.delayMs + (animation.entrance === 'appear' ? 0 : animation.durationMs)
+    endMs = Math.max(endMs ?? 0, end)
+  }
+  return endMs
+}
+
+export function animationSeconds(milliseconds: number): number {
+  return milliseconds / 1000
+}
+
+/** Reject out-of-range editor input before it reaches presentation validation. */
+export function animationMilliseconds(seconds: number, maxMs: number): number | null {
+  if (!Number.isFinite(seconds) || seconds < 0 || seconds * 1000 > maxMs) return null
+  return Math.round(seconds * 1000)
 }

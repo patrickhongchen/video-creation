@@ -5,7 +5,7 @@ interface RenderSlideOptions {
   imageAssets?: PresentationImageAsset[]
   editor?: SlideEditorController
   slideElapsedMs?: number | null
-  sharedChartKeys?: ReadonlySet<string>
+  previousSlide?: Slide
   deterministicMotion?: boolean
 }
 
@@ -26,7 +26,7 @@ export function renderSlide(
     imageAssets={options.imageAssets}
     editor={options.editor}
     slideElapsedMs={options.slideElapsedMs}
-    sharedChartKeys={options.sharedChartKeys}
+    previousSlide={options.previousSlide}
     deterministicMotion={options.deterministicMotion}
   />
 }

@@ -102,7 +102,7 @@ An element may enter after its slide becomes active:
 
 `entrance` is one of `appear`, `fade`, `pop`, `slide-up`, `slide-left`, or `slide-right`. `delayMs` and `durationMs` are finite, nonnegative milliseconds; delays may be at most 60,000 ms and durations at most 10,000 ms. `appear` becomes visible at the delay, so its duration has no visual effect. The animation runs from the slide activation time in presentation, narration replay, final playback, and export. Edit mode shows the completed element so it remains selectable and editable.
 
-Element entrances are intentionally independent. They do not add narration cues, exits, keyframes, or timeline controls. Elements with `sharedElementId` (or a continuing chart `chartId`) skip their entrance during playback so Morph continuity is preserved. Apply entrances to new supporting elements instead.
+Element entrances are intentionally independent. They do not add narration cues, exits, keyframes, or timeline controls. An element with `sharedElementId` or `chartId` can play its entrance where that compatible identity first appears. On a slide immediately following a compatible instance, its entrance is skipped so the element remains visible through Morph. After a gap or incompatible representation, the entrance can play again.
 
 ## TextElement
 

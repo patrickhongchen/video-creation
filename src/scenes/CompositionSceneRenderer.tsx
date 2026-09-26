@@ -2,7 +2,7 @@ import { motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { BarChart, LineChart } from '../charts'
 import { COMPOSITION_HEIGHT, COMPOSITION_WIDTH } from '../model'
-import { FINAL_ENTRANCE_STATE, chartMorphKey, resolveEntranceState } from '../entranceAnimation'
+import { FINAL_ENTRANCE_STATE, entranceSuppressionReason, morphCompatibilityKey, resolveEntranceState } from '../entranceAnimation'
 import type {
   ElementFrame,
   PresentationImageAsset,
@@ -27,7 +27,7 @@ interface SlideRendererProps {
   imageAssets?: PresentationImageAsset[]
   editor?: SlideEditorController
   slideElapsedMs?: number | null
-  sharedChartKeys?: ReadonlySet<string>
+  previousSlide?: Slide
   deterministicMotion?: boolean
 }
 
@@ -139,12 +139,7 @@ function snapResizedFrame(frame: ElementFrame, scene: Slide, elementId: string, 
 function layoutId(element: SlideElement, namespace: string) {
   const sharedElementId = element.sharedElementId ?? (element.type === 'chart' ? element.chartId : undefined)
   if (!sharedElementId) return undefined
-  const compatibility = element.type === 'chart'
-    ? `${element.type}:${element.chartType}:${element.chartType === 'bar' ? element.orientation ?? 'horizontal' : 'line'}`
-    : element.type === 'shape'
-      ? `${element.type}:${element.shape}`
-      : element.type
-  return JSON.stringify([namespace, 'slide', compatibility, sharedElementId])
+  return JSON.stringify([namespace, 'slide', morphCompatibilityKey(element), sharedElementId])
 }
 
 function elementRenderKey(element: SlideElement) {
@@ -237,7 +232,7 @@ function elementStyle(frame: ElementFrame): CSSProperties {
 
 const noopMotionUpdate = () => undefined
 
-export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAssets, editor, slideElapsedMs = null, sharedChartKeys, deterministicMotion = false }: SlideRendererProps) {
+export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAssets, editor, slideElapsedMs = null, previousSlide, deterministicMotion = false }: SlideRendererProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<Interaction | null>(null)
   const previewFrameRef = useRef<ElementFrame | null>(null)
@@ -375,11 +370,10 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
         const frame = preview?.elementId === element.id ? preview.frame : element.frame
         const selected = editor?.selectedElementId === element.id
         const assetMissing = element.type === 'image' && !assetsById.has(element.assetId)
-        // Shared Motion identities must remain continuous through Morph transitions.
-        // Their entrance metadata is retained, but playback treats them as already visible.
-        const shared = Boolean(element.sharedElementId || (element.type === 'chart' && element.chartId && sharedChartKeys?.has(chartMorphKey(element))))
-        const entrance = resolveEntranceState(element.animation, editor || shared ? null : slideElapsedMs)
-        const animated = Boolean(element.animation && !shared && slideElapsedMs !== null && !editor)
+        // An incoming Morph identity stays visible; its first appearance may still enter.
+        const suppressEntrance = entranceSuppressionReason(element, previousSlide) !== null
+        const entrance = resolveEntranceState(element.animation, editor || suppressEntrance ? null : slideElapsedMs)
+        const animated = Boolean(element.animation && !suppressEntrance && slideElapsedMs !== null && !editor)
         const entranceStyle = entrance === FINAL_ENTRANCE_STATE ? undefined : {
           opacity: entrance.opacity,
           transform: `translate3d(${entrance.x}px, ${entrance.y}px, 0) scale(${entrance.scale})`,

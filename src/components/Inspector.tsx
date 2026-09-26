@@ -21,6 +21,10 @@ interface InspectorProps {
   onCompositionGuidesChange: (value: boolean) => void
   onCompositionSnapChange: (value: boolean) => void
   onImportImage?: (action: 'add' | 'replace') => void
+  isPreviewing: boolean
+  onPreviewSlide: () => void
+  onStopPreview: () => void
+  previewAvailable: boolean
 }
 
 function Field({ label, value, onChange, multiline = false }: { label: string; value: string; onChange: (value: string) => void; multiline?: boolean }) {
@@ -29,7 +33,7 @@ function Field({ label, value, onChange, multiline = false }: { label: string; v
     : <input value={value} onChange={(event) => onChange(event.target.value)} />}</label>
 }
 
-export function Inspector({ slide, onChange, presentation, onPresentationChange, onPrevious, onNext, hasPrevious, hasNext, selectedElementId, compositionGrid, compositionGuides, compositionSnap, onSelectElement, onCompositionGridChange, onCompositionGuidesChange, onCompositionSnapChange, onImportImage }: InspectorProps) {
+export function Inspector({ slide, onChange, presentation, onPresentationChange, onPrevious, onNext, hasPrevious, hasNext, selectedElementId, compositionGrid, compositionGuides, compositionSnap, onSelectElement, onCompositionGridChange, onCompositionGuidesChange, onCompositionSnapChange, onImportImage, isPreviewing, onPreviewSlide, onStopPreview, previewAvailable }: InspectorProps) {
   const update = <K extends keyof Slide>(key: K, value: Slide[K]) => onChange({ ...slide, [key]: value })
   const updateTransition = (event: ChangeEvent<HTMLSelectElement>) => onChange({ ...slide, transition: { ...slide.transition, type: event.target.value as TransitionType } })
   const updateDuration = (value: string) => {
@@ -73,6 +77,10 @@ export function Inspector({ slide, onChange, presentation, onPresentationChange,
       onSlideChange={onChange}
       onPresentationChange={onPresentationChange}
       onImportImage={onImportImage}
+      isPreviewing={isPreviewing}
+      onPreviewSlide={onPreviewSlide}
+      onStopPreview={onStopPreview}
+      previewAvailable={previewAvailable}
     />
 
     <section>

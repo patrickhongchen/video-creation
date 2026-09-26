@@ -4,7 +4,7 @@ import type { Variants } from 'motion/react'
 import type { PresentationImageAsset, PresentationTheme, Slide, SlideChartElement, TransitionType } from '../model'
 import { renderSlide } from '../scenes/SceneRenderers'
 import type { SlideEditorController } from '../scenes/CompositionSceneRenderer'
-import { continuingChartKeys } from '../entranceAnimation'
+import { previousSlideFor } from '../entranceAnimation'
 
 interface StageProps {
   slide: Slide
@@ -54,7 +54,7 @@ export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ sli
   const variants = transitionVariants[reduceMotion ? 'fade' : slide.transition.type]
   const duration = reduceMotion ? 0.01 : slide.transition.duration
   const namespace = `presentation-${presentationId}-${renderInstanceKey}`
-  const sharedChartKeys = useMemo(() => continuingChartKeys(slides ?? [slide]), [slides, slide])
+  const previousSlide = useMemo(() => previousSlideFor(slides ?? [slide], slide), [slides, slide])
 
   return (
     <div ref={ref} className={`stage ${className}`} aria-live="polite" aria-label={`Slide ${slideNumber} of ${slideCount}: ${slide.title}`}>
@@ -72,7 +72,7 @@ export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ sli
             onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
           >
             <div className="scene-canvas slide-canvas" style={{ background: theme.background, color: theme.foreground, fontFamily: theme.fontFamily }}>
-              {renderSlide(slide, theme, namespace, { imageAssets, editor: slideEditor, slideElapsedMs, sharedChartKeys, deterministicMotion })}
+              {renderSlide(slide, theme, namespace, { imageAssets, editor: slideEditor, slideElapsedMs, previousSlide, deterministicMotion })}
             </div>
           </motion.div>
         </AnimatePresence>

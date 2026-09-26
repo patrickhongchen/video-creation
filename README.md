@@ -57,6 +57,8 @@ Codex can edit `presentation.json` and add files under `assets/` directly. The d
 
 The Inspector shows slide metadata when no element is selected and element content/geometry when one is selected. Direct manipulation includes drag, corner resize, snapping, guides, keyboard nudge, exact frame values, opacity, rotation, duplication, deletion, visibility, locking, and z-order. Layers remain a compact escape hatch rather than the primary workflow.
 
+To edit an entrance, select an element in Edit mode, choose its entrance in the Inspector, and set the delay and duration in seconds. **Preview Slide** plays the current slide's entrances on the canvas; it can be restarted or stopped and returns to editing after the reveal. A shared element can enter where it first appears; its entrance is skipped when a compatible identity continues from the previous slide for Morph. All elements stay fully visible during normal Edit mode, regardless of their entrance delay.
+
 The element array is the authoritative back-to-front order. Hidden elements are omitted from Present mode, narration playback, final preview, and export. Editor overlays never enter the final render DOM unless editing context is explicitly supplied.
 
 ## Narration and final video

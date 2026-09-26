@@ -247,6 +247,16 @@ textarea { resize: vertical; }
 .composition-inline-actions, .composition-z-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin: 8px 0; }
 .composition-z-actions { margin-top: 5px; }
 .composition-warning { border-radius: 4px; background: #fff3d7; padding: 8px; color: #78570e; font-size: 10px; line-height: 1.4; }
+.composition-animation-controls { margin: 16px 0 14px; padding-top: 15px; border-top: 1px solid var(--soft-line); }
+.composition-animation-controls h4 { margin: 0 0 12px; color: #263544; font-size: 12px; }
+.composition-animation-controls .duration-input { grid-template-columns: minmax(0, 1fr) 47px; }
+.composition-animation-controls .duration-input input { min-width: 0; }
+.composition-animation-notice { margin: 5px 0 10px; border-radius: 4px; background: #eff5f8; padding: 8px; color: #516578; font-size: 10px; line-height: 1.4; }
+.composition-preview-actions { display: flex; gap: 6px; }
+.composition-preview-button { width: 100%; min-height: 33px; border: 1px solid #176dff; border-radius: 4px; background: #176dff; color: #fff; font-size: 11px; font-weight: 700; }
+.composition-preview-button:hover:not(:disabled) { background: #0c5de2; }
+.composition-preview-button.is-active { border-color: #ad3e35; background: #b9443a; }
+.composition-preview-button:disabled { border-color: #d6dde4; background: #edf1f4; color: #8995a3; }
 .composition-replace-image { width: 100%; margin: 0 0 12px; }
 .composition-chart-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px 28px 28px; gap: 4px; margin-bottom: 5px; }
 .composition-chart-row input:not([type="checkbox"]) { min-width: 0; width: 100%; border: 1px solid #cbd5df; border-radius: 4px; padding: 5px 6px; font-size: 10px; }

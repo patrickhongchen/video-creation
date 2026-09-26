@@ -107,9 +107,9 @@ Use a small entrance animation only when a slide needs a staged reveal within on
 }
 ```
 
-Allowed entrances are `appear`, `fade`, `pop`, `slide-up`, `slide-left`, and `slide-right`. Keep them restrained: a short 300–400 ms duration and a few deliberate delays are usually enough. `appear` is immediate at its delay. Do not add animation metadata to every element or use it to replace slide-to-slide Morph. Shared elements should generally remain continuous through Morph; animate new supporting elements instead. Animation runs during presentation, narration replay, final playback, and export, while Edit mode always shows the finished elements.
+Allowed entrances are `appear`, `fade`, `pop`, `slide-up`, `slide-left`, and `slide-right`. Keep them restrained: a short 300–400 ms duration and a few deliberate delays are usually enough. `appear` is immediate at its delay. Do not add animation metadata to every element or use it to replace slide-to-slide Morph. A shared element may enter on its first slide and then remain continuous through Morph on following slides. Animation runs during presentation, narration replay, final playback, and export, while Edit mode always shows the finished elements.
 
-For a compact staged reveal, leave the headline without `animation`, set the first supporting image to `pop` at `500ms`, the second image to `pop` at `1200ms`, and a short annotation to `fade` at `2000ms`. Each entrance can take `350ms`. `examples/image-story/presentation.json` contains a complete slide using that pattern. Elements with `sharedElementId` or a continuing chart `chartId` skip entrance playback to preserve Morph continuity.
+For a compact staged reveal, leave the headline without `animation`, set the first supporting image to `pop` at `500ms`, the second image to `pop` at `1200ms`, and a short annotation to `fade` at `2000ms`. Each entrance can take `350ms`. `examples/image-story/presentation.json` contains a complete slide using that pattern. An entrance on a shared element plays when the identity first appears and is skipped only on slides that inherit a compatible identity from the immediately previous slide.
 
 ## Prompt patterns
 

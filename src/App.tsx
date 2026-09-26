@@ -14,6 +14,7 @@ import { getDesktopBridge } from './desktop/desktopBridge'
 import type { DesktopImportedAsset, DesktopProjectExternalChange, DesktopProjectSnapshot } from './desktop/desktopTypes'
 import { presentationHistoryReducer } from './presentationHistory'
 import { canAutoApplyProjectChange, pendingChangeKind, selectionAfterProjectReload } from './projectSync'
+import { previousSlideFor, slideEntranceEndMs } from './entranceAnimation'
 
 type AppMode = 'edit' | 'present' | 'narrate' | 'final-video'
 type PendingChoice = 'save' | 'discard' | 'cancel'
@@ -99,6 +100,8 @@ export function App() {
   const [projectDialog, setProjectDialog] = useState<'new' | 'rename' | 'delete' | null>(null)
   const [projectName, setProjectName] = useState('')
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
+  const [previewRun, setPreviewRun] = useState<{ slideId: string; presentationId: string; generation: number } | null>(null)
+  const [previewElapsedMs, setPreviewElapsedMs] = useState(0)
   const [compositionGrid, setCompositionGrid] = useState(false)
   const [compositionGuides, setCompositionGuides] = useState(false)
   const [compositionSnap, setCompositionSnap] = useState(true)
@@ -115,7 +118,36 @@ export function App() {
 
   const presentation = library.presentations.find((item) => item.id === library.activePresentationId) ?? library.presentations[0]
   const selectedSlide = presentation.slides[selectedIndex] ?? presentation.slides[0]
+  const previewEndMs = slideEntranceEndMs(selectedSlide, previousSlideFor(presentation.slides, selectedSlide))
+  const isPreviewing = previewRun?.slideId === selectedSlide.id && previewRun.presentationId === presentation.id && mode === 'edit'
   selectedIndexRef.current = selectedIndex
+
+  useEffect(() => {
+    if (!isPreviewing) return
+    if (previewEndMs === null) {
+      setPreviewRun(null)
+      return
+    }
+    const startedAt = performance.now()
+    let frame = 0
+    const update = (now: number) => {
+      const elapsed = Math.max(0, now - startedAt)
+      if (elapsed >= previewEndMs + 400) {
+        setPreviewRun(null)
+        return
+      }
+      setPreviewElapsedMs(elapsed)
+      frame = requestAnimationFrame(update)
+    }
+    frame = requestAnimationFrame(update)
+    return () => cancelAnimationFrame(frame)
+  }, [isPreviewing, previewEndMs, previewRun?.generation])
+
+  const startPreview = () => {
+    if (previewEndMs === null) return
+    setPreviewElapsedMs(0)
+    setPreviewRun((previous) => ({ slideId: selectedSlide.id, presentationId: presentation.id, generation: (previous?.generation ?? 0) + 1 }))
+  }
 
   const updateCurrent = useCallback((update: (current: Presentation) => Presentation) => {
     dispatchHistory({ type: 'edit', update })
@@ -173,6 +205,10 @@ export function App() {
   useEffect(() => setSelectedElementId(null), [selectedSlide.id])
 
   useEffect(() => {
+    setPreviewRun(null)
+  }, [selectedSlide.id, presentation.id, mode])
+
+  useEffect(() => {
     if (mode !== 'present') return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'ArrowRight' || event.key === ' ') { event.preventDefault(); next() }
@@ -184,7 +220,7 @@ export function App() {
   }, [mode, next, previous])
 
   useEffect(() => {
-    if (mode !== 'edit' || !selectedElementId) return
+    if (mode !== 'edit' || isPreviewing || !selectedElementId) return
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable)) return
@@ -222,7 +258,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [mode, selectedElementId, selectedSlide, updateSlide])
+  }, [isPreviewing, mode, selectedElementId, selectedSlide, updateSlide])
 
   useEffect(() => {
     const onBlur = () => { internalCopyIsCurrent.current = false }
@@ -639,7 +675,7 @@ export function App() {
   }, [currentProject, desktop, importImageBytes, placeImportedAsset])
 
   useEffect(() => {
-    if (mode !== 'edit') return
+    if (mode !== 'edit' || isPreviewing) return
     const onPaste = (event: ClipboardEvent) => {
       const target = event.target
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable)) return
@@ -711,7 +747,7 @@ export function App() {
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
-  }, [currentProject, desktop, importClipboardImageSource, importImageBytes, mode, placeImportedAsset, selectedSlide, updateSlide])
+  }, [currentProject, desktop, importClipboardImageSource, importImageBytes, isPreviewing, mode, placeImportedAsset, selectedSlide, updateSlide])
 
   useEffect(() => {
     const preventFileNavigation = (event: DragEvent) => {
@@ -727,6 +763,7 @@ export function App() {
 
   const dropProjectImage = async (event: ReactDragEvent<HTMLElement>) => {
     event.preventDefault()
+    if (isPreviewing) return
     const file = [...event.dataTransfer.files].find((candidate) => supportedImageMime(candidate))
     if (!file || !currentProject || !desktop) {
       if (event.dataTransfer.files.length) setError('Only PNG, JPEG, WebP, and SVG images can be dropped on a slide.')
@@ -926,13 +963,15 @@ export function App() {
         <main className="canvas-workspace" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }} onDrop={(event) => void dropProjectImage(event)}>
           <Stage
             slide={selectedSlide}
+            slides={isPreviewing ? presentation.slides : undefined}
             theme={presentation.theme}
             imageAssets={presentation.imageAssets}
             presentationId={presentation.id}
             slideNumber={selectedIndex + 1}
             slideCount={presentation.slides.length}
             direction={direction}
-            slideEditor={{
+            slideElapsedMs={isPreviewing ? previewElapsedMs : null}
+            slideEditor={isPreviewing ? undefined : {
               selectedElementId,
               grid: compositionGrid,
               guides: compositionGuides,
@@ -952,6 +991,10 @@ export function App() {
           hasPrevious={selectedIndex > 0}
           hasNext={selectedIndex < presentation.slides.length - 1}
           selectedElementId={selectedElementId}
+          isPreviewing={isPreviewing}
+          previewAvailable={previewEndMs !== null}
+          onPreviewSlide={startPreview}
+          onStopPreview={() => setPreviewRun(null)}
           compositionGrid={compositionGrid}
           compositionGuides={compositionGuides}
           compositionSnap={compositionSnap}

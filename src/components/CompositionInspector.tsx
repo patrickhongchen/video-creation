@@ -6,9 +6,11 @@ import type {
   Slide,
   SlideChartElement,
   SlideElement,
+  SlideEntranceAnimationType,
   SlideImageElement,
   SlideShape,
 } from '../model'
+import { animationMilliseconds, animationSeconds, entranceSuppressionReason, previousSlideFor } from '../entranceAnimation'
 import {
   createSlideArrowElement,
   createSlideChartElement,
@@ -33,6 +35,10 @@ interface SlideElementInspectorProps {
   onSlideChange: (slide: Slide) => void
   onPresentationChange: (presentation: Presentation) => void
   onImportImage?: (action: 'add' | 'replace') => void
+  isPreviewing: boolean
+  onPreviewSlide: () => void
+  onStopPreview: () => void
+  previewAvailable: boolean
 }
 
 const IMAGE_MIME_TYPES = new Set<PresentationImageMimeType>(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
@@ -146,10 +152,15 @@ export function SlideElementInspector({
   onSlideChange,
   onPresentationChange,
   onImportImage,
+  isPreviewing,
+  onPreviewSlide,
+  onStopPreview,
+  previewAvailable,
 }: SlideElementInspectorProps) {
   const imageInput = useRef<HTMLInputElement>(null)
   const imageAction = useRef<'add' | 'replace'>('add')
   const selected = slide.elements.find((element) => element.id === selectedElementId) ?? null
+  const suppressionReason = selected && entranceSuppressionReason(selected, previousSlideFor(presentation.slides, slide))
 
   const updateElement = (element: SlideElement) => onSlideChange({
     ...slide,
@@ -219,6 +230,29 @@ export function SlideElementInspector({
     updateElement({ ...selected, frame: { ...selected.frame, [key]: next } })
   }
 
+  const updateEntrance = (entrance: SlideEntranceAnimationType | '') => {
+    if (!selected) return
+    if (!entrance) {
+      const next = { ...selected }
+      delete next.animation
+      updateElement(next)
+      return
+    }
+    updateElement({
+      ...selected,
+      animation: selected.animation
+        ? { ...selected.animation, entrance }
+        : { entrance, delayMs: 0, durationMs: entrance === 'appear' ? 0 : 350 },
+    })
+  }
+
+  const updateAnimationTiming = (key: 'delayMs' | 'durationMs', seconds: number, maxMs: number) => {
+    if (!selected?.animation) return
+    const milliseconds = animationMilliseconds(seconds, maxMs)
+    if (milliseconds === null) return
+    updateElement({ ...selected, animation: { ...selected.animation, [key]: milliseconds } })
+  }
+
   return <>
     <section className="composition-controls">
       <div className="section-heading"><h3>Elements</h3><span>1080 × 1920</span></div>
@@ -277,6 +311,27 @@ export function SlideElementInspector({
         <button type="button" onClick={() => moveSelected('back')}>Send to Back</button>
       </div>
       {(selected.frame.x + selected.frame.width < 0 || selected.frame.x > 1080 || selected.frame.y + selected.frame.height < 0 || selected.frame.y > 1920) && <p className="composition-warning">This element is completely outside the video frame.</p>}
+
+      <div className="composition-animation-controls">
+        <h4>Animation</h4>
+        <label className="field-row"><span>Entrance</span><select value={selected.animation?.entrance ?? ''} onChange={(event) => updateEntrance(event.target.value as SlideEntranceAnimationType | '')}>
+          <option value="">None</option>
+          <option value="appear">Appear</option>
+          <option value="fade">Fade</option>
+          <option value="pop">Pop</option>
+          <option value="slide-up">Slide Up</option>
+          <option value="slide-left">Slide Left</option>
+          <option value="slide-right">Slide Right</option>
+        </select></label>
+        <label className="field-row"><span>Delay</span><span className="duration-input"><input aria-label="Animation delay" type="number" min="0" max="60" step="0.1" value={animationSeconds(selected.animation?.delayMs ?? 0)} disabled={!selected.animation} onChange={(event) => updateAnimationTiming('delayMs', Number(event.target.value), 60_000)} /><small>seconds</small></span></label>
+        <label className="field-row"><span>Duration</span><span className="duration-input"><input aria-label="Animation duration" type="number" min="0" max="10" step="0.05" value={animationSeconds(selected.animation?.durationMs ?? 350)} disabled={!selected.animation || selected.animation.entrance === 'appear'} onChange={(event) => updateAnimationTiming('durationMs', Number(event.target.value), 10_000)} /><small>{selected.animation?.entrance === 'appear' ? 'instant' : 'seconds'}</small></span></label>
+        {selected.animation && suppressionReason === 'shared-element' && <p className="composition-animation-notice">This entrance is stored but will not play on this slide because its Shared ID continues from the previous slide. It can play where the element first appears.</p>}
+        {selected.animation && suppressionReason === 'continuing-chart' && <p className="composition-animation-notice">This entrance is stored but will not play on this slide because this chart continues from the previous slide. It can play where the chart first appears.</p>}
+        <div className="composition-preview-actions">
+          <button type="button" className="composition-preview-button" disabled={!previewAvailable} onClick={onPreviewSlide}>Preview Slide</button>
+          {isPreviewing && <button type="button" className="composition-preview-button is-active" onClick={onStopPreview}>Stop Preview</button>}
+        </div>
+      </div>
 
       {selected.type === 'text' && <>
         <label className="field-row"><span>Text</span><textarea rows={4} value={selected.text} onChange={(event) => updateElement({ ...selected, text: event.target.value })} /></label>

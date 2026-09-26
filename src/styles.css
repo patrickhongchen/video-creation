@@ -128,7 +128,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .scene-nav button:not(:disabled):hover { background: #f5f7f9; }
 .scene-nav svg { width: 15px; }
 
-.canvas-workspace { min-width: 0; min-height: 0; display: grid; place-items: center; padding: 22px; background: radial-gradient(circle at center, #fbfcfd 0%, #f1f5f8 74%); overflow: hidden; }
+.canvas-workspace { min-width: 0; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); justify-items: stretch; padding: 18px 22px; background: radial-gradient(circle at center, #fbfcfd 0%, #f1f5f8 74%); overflow: hidden; }
+.edit-stage-host, .canvas-workspace > .preview-stage-advance { min-width: 0; min-height: 0; display: grid; place-items: center; }
+.canvas-workspace .stage { height: min(790px, calc(100vh - 224px)); max-height: 100%; }
 .preview-stage-advance, .present-stage-advance { cursor: pointer; }
 .stage { height: min(820px, calc(100vh - 168px)); aspect-ratio: 9 / 16; position: relative; overflow: hidden; flex: none; background: #fcfbfa; box-shadow: 0 7px 25px rgba(29,43,55,.16), 0 0 0 1px rgba(44,59,69,.07); border-radius: 3px; }
 .scene-frame { position: absolute; inset: 0; overflow: hidden; }
@@ -189,13 +191,26 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .thumb-composition-element--chart { border: 0; background: linear-gradient(90deg, var(--accent) 50%, #c9d2d9 50%); }
 .thumb-composition-element--arrow { height: 2px !important; border: 0; background: var(--accent); }
 
-.inspector { overflow-y: auto; border-left: 1px solid var(--line); padding: 0 24px 24px; }
+.inspector { display: flex; flex-direction: column; overflow: hidden; border-left: 1px solid var(--line); padding: 0 24px; }
 .inspector-title { min-height: 60px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); }
+.inspector-title h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .inspector-title > div { display: flex; gap: 10px; }
 .inspector-title button { border: 0; background: transparent; color: #526174; padding: 4px; display: grid; place-items: center; }
+.inspector-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border-bottom: 1px solid var(--line); }
+.inspector-tabs button { min-width: 0; padding: 13px 3px 11px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #6b798a; font-size: 12px; font-weight: 600; cursor: pointer; }
+.inspector-tabs button:hover { color: #263544; background: #f7f9fb; }
+.inspector-tabs button.is-active { border-bottom-color: var(--blue); color: var(--blue); }
+.inspector-panel { min-height: 0; overflow-y: auto; padding-bottom: 24px; scrollbar-width: thin; }
 .inspector section { padding: 17px 0 18px; border-bottom: 1px solid var(--line); }
 .inspector section:last-child { border-bottom: 0; }
 .inspector h3 { font-size: 14px; margin: 0 0 13px; letter-spacing: -.01em; }
+.inspector-disclosure { border-bottom: 1px solid var(--line); }
+.inspector-disclosure summary { padding: 14px 0; color: #405164; font-size: 12px; font-weight: 650; cursor: pointer; }
+.inspector-disclosure-content { padding: 2px 0 12px; }
+.inspector-disclosure .field-row { grid-template-columns: 112px minmax(0, 1fr); }
+.inspector-disclosure .duration-input { grid-template-columns: minmax(0, 1fr) 44px; }
+.inspector-disclosure .duration-input input { min-width: 0; }
+.inspector-empty { padding: 24px 0; color: #718096; font-size: 13px; }
 .field-row { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: start; margin: 0 0 11px; gap: 10px; }
 .field-row > span:first-child { color: #617086; font-size: 12px; padding-top: 8px; }
 .field-row input, .field-row textarea, .field-row select, .transition-row select, .transition-row input, .notes-section textarea { width: 100%; border: 1px solid #cbd5df; border-radius: 4px; background: #fff; font-size: 12px; line-height: 1.35; padding: 7px 9px; transition: border-color .15s, box-shadow .15s; }
@@ -264,6 +279,30 @@ textarea { resize: vertical; }
 .composition-chart-row input:not([type="checkbox"]) { min-width: 0; width: 100%; border: 1px solid #cbd5df; border-radius: 4px; padding: 5px 6px; font-size: 10px; }
 .composition-chart-row label { display: grid; place-items: center; }
 .composition-chart-row button { border: 1px solid #d3dbe3; border-radius: 3px; background: #fff; color: #a33c34; }
+.canvas-toolbar { width: min(100%, 640px); justify-self: center; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 12px; padding: 6px; border: 1px solid #d8e0e8; border-radius: 7px; background: rgba(255,255,255,.96); box-shadow: 0 2px 9px rgba(28,46,65,.07); }
+.canvas-toolbar-group { width: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.canvas-toolbar-group > .canvas-toolbar-menu:nth-of-type(2) { margin-left: auto; }
+.canvas-toolbar button, .canvas-toolbar summary { min-height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; padding: 5px 9px; color: #3f5063; font-size: 12px; font-weight: 600; cursor: pointer; }
+.canvas-toolbar button:hover, .canvas-toolbar summary:hover { background: #edf3f8; }
+.canvas-toolbar-menu { position: relative; }
+.canvas-toolbar-menu summary { list-style: none; }
+.canvas-toolbar-menu summary::-webkit-details-marker { display: none; }
+.canvas-toolbar-menu[open] > summary { background: #eaf2ff; color: #176dff; }
+.canvas-toolbar-menu-content { position: absolute; z-index: 30; top: calc(100% + 6px); right: 0; min-width: 150px; display: grid; gap: 2px; border: 1px solid #d4dde7; border-radius: 6px; background: #fff; padding: 5px; box-shadow: 0 12px 28px rgba(26,42,59,.18); }
+.canvas-toolbar-menu-content button, .canvas-toolbar-menu-content label { width: 100%; justify-content: flex-start; white-space: nowrap; }
+.canvas-toolbar-menu-content label { display: flex; align-items: center; gap: 8px; min-height: 29px; padding: 4px 8px; color: #405164; font-size: 12px; cursor: pointer; }
+.canvas-toolbar-menu-content label:hover { background: #f3f6f8; }
+.canvas-toolbar-menu-content input[type="color"] { width: 31px; height: 26px; padding: 2px; border: 1px solid #cbd5df; border-radius: 4px; }
+.canvas-toolbar-spacer { flex: 1 1 auto; }
+.composition-type-controls > .composition-number-field { margin-bottom: 11px; }
+.composition-inspector-details { display: block; padding: 0 0 8px; }
+.composition-inspector-details .composition-number-field { margin-bottom: 9px; }
+.composition-inspector-details > button { border: 1px solid #cbd5df; border-radius: 4px; background: #fff; padding: 6px 9px; color: #405164; font-size: 11px; }
+.selected-element-controls .composition-inline-actions { display: flex; flex-wrap: wrap; gap: 5px; margin: 14px 0 3px; }
+.selected-element-controls .composition-inline-actions button { flex: 1 1 auto; padding: 0 9px; }
+.composition-layers .section-heading { align-items: baseline; gap: 8px; }
+.composition-layers .section-heading h3 { margin-right: auto; }
+.composition-layers .section-heading select { max-width: 140px; border: 1px solid #cbd5df; border-radius: 4px; background: #fff; padding: 4px; color: #405164; font-size: 11px; }
 
 .statusbar { display: flex; align-items: center; gap: 16px; border-top: 1px solid var(--line); padding: 0 28px; color: #56657a; font-size: 12px; background: #fff; }
 .statusbar > i { width: 1px; height: 16px; background: var(--line); }
@@ -448,8 +487,8 @@ kbd { min-width: 21px; height: 21px; display: inline-grid; place-items: center; 
   .workspace { grid-template-columns: 190px minmax(0, 1fr); grid-template-rows: minmax(650px, calc(100vh - 106px)) auto; }
   .canvas-workspace { padding: 16px; }
   .stage { height: min(75vh, 720px); max-width: 100%; }
-  .inspector { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; overflow: visible; }
-  .inspector-title { grid-column: 1 / -1; }
+  .inspector { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+  .inspector-panel { max-height: none; overflow: visible; }
   .status-help { display: none; }
 }
 
@@ -460,7 +499,7 @@ kbd { min-width: 21px; height: 21px; display: inline-grid; place-items: center; 
   .canvas-workspace { order: 0; min-height: 610px; }
   .stage { height: min(570px, calc(100vw * 1.77)); }
   .scene-sidebar { order: 1; border: 0; border-top: 1px solid var(--line); max-height: 460px; }
-  .inspector { order: 2; display: block; }
+  .inspector { order: 2; }
   .scene-list { max-height: 330px; }
   .statusbar { padding: 0 16px; }
 }

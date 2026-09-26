@@ -6,6 +6,7 @@ import { loadPresentationLibrary, savePresentationLibrary, type PresentationLibr
 import { Stage } from './components/Stage'
 import { SlideList } from './components/SceneList'
 import { Inspector } from './components/Inspector'
+import { CanvasToolbar } from './components/CompositionInspector'
 import { CheckIcon, CloseIcon, PlayIcon } from './components/Icons'
 import { NarrationStudio } from './components/NarrationStudio'
 import { deletePresentationTakes, deleteSectionTakes } from './narration/narrationDb'
@@ -969,6 +970,20 @@ export function App() {
       <div className="workspace">
         <SlideList presentation={presentation} selectedIndex={selectedIndex} onSelect={selectSlide} onPrevious={previous} onNext={next} onAdd={addSlide} onDuplicate={copySlide} onDelete={deleteSlide} onMove={moveSlide} />
         <main className="canvas-workspace" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }} onDrop={(event) => void dropProjectImage(event)}>
+          <CanvasToolbar
+            slide={selectedSlide}
+            presentation={presentation}
+            onSelect={setSelectedElementId}
+            onSlideChange={updateSlide}
+            onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)}
+            onImportImage={currentProject ? chooseProjectImage : undefined}
+            grid={compositionGrid}
+            guides={compositionGuides}
+            snap={compositionSnap}
+            onGridChange={setCompositionGrid}
+            onGuidesChange={setCompositionGuides}
+            onSnapChange={setCompositionSnap}
+          />
           <div className={isPreviewing ? 'preview-stage-advance' : 'edit-stage-host'} onClick={isPreviewing ? advanceReveal : undefined}>
           <Stage
             slide={selectedSlide}
@@ -1008,19 +1023,13 @@ export function App() {
           onNextReveal={advanceReveal}
           onPreviewSlide={startPreview}
           onStopPreview={() => setPreviewRun(null)}
-          compositionGrid={compositionGrid}
-          compositionGuides={compositionGuides}
-          compositionSnap={compositionSnap}
           onSelectElement={setSelectedElementId}
-          onCompositionGridChange={setCompositionGrid}
-          onCompositionGuidesChange={setCompositionGuides}
-          onCompositionSnapChange={setCompositionSnap}
           onImportImage={currentProject ? chooseProjectImage : undefined}
         />
       </div>
 
       <footer className="statusbar">
-        <span>Slide {selectedIndex + 1} of {presentation.slides.length}</span><i /><span>{selectedSlide.title}</span><i /><span>{selectedSlide.duration}s</span>
+        <span>Slide {selectedIndex + 1} of {presentation.slides.length}</span><i /><span>{selectedSlide.title}</span>
         <span className="status-help">Nudge <kbd>←</kbd><kbd>→</kbd> · Shift = 10px · Alt disables snap · Undo <kbd>⌘Z</kbd> · Redo <kbd>⌘Y</kbd></span>
       </footer>
     </div>

@@ -21,7 +21,7 @@ import {
   duplicateSlideElement,
 } from '../presentationFactories'
 
-interface SlideElementInspectorProps {
+export interface CompositionEditorProps {
   slide: Slide
   presentation: Presentation
   selectedElementId: string | null
@@ -45,6 +45,11 @@ interface SlideElementInspectorProps {
 }
 
 const IMAGE_MIME_TYPES = new Set<PresentationImageMimeType>(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
+
+type LayersPanelProps = Pick<CompositionEditorProps, 'slide' | 'selectedElementId' | 'onSelect' | 'onSlideChange'>
+type CanvasToolbarProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 'grid' | 'guides' | 'snap' | 'onGridChange' | 'onGuidesChange' | 'onSnapChange' | 'onSelect' | 'onSlideChange' | 'onPresentationChange' | 'onImportImage'>
+type ElementInspectorProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 'selectedElementId' | 'onSelect' | 'onSlideChange' | 'onPresentationChange' | 'onImportImage'>
+type AnimationInspectorProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 'selectedElementId' | 'onSlideChange' | 'isPreviewing' | 'onPreviewSlide' | 'onStopPreview' | 'previewAvailable' | 'revealCount' | 'revealedCount' | 'onNextReveal'>
 
 function imageMimeType(file: File): PresentationImageMimeType | null {
   const declared = file.type === 'image/jpg' ? 'image/jpeg' : file.type
@@ -141,10 +146,9 @@ function chartEditor(element: SlideChartElement, update: (next: SlideChartElemen
   </>
 }
 
-export function SlideElementInspector({
+export function CanvasToolbar({
   slide,
   presentation,
-  selectedElementId,
   grid,
   guides,
   snap,
@@ -155,55 +159,22 @@ export function SlideElementInspector({
   onSlideChange,
   onPresentationChange,
   onImportImage,
-  isPreviewing,
-  onPreviewSlide,
-  onStopPreview,
-  previewAvailable,
-  revealCount,
-  revealedCount,
-  onNextReveal,
-}: SlideElementInspectorProps) {
+}: CanvasToolbarProps) {
   const imageInput = useRef<HTMLInputElement>(null)
-  const imageAction = useRef<'add' | 'replace'>('add')
-  const selected = slide.elements.find((element) => element.id === selectedElementId) ?? null
-  const suppressionReason = selected && entranceSuppressionReason(selected, previousSlideFor(presentation.slides, slide))
-
-  const updateElement = (element: SlideElement) => onSlideChange({
-    ...slide,
-    elements: slide.elements.map((candidate) => candidate.id === element.id ? element : candidate),
-  })
+  const shapeMenu = useRef<HTMLDetailsElement>(null)
   const addElement = (element: SlideElement) => {
     onSlideChange({ ...slide, elements: [...slide.elements, element] })
     onSelect(element.id)
   }
-  const removeSelected = () => {
-    if (!selected) return
-    onSlideChange({ ...slide, elements: slide.elements.filter((element) => element.id !== selected.id) })
-    onSelect(null)
+  const addShape = (element: SlideElement) => {
+    addElement(element)
+    if (shapeMenu.current) shapeMenu.current.open = false
   }
-  const duplicateSelected = () => {
-    if (!selected) return
-    addElement(duplicateSlideElement(selected))
-  }
-  const moveSelected = (action: 'forward' | 'backward' | 'front' | 'back') => {
-    if (!selected) return
-    const elements = [...slide.elements]
-    const index = elements.findIndex((element) => element.id === selected.id)
-    const [element] = elements.splice(index, 1)
-    const target = action === 'front' ? elements.length
-      : action === 'back' ? 0
-        : action === 'forward' ? Math.min(elements.length, index + 1)
-          : Math.max(0, index - 1)
-    elements.splice(target, 0, element)
-    onSlideChange({ ...slide, elements })
-  }
-
-  const pickImage = (action: 'add' | 'replace') => {
+  const pickImage = () => {
     if (onImportImage) {
-      onImportImage(action)
+      onImportImage('add')
       return
     }
-    imageAction.current = action
     imageInput.current?.click()
   }
   const acceptImage = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -215,16 +186,105 @@ export function SlideElementInspector({
     const source = (await readImage(file)).replace(/^data:[^;,]*/i, `data:${mimeType}`)
     const asset = { id: createStableId(file.name.replace(/\.[^.]+$/, '') || 'image'), name: file.name, mimeType, source }
     onPresentationChange({ ...presentation, imageAssets: [...(presentation.imageAssets ?? []), asset] })
-    if (imageAction.current === 'replace' && selected?.type === 'image') updateElement({ ...selected, assetId: asset.id })
-    else {
-      const ratio = await readImageRatio(source)
-      const element = createSlideImageElement(asset.id)
-      const width = Math.round(ratio >= 1 ? 700 : 700 * ratio)
-      const height = Math.round(ratio >= 1 ? 700 / ratio : 700)
-      addElement({ ...element, frame: { ...element.frame, x: (1080 - width) / 2, y: (1920 - height) / 2, width, height } })
-    }
+    const ratio = await readImageRatio(source)
+    const element = createSlideImageElement(asset.id)
+    const width = Math.round(ratio >= 1 ? 700 : 700 * ratio)
+    const height = Math.round(ratio >= 1 ? 700 / ratio : 700)
+    addElement({ ...element, frame: { ...element.frame, x: (1080 - width) / 2, y: (1920 - height) / 2, width, height } })
   }
 
+  return <div className="canvas-toolbar" aria-label="Canvas tools">
+    <div className="composition-toolbar-actions canvas-toolbar-group">
+      <button type="button" onClick={() => addElement(createSlideTextElement())}>+ Text</button>
+      <button type="button" onClick={pickImage}>+ Image</button>
+      <button type="button" onClick={() => addElement(createSlideChartElement())}>+ Chart</button>
+      <details ref={shapeMenu} name="canvas-tools" className="composition-toolbar-menu canvas-toolbar-menu">
+        <summary>+ Shape</summary>
+        <div className="composition-toolbar-menu-content canvas-toolbar-menu-content">
+          <button type="button" aria-label="Add rectangle" onClick={() => addShape({ ...createSlideShapeElement('rectangle'), fill: presentation.theme.accent })}>Rectangle</button>
+          <button type="button" aria-label="Add circle" onClick={() => addShape({ ...createSlideShapeElement('circle'), fill: presentation.theme.accent })}>Circle</button>
+          <button type="button" aria-label="Add line" onClick={() => addShape({ ...createSlideShapeElement('line'), stroke: presentation.theme.accent })}>Line</button>
+          <button type="button" aria-label="Add arrow" onClick={() => addShape({ ...createSlideArrowElement(), stroke: presentation.theme.accent })}>Arrow</button>
+        </div>
+      </details>
+      <details name="canvas-tools" className="composition-toolbar-menu canvas-toolbar-menu">
+        <summary>View</summary>
+        <div className="composition-toolbar-menu-content canvas-toolbar-menu-content">
+          <label><input aria-label="Snap" type="checkbox" checked={snap} onChange={(event) => onSnapChange(event.target.checked)} /> Snap</label>
+          <label><input aria-label="Guides" type="checkbox" checked={guides} onChange={(event) => onGuidesChange(event.target.checked)} /> Guides</label>
+          <label><input aria-label="Grid" type="checkbox" checked={grid} onChange={(event) => onGridChange(event.target.checked)} /> Grid</label>
+        </div>
+      </details>
+      <details name="canvas-tools" className="composition-toolbar-menu composition-style-menu canvas-toolbar-menu">
+        <summary>Style</summary>
+        <div className="canvas-toolbar-menu-content"><label><span>Accent</span><input aria-label="Presentation accent" type="color" value={presentation.theme.accent} onChange={(event) => onPresentationChange({ ...presentation, theme: { ...presentation.theme, accent: event.target.value } })} /></label></div>
+      </details>
+    </div>
+    {!onImportImage && <input ref={imageInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" onChange={(event) => void acceptImage(event)} />}
+  </div>
+}
+
+export function LayersPanel({ slide, selectedElementId, onSelect, onSlideChange }: LayersPanelProps) {
+  const updateElement = (element: SlideElement) => onSlideChange({
+    ...slide,
+    elements: slide.elements.map((candidate) => candidate.id === element.id ? element : candidate),
+  })
+  const moveSelected = (action: 'forward' | 'backward' | 'front' | 'back') => {
+    if (!selectedElementId) return
+    const elements = [...slide.elements]
+    const index = elements.findIndex((element) => element.id === selectedElementId)
+    if (index < 0) return
+    const [element] = elements.splice(index, 1)
+    const target = action === 'front' ? elements.length
+      : action === 'back' ? 0
+        : action === 'forward' ? Math.min(elements.length, index + 1)
+          : Math.max(0, index - 1)
+    elements.splice(target, 0, element)
+    onSlideChange({ ...slide, elements })
+  }
+
+  return <section className="composition-layers">
+    <div className="section-heading">
+      <h3>Layers</h3>
+      <span>{slide.elements.length}</span>
+      {selectedElementId && <select aria-label="Layer order" value="" onChange={(event) => {
+        if (event.target.value) moveSelected(event.target.value as 'forward' | 'backward' | 'front' | 'back')
+      }}>
+        <option value="">Arrange…</option>
+        <option value="forward">Bring Forward</option>
+        <option value="backward">Send Backward</option>
+        <option value="front">Bring to Front</option>
+        <option value="back">Send to Back</option>
+      </select>}
+    </div>
+    {slide.elements.length === 0 && <p className="composition-empty">This blank slide has no elements yet.</p>}
+    {slide.elements.length > 0 && <p className="composition-help">Layers are listed from front to back.</p>}
+    <div className="composition-layer-list">
+      {[...slide.elements].reverse().map((element) => <div className={`composition-layer-row${element.id === selectedElementId ? ' is-selected' : ''}`} key={element.id} onClick={() => onSelect(element.id)}>
+        <input className="composition-layer-select" aria-label={`Layer name for ${element.name}`} value={element.name} onFocus={() => onSelect(element.id)} onChange={(event) => updateElement({ ...element, name: event.target.value })} onBlur={() => { if (!element.name.trim()) updateElement({ ...element, name: fallbackName(element) }) }} />
+        <button type="button" title={element.hidden ? 'Show layer' : 'Hide layer'} onClick={(event) => { event.stopPropagation(); updateElement({ ...element, hidden: !element.hidden }) }}>{element.hidden ? '○' : '●'}</button>
+        <button type="button" title={element.locked ? 'Unlock layer' : 'Lock layer'} onClick={(event) => { event.stopPropagation(); updateElement({ ...element, locked: !element.locked }) }}>{element.locked ? '🔒' : '◇'}</button>
+      </div>
+      )}
+    </div>
+  </section>
+}
+
+export function ElementInspector({
+  slide,
+  presentation,
+  selectedElementId,
+  onSelect,
+  onSlideChange,
+  onPresentationChange,
+  onImportImage,
+}: ElementInspectorProps) {
+  const imageInput = useRef<HTMLInputElement>(null)
+  const selected = slide.elements.find((element) => element.id === selectedElementId) ?? null
+  const updateElement = (element: SlideElement) => onSlideChange({
+    ...slide,
+    elements: slide.elements.map((candidate) => candidate.id === element.id ? element : candidate),
+  })
   const updateFrame = (key: keyof ElementFrame, value: number) => {
     if (!selected) return
     const minimum = minimumSize(selected)
@@ -235,118 +295,51 @@ export function SlideElementInspector({
     if (key === 'opacity') next = Math.max(0, Math.min(1, value))
     updateElement({ ...selected, frame: { ...selected.frame, [key]: next } })
   }
-
-  const updateEntrance = (entrance: SlideEntranceAnimationType | '') => {
+  const removeSelected = () => {
     if (!selected) return
-    if (!entrance) {
-      const next = { ...selected }
-      delete next.animation
-      updateElement(next)
+    onSlideChange({ ...slide, elements: slide.elements.filter((element) => element.id !== selected.id) })
+    onSelect(null)
+  }
+  const duplicateSelected = () => {
+    if (!selected) return
+    const duplicate = duplicateSlideElement(selected)
+    onSlideChange({ ...slide, elements: [...slide.elements, duplicate] })
+    onSelect(duplicate.id)
+  }
+  const pickReplacement = () => {
+    if (onImportImage) {
+      onImportImage('replace')
       return
     }
-    updateElement({
-      ...selected,
-      animation: selected.animation
-        ? { ...selected.animation, entrance }
-        : { entrance, order: Math.max(0, ...slide.elements.map((element) => element.animation?.order ?? 0)) + 1 },
-    })
+    imageInput.current?.click()
+  }
+  const acceptReplacement = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || selected?.type !== 'image') return
+    const mimeType = imageMimeType(file)
+    if (!mimeType) return
+    const source = (await readImage(file)).replace(/^data:[^;,]*/i, `data:${mimeType}`)
+    const asset = { id: createStableId(file.name.replace(/\.[^.]+$/, '') || 'image'), name: file.name, mimeType, source }
+    onPresentationChange({ ...presentation, imageAssets: [...(presentation.imageAssets ?? []), asset] })
+    updateElement({ ...selected, assetId: asset.id })
   }
 
-  const updateAnimationOrder = (order: number) => {
-    if (!selected?.animation) return
-    if (!Number.isSafeInteger(order) || order < 1) return
-    updateElement({ ...selected, animation: { ...selected.animation, order } })
-  }
+  if (!selected) return <section className="selected-element-controls"><div className="section-heading"><h3>Element</h3></div><p className="composition-empty">Select an element on the canvas or in Layers to edit it.</p></section>
 
-  return <>
-    <section className="composition-controls">
-      <div className="section-heading"><h3>Elements</h3><span>1080 × 1920</span></div>
-      <div className="composition-add-grid">
-        <button type="button" onClick={() => addElement(createSlideTextElement())}>+ Text</button>
-        <button type="button" onClick={() => pickImage('add')}>+ Image</button>
-        <button type="button" onClick={() => addElement(createSlideChartElement())}>+ Chart</button>
-        <button type="button" onClick={() => addElement({ ...createSlideShapeElement('rectangle'), fill: presentation.theme.accent })}>+ Rectangle</button>
-        <button type="button" onClick={() => addElement({ ...createSlideShapeElement('circle'), fill: presentation.theme.accent })}>+ Circle</button>
-        <button type="button" onClick={() => addElement({ ...createSlideShapeElement('line'), stroke: presentation.theme.accent })}>+ Line</button>
-        <button type="button" onClick={() => addElement({ ...createSlideArrowElement(), stroke: presentation.theme.accent })}>+ Arrow</button>
-      </div>
-      {!onImportImage && <input ref={imageInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" onChange={(event) => void acceptImage(event)} />}
-      <div className="composition-view-options">
-        <label><input type="checkbox" checked={grid} onChange={(event) => onGridChange(event.target.checked)} /> Grid</label>
-        <label><input type="checkbox" checked={guides} onChange={(event) => onGuidesChange(event.target.checked)} /> Guides</label>
-        <label><input type="checkbox" checked={snap} onChange={(event) => onSnapChange(event.target.checked)} /> Snap</label>
-      </div>
-      <p className="composition-help">Drag to position. Resize from corners. Hold Option/Alt to disable snapping; Shift-resize an image to unlock its aspect ratio.</p>
-    </section>
-
-    <section className="composition-layers">
-      <div className="section-heading"><h3>Layers</h3><span>{slide.elements.length}</span></div>
-      {slide.elements.length === 0 && <p className="composition-empty">This blank slide has no elements yet.</p>}
-      <div className="composition-layer-list">
-        {[...slide.elements].reverse().map((element) => <div className={`composition-layer-row${element.id === selectedElementId ? ' is-selected' : ''}`} key={element.id}>
-          <input className="composition-layer-select" aria-label={`Layer name for ${element.name}`} value={element.name} onFocus={() => onSelect(element.id)} onChange={(event) => updateElement({ ...element, name: event.target.value })} onBlur={() => { if (!element.name.trim()) updateElement({ ...element, name: fallbackName(element) }) }} />
-          <button type="button" title={element.hidden ? 'Show layer' : 'Hide layer'} onClick={() => updateElement({ ...element, hidden: !element.hidden })}>{element.hidden ? '○' : '●'}</button>
-          <button type="button" title={element.locked ? 'Unlock layer' : 'Lock layer'} onClick={() => updateElement({ ...element, locked: !element.locked })}>{element.locked ? '🔒' : '◇'}</button>
-        </div>)}
-      </div>
-    </section>
-
-    {selected && <section className="selected-element-controls">
-      <div className="section-heading"><h3>Selected Element</h3><span>{selected.type}</span></div>
-      <label className="field-row"><span>Name</span><input value={selected.name} onChange={(event) => updateElement({ ...selected, name: event.target.value })} onBlur={() => { if (!selected.name.trim()) updateElement({ ...selected, name: fallbackName(selected) }) }} /></label>
-      <label className="field-row"><span>Shared ID</span><input value={selected.sharedElementId ?? ''} placeholder="Optional Morph identity" onChange={(event) => updateElement({ ...selected, sharedElementId: event.target.value.trim() || undefined })} /></label>
-      <div className="composition-transform-grid">
-        <Numeric label="X" value={selected.frame.x} onChange={(value) => updateFrame('x', value)} />
-        <Numeric label="Y" value={selected.frame.y} onChange={(value) => updateFrame('y', value)} />
-        <Numeric label="W" value={selected.frame.width} min={minimumSize(selected).width} onChange={(value) => updateFrame('width', value)} />
-        <Numeric label="H" value={selected.frame.height} min={minimumSize(selected).height} onChange={(value) => updateFrame('height', value)} />
-        <Numeric label="Rotation" value={selected.frame.rotation ?? 0} step={1} onChange={(value) => updateFrame('rotation', value)} />
-        <Numeric label="Opacity %" value={Math.round((selected.frame.opacity ?? 1) * 100)} min={0} max={100} onChange={(value) => updateFrame('opacity', value / 100)} />
-      </div>
-      <div className="composition-inline-actions">
-        <button type="button" onClick={() => updateElement({ ...selected, frame: { ...selected.frame, x: (1080 - selected.frame.width) / 2, y: (1920 - selected.frame.height) / 2 } })}>Center</button>
-        <button type="button" onClick={() => updateElement({ ...selected, locked: !selected.locked })}>{selected.locked ? 'Unlock' : 'Lock'}</button>
-        <button type="button" onClick={duplicateSelected}>Duplicate</button>
-        <button type="button" onClick={removeSelected}>Delete</button>
-      </div>
-      <div className="composition-z-actions">
-        <button type="button" onClick={() => moveSelected('forward')}>Bring Forward</button>
-        <button type="button" onClick={() => moveSelected('backward')}>Send Backward</button>
-        <button type="button" onClick={() => moveSelected('front')}>Bring to Front</button>
-        <button type="button" onClick={() => moveSelected('back')}>Send to Back</button>
-      </div>
-      {(selected.frame.x + selected.frame.width < 0 || selected.frame.x > 1080 || selected.frame.y + selected.frame.height < 0 || selected.frame.y > 1920) && <p className="composition-warning">This element is completely outside the video frame.</p>}
-
-      <div className="composition-animation-controls">
-        <h4>Animation</h4>
-        <label className="field-row"><span>Entrance</span><select value={selected.animation?.entrance ?? ''} onChange={(event) => updateEntrance(event.target.value as SlideEntranceAnimationType | '')}>
-          <option value="">None</option>
-          <option value="appear">Appear</option>
-          <option value="fade">Fade</option>
-          <option value="pop">Pop</option>
-          <option value="slide-up">Slide Up</option>
-          <option value="slide-left">Slide Left</option>
-          <option value="slide-right">Slide Right</option>
-        </select></label>
-        <label className="field-row"><span>Reveal Step</span><input aria-label="Reveal Step" type="number" min="1" step="1" value={selected.animation?.order ?? 1} disabled={!selected.animation} onChange={(event) => updateAnimationOrder(Number(event.target.value))} /></label>
-        {selected.animation && suppressionReason === 'shared-element' && <p className="composition-animation-notice">This entrance is stored but will not play on this slide because its Shared ID continues from the previous slide. It can play where the element first appears.</p>}
-        {selected.animation && suppressionReason === 'continuing-chart' && <p className="composition-animation-notice">This entrance is stored but will not play on this slide because this chart continues from the previous slide. It can play where the chart first appears.</p>}
-        <div className="composition-preview-actions">
-          <button type="button" className="composition-preview-button" disabled={!previewAvailable || isPreviewing} onClick={onPreviewSlide}>{isPreviewing ? 'Previewing' : 'Preview Slide'}</button>
-          {isPreviewing && <><span role="status">Reveal {revealedCount} / {revealCount}</span><button type="button" className="composition-preview-button" onClick={onNextReveal}>{revealedCount < revealCount ? 'Next Reveal' : 'Finish Preview'}</button><button type="button" className="composition-preview-button is-active" onClick={onStopPreview}>Stop Preview</button></>}
-        </div>
-      </div>
-
+  return <section className="selected-element-controls">
+    <div className="section-heading"><h3>Element</h3><span>{selected.type}</span></div>
+    <div className="composition-type-controls">
       {selected.type === 'text' && <>
         <label className="field-row"><span>Text</span><textarea rows={4} value={selected.text} onChange={(event) => updateElement({ ...selected, text: event.target.value })} /></label>
         <label className="field-row"><span>Role</span><select value={selected.role ?? 'body'} onChange={(event) => updateElement({ ...selected, role: event.target.value as typeof selected.role })}><option value="headline">Headline</option><option value="body">Body</option><option value="caption">Caption</option><option value="label">Label</option></select></label>
         <Numeric label="Font size" value={selected.fontSize ?? (selected.role === 'headline' ? presentation.theme.defaultHeadlineStyle.fontSize : selected.role === 'caption' ? presentation.theme.defaultCaptionStyle.fontSize : selected.role === 'label' ? (presentation.theme.defaultLabelStyle ?? presentation.theme.defaultBodyStyle).fontSize : presentation.theme.defaultBodyStyle.fontSize)} min={1} max={512} onChange={(fontSize) => updateElement({ ...selected, fontSize })} />
         <Numeric label="Font weight" value={selected.fontWeight ?? 500} min={100} max={900} step={100} onChange={(fontWeight) => updateElement({ ...selected, fontWeight })} />
-        <Numeric label="Line height" value={selected.lineHeight ?? 1.1} min={0.5} max={3} step={0.05} onChange={(lineHeight) => updateElement({ ...selected, lineHeight })} />
         <label className="field-row"><span>Align</span><select value={selected.textAlign ?? 'left'} onChange={(event) => updateElement({ ...selected, textAlign: event.target.value as typeof selected.textAlign })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
       </>}
       {selected.type === 'image' && <>
-        <button type="button" className="composition-replace-image" onClick={() => pickImage('replace')}>Replace Image</button>
+        <button type="button" className="composition-replace-image" onClick={pickReplacement}>Replace Image</button>
+        {!onImportImage && <input ref={imageInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" onChange={(event) => void acceptReplacement(event)} />}
         <label className="field-row"><span>Fit</span><select value={selected.fit} onChange={(event) => updateElement({ ...selected, fit: event.target.value as SlideImageElement['fit'] })}><option value="contain">Contain</option><option value="cover">Cover</option></select></label>
         <label className="field-row"><span>Position</span><select value={selected.position ?? 'center'} onChange={(event) => updateElement({ ...selected, position: event.target.value as SlideImageElement['position'] })}>{['center', 'top', 'bottom', 'left', 'right', 'top-left', 'top-right', 'bottom-left', 'bottom-right'].map((position) => <option key={position} value={position}>{position}</option>)}</select></label>
         <div className="composition-view-options"><label><input type="checkbox" checked={selected.flipX ?? false} onChange={(event) => updateElement({ ...selected, flipX: event.target.checked })} /> Flip horizontal</label><label><input type="checkbox" checked={selected.flipY ?? false} onChange={(event) => updateElement({ ...selected, flipY: event.target.checked })} /> Flip vertical</label></div>
@@ -364,6 +357,101 @@ export function SlideElementInspector({
         <label className="field-row"><span>Start cap</span><select value={selected.startCap ?? 'none'} onChange={(event) => updateElement({ ...selected, startCap: event.target.value as typeof selected.startCap })}><option value="none">None</option><option value="dot">Dot</option></select></label>
         <label className="field-row"><span>End cap</span><select value={selected.endCap ?? 'arrow'} onChange={(event) => updateElement({ ...selected, endCap: event.target.value as typeof selected.endCap })}><option value="arrow">Arrow</option><option value="none">Line only</option></select></label>
       </>}
-    </section>}
-  </>
+    </div>
+
+    {(selected.frame.x + selected.frame.width < 0 || selected.frame.x > 1080 || selected.frame.y + selected.frame.height < 0 || selected.frame.y > 1920) && <p className="composition-warning">This element is completely outside the video frame.</p>}
+
+    <div className="composition-inline-actions">
+      <button type="button" onClick={() => updateElement({ ...selected, locked: !selected.locked })}>{selected.locked ? 'Unlock' : 'Lock'}</button>
+      <button type="button" onClick={duplicateSelected}>Duplicate</button>
+      <button type="button" onClick={removeSelected}>Delete</button>
+    </div>
+
+    <details className="composition-inspector-details inspector-disclosure">
+      <summary>Position &amp; Size</summary>
+      <div className="composition-transform-grid">
+        <Numeric label="X" value={selected.frame.x} onChange={(value) => updateFrame('x', value)} />
+        <Numeric label="Y" value={selected.frame.y} onChange={(value) => updateFrame('y', value)} />
+        <Numeric label="W" value={selected.frame.width} min={minimumSize(selected).width} onChange={(value) => updateFrame('width', value)} />
+        <Numeric label="H" value={selected.frame.height} min={minimumSize(selected).height} onChange={(value) => updateFrame('height', value)} />
+        <Numeric label="Rotation" value={selected.frame.rotation ?? 0} step={1} onChange={(value) => updateFrame('rotation', value)} />
+      </div>
+      <button type="button" onClick={() => updateElement({ ...selected, frame: { ...selected.frame, x: (1080 - selected.frame.width) / 2, y: (1920 - selected.frame.height) / 2 } })}>Center on Canvas</button>
+    </details>
+
+    <details className="composition-inspector-details inspector-disclosure">
+      <summary>Appearance</summary>
+      <Numeric label="Opacity %" value={Math.round((selected.frame.opacity ?? 1) * 100)} min={0} max={100} onChange={(value) => updateFrame('opacity', value / 100)} />
+      {selected.type === 'text' && <>
+        <Numeric label="Line height" value={selected.lineHeight ?? 1.1} min={0.5} max={3} step={0.05} onChange={(lineHeight) => updateElement({ ...selected, lineHeight })} />
+      </>}
+    </details>
+
+    <details className="composition-inspector-details inspector-disclosure">
+      <summary>Morph</summary>
+      <label className="field-row"><span>Shared ID</span><input value={selected.sharedElementId ?? ''} placeholder="Optional Morph identity" onChange={(event) => updateElement({ ...selected, sharedElementId: event.target.value.trim() || undefined })} /></label>
+    </details>
+  </section>
+}
+
+export function AnimationInspector({
+  slide,
+  presentation,
+  selectedElementId,
+  onSlideChange,
+  isPreviewing,
+  onPreviewSlide,
+  onStopPreview,
+  previewAvailable,
+  revealCount,
+  revealedCount,
+  onNextReveal,
+}: AnimationInspectorProps) {
+  const selected = slide.elements.find((element) => element.id === selectedElementId) ?? null
+  const suppressionReason = selected && entranceSuppressionReason(selected, previousSlideFor(presentation.slides, slide))
+  const updateElement = (element: SlideElement) => onSlideChange({
+    ...slide,
+    elements: slide.elements.map((candidate) => candidate.id === element.id ? element : candidate),
+  })
+  const updateEntrance = (entrance: SlideEntranceAnimationType | '') => {
+    if (!selected) return
+    if (!entrance) {
+      const next = { ...selected }
+      delete next.animation
+      updateElement(next)
+      return
+    }
+    updateElement({
+      ...selected,
+      animation: selected.animation
+        ? { ...selected.animation, entrance }
+        : { entrance, order: Math.max(0, ...slide.elements.map((element) => element.animation?.order ?? 0)) + 1 },
+    })
+  }
+  const updateAnimationOrder = (order: number) => {
+    if (!selected?.animation || !Number.isSafeInteger(order) || order < 1) return
+    updateElement({ ...selected, animation: { ...selected.animation, order } })
+  }
+
+  return <section className="composition-animation-controls">
+    <div className="section-heading"><h3>Animation</h3>{selected && <span>{selected.name}</span>}</div>
+    {selected ? <>
+      <label className="field-row"><span>Entrance</span><select value={selected.animation?.entrance ?? ''} onChange={(event) => updateEntrance(event.target.value as SlideEntranceAnimationType | '')}>
+        <option value="">None</option>
+        <option value="appear">Appear</option>
+        <option value="fade">Fade</option>
+        <option value="pop">Pop</option>
+        <option value="slide-up">Slide Up</option>
+        <option value="slide-left">Slide Left</option>
+        <option value="slide-right">Slide Right</option>
+      </select></label>
+      <label className="field-row"><span>Reveal Step</span><input aria-label="Reveal Step" type="number" min="1" step="1" value={selected.animation?.order ?? 1} disabled={!selected.animation} onChange={(event) => updateAnimationOrder(Number(event.target.value))} /></label>
+      {selected.animation && suppressionReason === 'shared-element' && <p className="composition-animation-notice">This entrance is stored but will not play on this slide because its Shared ID continues from the previous slide. It can play where the element first appears.</p>}
+      {selected.animation && suppressionReason === 'continuing-chart' && <p className="composition-animation-notice">This entrance is stored but will not play on this slide because this chart continues from the previous slide. It can play where the chart first appears.</p>}
+    </> : <p className="composition-empty">Select an element to set its entrance and reveal step.</p>}
+    <div className="composition-preview-actions">
+      <button type="button" className="composition-preview-button" disabled={!previewAvailable || isPreviewing} onClick={onPreviewSlide}>{isPreviewing ? 'Previewing' : 'Preview Slide'}</button>
+      {isPreviewing && <><span role="status">Reveal {revealedCount} / {revealCount}</span><button type="button" className="composition-preview-button" onClick={onNextReveal}>{revealedCount < revealCount ? 'Next Reveal' : 'Finish Preview'}</button><button type="button" className="composition-preview-button is-active" onClick={onStopPreview}>Stop Preview</button></>}
+    </div>
+  </section>
 }

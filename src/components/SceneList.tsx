@@ -30,7 +30,7 @@ export function SlideList({ presentation, selectedIndex, onSelect, onPrevious, o
                 imageAssets={presentation.imageAssets}
                 layoutNamespace={`thumbnail-${presentation.id}-${slide.id}`}
               />
-              <span className="scene-row-copy"><b>{slide.title}</b><small>{slide.duration}s</small></span>
+              <span className="scene-row-copy"><b>{slide.title}</b></span>
             </button>
             {index === selectedIndex && (
               <div className="scene-actions" aria-label="Selected slide actions">

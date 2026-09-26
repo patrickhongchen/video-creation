@@ -31,4 +31,23 @@ describe('desktop export schema v2 boundary', () => {
     unknownSlide.segments[0].sceneId = 'missing-slide'
     expect(() => validateExportJob(unknownSlide)).toThrow(/unknown slide/)
   })
+
+  it('accepts typed reveal cues and rejects invalid reveal orders', () => {
+    const slideId = demoPresentation.slides[0].id
+    const job = {
+      ...silentJob(),
+      segments: [{
+        type: 'narration', sectionId: 'section', title: 'Section', sceneIds: [slideId],
+        durationMs: 3_000,
+        cues: [
+          { type: 'slide', sceneId: slideId, timeMs: 0 },
+          { type: 'reveal', sceneId: slideId, order: 2, timeMs: 1_000 },
+        ],
+        audio: { takeId: 'take', mimeType: 'audio/webm', bytes: new ArrayBuffer(1) },
+      }],
+    }
+    expect(() => validateExportJob(job)).not.toThrow()
+    job.segments[0].cues[1].order = 0
+    expect(() => validateExportJob(job)).toThrow(/invalid narration cues/)
+  })
 })

@@ -1,4 +1,12 @@
 import type { NarrationSection, Presentation } from '../model'
+import { isSlideCue } from '../narration/narrationTypes'
+import {
+  DEFAULT_ENTRANCE_DURATION_MS,
+  DEFAULT_SILENT_REVEAL_INTERVAL_MS,
+  DEFAULT_SILENT_REVEAL_START_MS,
+  previousSlideFor,
+  slideRevealOrders,
+} from '../entranceAnimation'
 import {
   getTakeUsabilityIssue,
   resolveSection,
@@ -71,7 +79,7 @@ export function buildFinalPlaybackPlan(
     if (!ready || !selectedTake) continue
     selectedTakes.set(section.id, selectedTake)
 
-    const cuedSlideCount = new Set(selectedTake.cues.map((cue) => cue.sceneId)).size
+    const cuedSlideCount = new Set(selectedTake.cues.filter(isSlideCue).map((cue) => cue.sceneId)).size
     if (cuedSlideCount < resolved.slides.length) {
       warnings.push({
         kind: 'incomplete-cue-coverage',
@@ -108,10 +116,16 @@ export function buildFinalPlaybackPlan(
     const entry = sectionBySlideId.get(slide.id)
     if (!entry) {
       unassignedSlideCount += 1
+      const revealCount = slideRevealOrders(slide, previousSlideFor(presentation.slides, slide)).length
+      const revealDurationMs = revealCount === 0
+        ? 0
+        : DEFAULT_SILENT_REVEAL_START_MS
+          + (revealCount - 1) * DEFAULT_SILENT_REVEAL_INTERVAL_MS
+          + DEFAULT_ENTRANCE_DURATION_MS
       segments.push({
         type: 'silent-scene',
         sceneId: slide.id,
-        durationMs: slide.duration * 1000,
+        durationMs: Math.max(slide.duration * 1000, revealDurationMs),
       })
       continue
     }

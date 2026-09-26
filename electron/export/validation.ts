@@ -24,6 +24,8 @@ function isCue(value: unknown): value is ExportCue {
   return isRecord(value)
     && isNonEmptyString(value.sceneId)
     && isDuration(value.timeMs, true)
+    && (value.type === undefined || value.type === 'slide'
+      || (value.type === 'reveal' && typeof value.order === 'number' && Number.isSafeInteger(value.order) && value.order > 0))
 }
 
 function byteLength(value: unknown) {
@@ -57,7 +59,7 @@ function assertSegment(value: unknown, sceneIds: Set<string>): asserts value is 
   const cues = value.cues
   if (!Array.isArray(cues) || !cues.every(isCue)
     || !cues.every((cue) => segmentSceneIds.includes(cue.sceneId) && cue.timeMs <= segmentDurationMs)) {
-    throw new Error(`Narration section “${value.title}” contains invalid slide cues.`)
+    throw new Error(`Narration section “${value.title}” contains invalid narration cues.`)
   }
   const audio = value.audio
   if (!isRecord(audio)

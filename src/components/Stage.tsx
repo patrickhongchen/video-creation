@@ -4,7 +4,7 @@ import type { Variants } from 'motion/react'
 import type { PresentationImageAsset, PresentationTheme, Slide, SlideChartElement, TransitionType } from '../model'
 import { renderSlide } from '../scenes/SceneRenderers'
 import type { SlideEditorController } from '../scenes/CompositionSceneRenderer'
-import { previousSlideFor } from '../entranceAnimation'
+import { previousSlideFor, type RevealVisualState } from '../entranceAnimation'
 
 interface StageProps {
   slide: Slide
@@ -19,8 +19,8 @@ interface StageProps {
   slideEditor?: SlideEditorController
   slides?: readonly Slide[]
   deterministicMotion?: boolean
-  /** Milliseconds since this slide became active; omitted in Edit mode. */
-  slideElapsedMs?: number | null
+  /** Null leaves all elements visible for editing. */
+  revealState?: RevealVisualState | null
 }
 
 const transitionVariants: Record<TransitionType, Variants> = {
@@ -49,7 +49,7 @@ export function slideFrameKey(slide: Slide, presentationId: string, renderInstan
     : JSON.stringify([presentationId, renderInstanceKey, 'slide', slide.id])
 }
 
-export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ slide, theme, presentationId, slideNumber, slideCount, direction, className = '', renderInstanceKey = 'default', imageAssets, slideEditor, slideElapsedMs = null, slides, deterministicMotion = false }, ref) {
+export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ slide, theme, presentationId, slideNumber, slideCount, direction, className = '', renderInstanceKey = 'default', imageAssets, slideEditor, revealState = null, slides, deterministicMotion = false }, ref) {
   const reduceMotion = useReducedMotion()
   const variants = transitionVariants[reduceMotion ? 'fade' : slide.transition.type]
   const duration = reduceMotion ? 0.01 : slide.transition.duration
@@ -72,7 +72,7 @@ export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ sli
             onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
           >
             <div className="scene-canvas slide-canvas" style={{ background: theme.background, color: theme.foreground, fontFamily: theme.fontFamily }}>
-              {renderSlide(slide, theme, namespace, { imageAssets, editor: slideEditor, slideElapsedMs, previousSlide, deterministicMotion })}
+              {renderSlide(slide, theme, namespace, { imageAssets, editor: slideEditor, revealState, previousSlide, deterministicMotion })}
             </div>
           </motion.div>
         </AnimatePresence>

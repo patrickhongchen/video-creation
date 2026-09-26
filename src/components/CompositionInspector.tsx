@@ -10,7 +10,7 @@ import type {
   SlideImageElement,
   SlideShape,
 } from '../model'
-import { animationMilliseconds, animationSeconds, entranceSuppressionReason, previousSlideFor } from '../entranceAnimation'
+import { entranceSuppressionReason, previousSlideFor } from '../entranceAnimation'
 import {
   createSlideArrowElement,
   createSlideChartElement,
@@ -39,6 +39,9 @@ interface SlideElementInspectorProps {
   onPreviewSlide: () => void
   onStopPreview: () => void
   previewAvailable: boolean
+  revealCount: number
+  revealedCount: number
+  onNextReveal: () => void
 }
 
 const IMAGE_MIME_TYPES = new Set<PresentationImageMimeType>(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
@@ -156,6 +159,9 @@ export function SlideElementInspector({
   onPreviewSlide,
   onStopPreview,
   previewAvailable,
+  revealCount,
+  revealedCount,
+  onNextReveal,
 }: SlideElementInspectorProps) {
   const imageInput = useRef<HTMLInputElement>(null)
   const imageAction = useRef<'add' | 'replace'>('add')
@@ -242,15 +248,14 @@ export function SlideElementInspector({
       ...selected,
       animation: selected.animation
         ? { ...selected.animation, entrance }
-        : { entrance, delayMs: 0, durationMs: entrance === 'appear' ? 0 : 350 },
+        : { entrance, order: Math.max(0, ...slide.elements.map((element) => element.animation?.order ?? 0)) + 1 },
     })
   }
 
-  const updateAnimationTiming = (key: 'delayMs' | 'durationMs', seconds: number, maxMs: number) => {
+  const updateAnimationOrder = (order: number) => {
     if (!selected?.animation) return
-    const milliseconds = animationMilliseconds(seconds, maxMs)
-    if (milliseconds === null) return
-    updateElement({ ...selected, animation: { ...selected.animation, [key]: milliseconds } })
+    if (!Number.isSafeInteger(order) || order < 1) return
+    updateElement({ ...selected, animation: { ...selected.animation, order } })
   }
 
   return <>
@@ -323,13 +328,12 @@ export function SlideElementInspector({
           <option value="slide-left">Slide Left</option>
           <option value="slide-right">Slide Right</option>
         </select></label>
-        <label className="field-row"><span>Delay</span><span className="duration-input"><input aria-label="Animation delay" type="number" min="0" max="60" step="0.1" value={animationSeconds(selected.animation?.delayMs ?? 0)} disabled={!selected.animation} onChange={(event) => updateAnimationTiming('delayMs', Number(event.target.value), 60_000)} /><small>seconds</small></span></label>
-        <label className="field-row"><span>Duration</span><span className="duration-input"><input aria-label="Animation duration" type="number" min="0" max="10" step="0.05" value={animationSeconds(selected.animation?.durationMs ?? 350)} disabled={!selected.animation || selected.animation.entrance === 'appear'} onChange={(event) => updateAnimationTiming('durationMs', Number(event.target.value), 10_000)} /><small>{selected.animation?.entrance === 'appear' ? 'instant' : 'seconds'}</small></span></label>
+        <label className="field-row"><span>Reveal Step</span><input aria-label="Reveal Step" type="number" min="1" step="1" value={selected.animation?.order ?? 1} disabled={!selected.animation} onChange={(event) => updateAnimationOrder(Number(event.target.value))} /></label>
         {selected.animation && suppressionReason === 'shared-element' && <p className="composition-animation-notice">This entrance is stored but will not play on this slide because its Shared ID continues from the previous slide. It can play where the element first appears.</p>}
         {selected.animation && suppressionReason === 'continuing-chart' && <p className="composition-animation-notice">This entrance is stored but will not play on this slide because this chart continues from the previous slide. It can play where the chart first appears.</p>}
         <div className="composition-preview-actions">
-          <button type="button" className="composition-preview-button" disabled={!previewAvailable} onClick={onPreviewSlide}>Preview Slide</button>
-          {isPreviewing && <button type="button" className="composition-preview-button is-active" onClick={onStopPreview}>Stop Preview</button>}
+          <button type="button" className="composition-preview-button" disabled={!previewAvailable || isPreviewing} onClick={onPreviewSlide}>{isPreviewing ? 'Previewing' : 'Preview Slide'}</button>
+          {isPreviewing && <><span role="status">Reveal {revealedCount} / {revealCount}</span><button type="button" className="composition-preview-button" onClick={onNextReveal}>{revealedCount < revealCount ? 'Next Reveal' : 'Finish Preview'}</button><button type="button" className="composition-preview-button is-active" onClick={onStopPreview}>Stop Preview</button></>}
         </div>
       </div>
 

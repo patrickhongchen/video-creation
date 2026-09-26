@@ -129,6 +129,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .scene-nav svg { width: 15px; }
 
 .canvas-workspace { min-width: 0; min-height: 0; display: grid; place-items: center; padding: 22px; background: radial-gradient(circle at center, #fbfcfd 0%, #f1f5f8 74%); overflow: hidden; }
+.preview-stage-advance, .present-stage-advance { cursor: pointer; }
 .stage { height: min(820px, calc(100vh - 168px)); aspect-ratio: 9 / 16; position: relative; overflow: hidden; flex: none; background: #fcfbfa; box-shadow: 0 7px 25px rgba(29,43,55,.16), 0 0 0 1px rgba(44,59,69,.07); border-radius: 3px; }
 .scene-frame { position: absolute; inset: 0; overflow: hidden; }
 .scene-canvas { width: 100%; height: 100%; position: relative; overflow: hidden; background: linear-gradient(150deg, #fff 0%, #fbfaf8 100%); padding: 9% 7.7% 7%; }
@@ -252,8 +253,9 @@ textarea { resize: vertical; }
 .composition-animation-controls .duration-input { grid-template-columns: minmax(0, 1fr) 47px; }
 .composition-animation-controls .duration-input input { min-width: 0; }
 .composition-animation-notice { margin: 5px 0 10px; border-radius: 4px; background: #eff5f8; padding: 8px; color: #516578; font-size: 10px; line-height: 1.4; }
-.composition-preview-actions { display: flex; gap: 6px; }
-.composition-preview-button { width: 100%; min-height: 33px; border: 1px solid #176dff; border-radius: 4px; background: #176dff; color: #fff; font-size: 11px; font-weight: 700; }
+.composition-preview-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.composition-preview-actions > span { flex-basis: 100%; color: #516578; font-size: 11px; }
+.composition-preview-button { flex: 1 1 120px; min-height: 33px; border: 1px solid #176dff; border-radius: 4px; background: #176dff; color: #fff; font-size: 11px; font-weight: 700; }
 .composition-preview-button:hover:not(:disabled) { background: #0c5de2; }
 .composition-preview-button.is-active { border-color: #ad3e35; background: #b9443a; }
 .composition-preview-button:disabled { border-color: #d6dde4; background: #edf1f4; color: #8995a3; }

@@ -1,10 +1,11 @@
 import type { PresentationImageAsset, PresentationTheme, Slide } from '../model'
 import { SlideRenderer, type SlideEditorController } from './CompositionSceneRenderer'
+import type { RevealVisualState } from '../entranceAnimation'
 
 interface RenderSlideOptions {
   imageAssets?: PresentationImageAsset[]
   editor?: SlideEditorController
-  slideElapsedMs?: number | null
+  revealState?: RevealVisualState | null
   previousSlide?: Slide
   deterministicMotion?: boolean
 }
@@ -25,7 +26,7 @@ export function renderSlide(
     layoutNamespace={layoutNamespace}
     imageAssets={options.imageAssets}
     editor={options.editor}
-    slideElapsedMs={options.slideElapsedMs}
+    revealState={options.revealState}
     previousSlide={options.previousSlide}
     deterministicMotion={options.deterministicMotion}
   />

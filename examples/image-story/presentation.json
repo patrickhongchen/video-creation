@@ -278,8 +278,7 @@
           "fit": "cover",
           "animation": {
             "entrance": "pop",
-            "delayMs": 500,
-            "durationMs": 350
+            "order": 1
           }
         },
         {
@@ -296,8 +295,7 @@
           "fit": "cover",
           "animation": {
             "entrance": "pop",
-            "delayMs": 1200,
-            "durationMs": 350
+            "order": 2
           }
         },
         {
@@ -315,8 +313,7 @@
           "color": "#1d77c9",
           "animation": {
             "entrance": "fade",
-            "delayMs": 2000,
-            "durationMs": 350
+            "order": 3
           }
         }
       ]

@@ -1,4 +1,4 @@
-import type { SceneCue } from './narrationTypes'
+import { isSlideCue, type SceneCue } from './narrationTypes'
 
 export const CUE_SYNC_LEEWAY_MS = 8
 
@@ -23,16 +23,16 @@ export function synchronizeSceneCues({
 }: SynchronizeSceneCuesOptions) {
   let nextIndex = nextCueIndex
   if (forceCurrentCue) {
-    let activeIndex = 0
+    let activeIndex = -1
     for (let index = 0; index < cues.length; index += 1) {
-      if (cues[index].timeMs <= timeMs) activeIndex = index
-      else break
+      if (cues[index].timeMs > timeMs) break
+      if (isSlideCue(cues[index])) activeIndex = index
     }
-    if (cues[activeIndex]) onSceneCue(cues[activeIndex].sceneId)
+    if (activeIndex >= 0) onSceneCue(cues[activeIndex].sceneId)
     nextIndex = activeIndex + 1
   }
   while (nextIndex < cues.length && cues[nextIndex].timeMs <= timeMs + CUE_SYNC_LEEWAY_MS) {
-    onSceneCue(cues[nextIndex].sceneId)
+    if (isSlideCue(cues[nextIndex])) onSceneCue(cues[nextIndex].sceneId)
     nextIndex += 1
   }
   return nextIndex

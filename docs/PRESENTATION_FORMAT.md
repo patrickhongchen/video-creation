@@ -78,7 +78,7 @@ All elements have:
 | `locked` | Optional. Prevents direct drag/resize but does not hide the element. |
 | `hidden` | Optional. Omits the element from editing output, playback, and export. |
 | `sharedElementId` | Optional semantic identity for compatible cross-slide Morph. |
-| `animation` | Optional slide-relative entrance animation. |
+| `animation` | Optional click-driven entrance animation with a reveal order. |
 
 Coordinates are explicit design units, not percentages or responsive constraints:
 
@@ -90,19 +90,20 @@ Elements may extend outside the canvas for intentional crops. Keep important con
 
 ### Element entrance animation
 
-An element may enter after its slide becomes active:
+An element may participate in a click-driven reveal sequence:
 
 ```json
 "animation": {
   "entrance": "pop",
-  "delayMs": 500,
-  "durationMs": 350
+  "order": 1
 }
 ```
 
-`entrance` is one of `appear`, `fade`, `pop`, `slide-up`, `slide-left`, or `slide-right`. `delayMs` and `durationMs` are finite, nonnegative milliseconds; delays may be at most 60,000 ms and durations at most 10,000 ms. `appear` becomes visible at the delay, so its duration has no visual effect. The animation runs from the slide activation time in presentation, narration replay, final playback, and export. Edit mode shows the completed element so it remains selectable and editable.
+`entrance` is one of `appear`, `fade`, `pop`, `slide-up`, `slide-left`, or `slide-right`. `order` is a positive integer. An element without `animation` is visible immediately. Animated elements start hidden and enter as the presenter advances through the slide's sorted unique orders. Elements sharing an order reveal together; values such as `1`, `3`, and `8` are valid and remain unchanged. The application supplies one standard entrance duration (currently about 350 ms), while `appear` is instantaneous. Duration is runtime behavior and is not stored in presentation JSON.
 
-Element entrances are intentionally independent. They do not add narration cues, exits, keyframes, or timeline controls. An element with `sharedElementId` or `chartId` can play its entrance where that compatible identity first appears. On a slide immediately following a compatible instance, its entrance is skipped so the element remains visible through Morph. After a gap or incompatible representation, the entrance can play again.
+Present mode, Edit Preview, and narration recording consume one reveal group per advance before changing slides. Narration takes store explicit reveal cues so replay, Final Playback, and export reproduce the narrator's timing. Silent slides and legacy takes without reveal cues use centralized deterministic fallback timing. There are no authored delays, durations, exits, keyframes, or trigger regions.
+
+An element with `sharedElementId` or `chartId` can play its entrance where that compatible identity first appears. On a slide immediately following a compatible instance, its entrance is suppressed and the element remains fully visible through Morph regardless of its order. After a gap or incompatible representation, the entrance can play again. Legacy animation objects containing `delayMs` and `durationMs` remain importable: distinct delays are sorted and mapped to increasing reveal orders, equal delays become one group, and legacy durations are discarded. New saves emit only `{ entrance, order }`.
 
 ## TextElement
 

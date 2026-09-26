@@ -1,6 +1,6 @@
 # AI Presentation Studio
 
-An Electron desktop application for AI-first, PowerPoint-like presentations with flexible 1080×1920 slides, structured editable elements, automatic Morph animation, narration recording, direct MP4 export, and normal file-based project folders.
+An Electron desktop application for AI-first, PowerPoint-like presentations with flexible 1080×1920 slides, structured editable elements, click-driven reveals, automatic Morph animation, narration recording, direct MP4 export, and normal file-based project folders.
 
 The intended workflow is simple: open a Project in AI Presentation Studio, open the same folder in Codex, ask Codex to create or redesign slides, and review the changes as they appear automatically. Make quick corrections when needed, then narrate and export an MP4.
 
@@ -57,13 +57,15 @@ Codex can edit `presentation.json` and add files under `assets/` directly. The d
 
 The Inspector shows slide metadata when no element is selected and element content/geometry when one is selected. Direct manipulation includes drag, corner resize, snapping, guides, keyboard nudge, exact frame values, opacity, rotation, duplication, deletion, visibility, locking, and z-order. Layers remain a compact escape hatch rather than the primary workflow.
 
-To edit an entrance, select an element in Edit mode, choose its entrance in the Inspector, and set the delay and duration in seconds. **Preview Slide** plays the current slide's entrances on the canvas; it can be restarted or stopped and returns to editing after the reveal. A shared element can enter where it first appears; its entrance is skipped when a compatible identity continues from the previous slide for Morph. All elements stay fully visible during normal Edit mode, regardless of their entrance delay.
+To create a staged reveal, select an element in Edit mode, choose its entrance in the Inspector, and assign a positive-integer **Reveal Step**. Elements without animation are visible immediately. Elements with the same step enter together; step values need not be contiguous. **Preview Slide** starts at the slide's initial state and advances one reveal group at a time by button, stage click, Space, or Arrow Right. The app supplies a standard entrance duration, so presentation JSON does not author delays or durations.
+
+During Present mode, an advance reveals the next group before moving to the next slide. During narration recording, those reveal advances are recorded as cues, so the narrator controls when each group appears; replay, Final Playback, and MP4 export reproduce the cue timing deterministically. A shared element can enter where it first appears, then its entrance is skipped when a compatible identity continues from the immediately previous slide for Morph.
 
 The element array is the authoritative back-to-front order. Hidden elements are omitted from Present mode, narration playback, final preview, and export. Editor overlays never enter the final render DOM unless editing context is explicitly supplied.
 
 ## Narration and final video
 
-Narration Studio keeps contiguous slide ranges, multiple takes, selected takes, microphone recording, cue capture, replay, and readiness. The user advances slides while speaking; those slide cue times drive final playback and export. Existing take records keep the historical internal `SceneCue.sceneId` field, whose value is the unchanged slide ID, so schema migration does not require re-recording.
+Narration Studio keeps contiguous slide ranges, multiple takes, selected takes, microphone recording, cue capture, replay, and readiness. The user advances reveal groups and slides while speaking; typed slide and reveal cue times drive final playback and export. Legacy takes with untyped slide cues remain playable and use deterministic fallback reveal timing, so schema migration does not require re-recording.
 
 Final Playback orders sections by slide order, follows saved cues, supports silent slides, preserves Morph identities across section boundaries, and includes the final hold. The desktop exporter uses a hidden Chromium surface with the same `Stage`, captures exactly 1080×1920 at 30 fps, and uses FFmpeg for H.264 video, AAC audio, `yuv420p`, fast-start MP4 output, progress, cancellation, destination selection, and duration verification.
 
@@ -96,7 +98,7 @@ The seeded **Small Screens, Bigger Questions** and **Chart Story Lab** presentat
 
 ## Intentional boundaries
 
-There is no built-in LLM/chat UI, Codex/OpenAI API integration, arbitrary JSON merging, stock search, video element, music, captions, timeline, keyframes, grouping, nested components, symbol system, theme editor, plugin system, cloud backend, or collaboration. Slides remain the animation timeline and narration remains the source of narrated timing.
+There is no built-in LLM/chat UI, Codex/OpenAI API integration, arbitrary JSON merging, stock search, video element, music, captions, timeline, keyframes, grouping, nested components, symbol system, theme editor, plugin system, cloud backend, or collaboration. Slides and their reveal steps define the visual sequence, while narration cues provide narrated timing.
 
 See [docs/PRESENTATION_FORMAT.md](docs/PRESENTATION_FORMAT.md) for the schema, complete example, migration mapping, and validation rules. See [docs/CODEX_AUTHORING.md](docs/CODEX_AUTHORING.md) for the practical Codex workflow, design recipes, prompt patterns, theme guidance, anti-patterns, and completion checklist.
 

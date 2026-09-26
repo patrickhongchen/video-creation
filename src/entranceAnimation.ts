@@ -8,17 +8,34 @@ export interface EntranceState {
 }
 
 export const FINAL_ENTRANCE_STATE: EntranceState = { opacity: 1, x: 0, y: 0, scale: 1 }
+export const HIDDEN_ENTRANCE_STATE: EntranceState = { ...FINAL_ENTRANCE_STATE, opacity: 0 }
+export const DEFAULT_ENTRANCE_DURATION_MS = 350
+export const DEFAULT_SILENT_REVEAL_START_MS = 600
+export const DEFAULT_SILENT_REVEAL_INTERVAL_MS = 800
 
-/** Pure, frame-addressable entrance state. elapsedMs is measured from slide activation. */
-export function resolveEntranceState(animation: SlideEntranceAnimation | undefined, elapsedMs: number | null): EntranceState {
-  if (!animation || elapsedMs === null) return FINAL_ENTRANCE_STATE
-  if (animation.entrance === 'appear') {
-    return elapsedMs < animation.delayMs ? { ...FINAL_ENTRANCE_STATE, opacity: 0 } : FINAL_ENTRANCE_STATE
-  }
+export interface RevealVisualState {
+  revealedThroughOrder: number
+  activeRevealOrder: number | null
+  activeRevealElapsedMs: number
+}
 
-  const progress = animation.durationMs === 0
-    ? Number(elapsedMs >= animation.delayMs)
-    : Math.max(0, Math.min(1, (elapsedMs - animation.delayMs) / animation.durationMs))
+export const INITIAL_REVEAL_STATE: RevealVisualState = {
+  revealedThroughOrder: 0,
+  activeRevealOrder: null,
+  activeRevealElapsedMs: 0,
+}
+
+export function entranceDurationMs(type: SlideEntranceAnimation['entrance']) {
+  return type === 'appear' ? 0 : DEFAULT_ENTRANCE_DURATION_MS
+}
+
+/** Pure entrance state for an interactive or frame-addressed reveal. Null means Edit mode. */
+export function resolveEntranceState(animation: SlideEntranceAnimation | undefined, reveal: RevealVisualState | null): EntranceState {
+  if (!animation || reveal === null) return FINAL_ENTRANCE_STATE
+  if (animation.order > reveal.revealedThroughOrder) return HIDDEN_ENTRANCE_STATE
+  if (animation.order !== reveal.activeRevealOrder || animation.entrance === 'appear') return FINAL_ENTRANCE_STATE
+
+  const progress = Math.max(0, Math.min(1, reveal.activeRevealElapsedMs / entranceDurationMs(animation.entrance)))
   if (progress === 1) return FINAL_ENTRANCE_STATE
 
   // A small ease-out preserves exact states at both ends and is independent of frame rate.
@@ -31,19 +48,6 @@ export function resolveEntranceState(animation: SlideEntranceAnimation | undefin
     case 'slide-left': return { opacity: eased, x: 28 * remaining, y: 0, scale: 1 }
     case 'slide-right': return { opacity: eased, x: -28 * remaining, y: 0, scale: 1 }
   }
-}
-
-export function slideElapsedMs(playbackTimeMs: number, slideActivatedAtMs: number) {
-  return Math.max(0, playbackTimeMs - slideActivatedAtMs)
-}
-
-/** Returns time since the latest cue for this slide in an audio segment. */
-export function slideElapsedFromCues(timeMs: number, cues: readonly { sceneId: string; timeMs: number }[], sceneId: string, cueLeewayMs = 0) {
-  let activatedAtMs = 0
-  for (const cue of cues) {
-    if (cue.timeMs <= timeMs + cueLeewayMs && cue.sceneId === sceneId && cue.timeMs >= activatedAtMs) activatedAtMs = cue.timeMs
-  }
-  return slideElapsedMs(timeMs, activatedAtMs)
 }
 
 export function chartMorphKey(chart: SlideChartElement) {
@@ -78,24 +82,31 @@ export function entranceSuppressionReason(element: SlideElement, previousSlide?:
   return null
 }
 
-/** Last playable entrance on a slide, excluding hidden and incoming Morph elements. */
-export function slideEntranceEndMs(slide: Slide, previousSlide?: Slide): number | null {
-  let endMs: number | null = null
-  for (const element of slide.elements) {
-    const animation = element.animation
-    if (!animation || element.hidden || entranceSuppressionReason(element, previousSlide)) continue
-    const end = animation.delayMs + (animation.entrance === 'appear' ? 0 : animation.durationMs)
-    endMs = Math.max(endMs ?? 0, end)
-  }
-  return endMs
+/** Sorted distinct playable reveal groups, including sparse order numbers. */
+export function slideRevealOrders(slide: Slide, previousSlide?: Slide): number[] {
+  return [...new Set(slide.elements
+    .filter((element) => element.animation && !element.hidden && !entranceSuppressionReason(element, previousSlide))
+    .map((element) => element.animation!.order))].sort((a, b) => a - b)
 }
 
-export function animationSeconds(milliseconds: number): number {
-  return milliseconds / 1000
+export function nextRevealOrder(orders: readonly number[], revealedThroughOrder: number): number | null {
+  return orders.find((order) => order > revealedThroughOrder) ?? null
 }
 
-/** Reject out-of-range editor input before it reaches presentation validation. */
-export function animationMilliseconds(seconds: number, maxMs: number): number | null {
-  if (!Number.isFinite(seconds) || seconds < 0 || seconds * 1000 > maxMs) return null
-  return Math.round(seconds * 1000)
+export function hasRemainingReveal(orders: readonly number[], revealedThroughOrder: number) {
+  return nextRevealOrder(orders, revealedThroughOrder) !== null
+}
+
+/** Deterministic fallback for a silent slide or an old narration take without reveal cues. */
+export function timedRevealStateAtTime(orders: readonly number[], elapsedMs: number, startMs = DEFAULT_SILENT_REVEAL_START_MS, intervalMs = DEFAULT_SILENT_REVEAL_INTERVAL_MS): RevealVisualState {
+  let result = INITIAL_REVEAL_STATE
+  orders.forEach((order, index) => {
+    const cueTime = startMs + index * intervalMs
+    if (elapsedMs >= cueTime) result = {
+      revealedThroughOrder: order,
+      activeRevealOrder: order,
+      activeRevealElapsedMs: elapsedMs - cueTime,
+    }
+  })
+  return result
 }

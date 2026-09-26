@@ -85,7 +85,7 @@ Inspect both `assets/` and `imageAssets` before creating a file. Reuse registere
 
 ## Morph and narration
 
-Slides are the animation timeline. To make something move, continue it on the next slide and give compatible elements the same `sharedElementId`. Use this only when the viewer should perceive the same thing moving or changing: a headline moves up, a photo shrinks, a statistic moves to a corner, a stick figure walks, or a chart grows.
+Slides and their reveal steps define the visual sequence. To make something move continuously between slides, continue it on the next slide and give compatible elements the same `sharedElementId`. Use this only when the viewer should perceive the same thing moving or changing: a headline moves up, a photo shrinks, a statistic moves to a corner, a stick figure walks, or a chart grows.
 
 Usually continue one or two concepts and introduce new information around them. Do not assign shared identities merely because elements look similar, and do not make every item Morph. For continuing charts, `sharedElementId`, `chartId`, and datum IDs serve separate roles and may all need preservation.
 
@@ -93,7 +93,7 @@ Slides should be natural narration beats. Avoid both unnecessary micro-slides an
 
 ## Element entrances
 
-Use a small entrance animation only when a slide needs a staged reveal within one narration beat. Add it to the element itself; timings are milliseconds from the moment that slide activates:
+Use entrance animations sparingly when a slide benefits from a presenter-controlled staged reveal within one narration beat. Add the entrance and its positive-integer reveal `order` to the element itself:
 
 ```json
 {
@@ -103,13 +103,15 @@ Use a small entrance animation only when a slide needs a staged reveal within on
   "frame": { "x": 120, "y": 760, "width": 840, "height": 620 },
   "assetId": "theater-photo",
   "fit": "cover",
-  "animation": { "entrance": "pop", "delayMs": 500, "durationMs": 350 }
+  "animation": { "entrance": "pop", "order": 1 }
 }
 ```
 
-Allowed entrances are `appear`, `fade`, `pop`, `slide-up`, `slide-left`, and `slide-right`. Keep them restrained: a short 300–400 ms duration and a few deliberate delays are usually enough. `appear` is immediate at its delay. Do not add animation metadata to every element or use it to replace slide-to-slide Morph. A shared element may enter on its first slide and then remain continuous through Morph on following slides. Animation runs during presentation, narration replay, final playback, and export, while Edit mode always shows the finished elements.
+Allowed entrances are `appear`, `fade`, `pop`, `slide-up`, `slide-left`, and `slide-right`. No `animation` property means the element is visible immediately. Animated elements enter in ascending order when the presenter advances; matching orders reveal together, and orders do not need to be contiguous. The app controls entrance duration (currently about 350 ms for animated effects, while `appear` is instantaneous), so do not author `delayMs` or `durationMs`.
 
-For a compact staged reveal, leave the headline without `animation`, set the first supporting image to `pop` at `500ms`, the second image to `pop` at `1200ms`, and a short annotation to `fade` at `2000ms`. Each entrance can take `350ms`. `examples/image-story/presentation.json` contains a complete slide using that pattern. An entrance on a shared element plays when the identity first appears and is skipped only on slides that inherit a compatible identity from the immediately previous slide.
+For a compact staged reveal, leave the headline without `animation`, set the first supporting image to `pop` at order `1`, the second image to `pop` at order `2`, and a short annotation to `fade` at order `3`. Assign the same order when elements should enter as one group. The presenter controls the timing in Present mode, and narration recording stores each reveal advance so replay and export reproduce it. Silent playback uses the app's deterministic fallback timing.
+
+Do not add animation metadata to every element or use entrances to replace slide-to-slide Morph. A shared element may enter on its first slide and then remain continuous through Morph on following slides. Its entrance is skipped on a slide that inherits a compatible `sharedElementId` or continuing `chartId` from the immediately previous slide. Edit mode normally shows the finished slide; Preview Slide lets the author step through the builds without changing presentation data.
 
 ## Prompt patterns
 
@@ -130,6 +132,8 @@ For a compact staged reveal, leave the headline without `animation`, set the fir
 - Replacing stable IDs during a cosmetic revision and breaking narration or Morph.
 - Adding absolute paths, data URLs, or unregistered image files to a desktop project.
 - Using a shared identity for every element, creating constant meaningless motion.
+- Animating every element or using reveal steps for information that should be visible immediately.
+- Authoring legacy per-element `delayMs` or `durationMs` instead of a reveal `order`.
 - Adding tiny charts or decorative images that cannot be read at presentation size.
 - Using arrows without a clear target, or placing many competing elements over one another.
 - Splitting one beat across needless micro-Slides, or forcing several beats onto one crowded Slide.
@@ -143,5 +147,6 @@ For a compact staged reveal, leave the headline without `animation`, set the fir
 - Image assets are readable, registered, and project-relative.
 - Charts are semantic and continuing charts preserve their identities.
 - Morph expresses real continuity and is restrained.
+- Reveal steps are sparse, purposeful, and grouped when elements should enter together.
 - Existing IDs and narration structure survive where concepts survive.
 - Validation passes and warnings have been reviewed.

@@ -1,5 +1,5 @@
 import type { NarrationSection, Presentation, Slide } from '../model'
-import type { NarrationTake } from './narrationTypes'
+import { isRevealCue, isSlideCue, type NarrationTake } from './narrationTypes'
 
 export const NARRATION_CUE_DURATION_TOLERANCE_MS = 100
 
@@ -67,13 +67,25 @@ export function getTakeUsabilityIssue(
     return 'The selected take has no slide cues.'
   }
   if (take.cues[0].timeMs !== 0) return 'The selected take must begin with a cue at 0 ms.'
+  if (!isSlideCue(take.cues[0])) return 'The selected take must begin with a slide cue.'
   if (take.cues[0].sceneId !== section.slides[0]?.id) {
     return 'The selected take does not begin on this section\'s first slide.'
+  }
+
+  if (take.cues.some((cue) => {
+    if (!('type' in cue)) return false
+    const type = (cue as { type?: unknown }).type
+    return type !== 'slide' && type !== 'reveal'
+  })) {
+    return 'The selected take contains an unknown cue type.'
   }
 
   const slideIds = new Set(section.slides.map((slide) => slide.id))
   if (take.cues.some((cue) => !slideIds.has(cue.sceneId))) {
     return 'The selected take contains a cue for a slide outside this section.'
+  }
+  if (take.cues.some((cue) => isRevealCue(cue) && (!Number.isSafeInteger(cue.order) || cue.order < 1))) {
+    return 'The selected take contains an invalid reveal cue.'
   }
   if (take.cues.some((cue) =>
     !(cue.timeMs >= 0

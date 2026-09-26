@@ -13,8 +13,14 @@ import { useNarrationPlayback } from '../narration/useNarrationPlayback'
 import { useNarrationRecorder } from '../narration/useNarrationRecorder'
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, PlayIcon } from './Icons'
 import { Stage } from './Stage'
-import { slideElapsedFromCues, slideElapsedMs } from '../entranceAnimation'
-import { CUE_SYNC_LEEWAY_MS } from '../narration/cueSynchronization'
+import {
+  INITIAL_REVEAL_STATE,
+  nextRevealOrder,
+  previousSlideFor,
+  slideRevealOrders,
+  type RevealVisualState,
+} from '../entranceAnimation'
+import { resolveNarrationVisualAtTime } from '../narration/resolveNarrationVisual'
 
 interface NarrationStudioProps {
   presentation: Presentation
@@ -53,7 +59,9 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   const activeRelativeIndexRef = useRef(0)
   const [fallbackSlideIndex, setFallbackSlideIndex] = useState(safeInitialSlideIndex)
   const [direction, setDirection] = useState<1 | -1>(1)
-  const [recordingSlideActivatedAtMs, setRecordingSlideActivatedAtMs] = useState(0)
+  const [recordingRevealedThroughOrder, setRecordingRevealedThroughOrder] = useState(0)
+  const recordingRevealedThroughOrderRef = useRef(0)
+  const [recordingActiveReveal, setRecordingActiveReveal] = useState<{ order: number; startedAtMs: number } | null>(null)
   const [renderInstanceKey, setRenderInstanceKey] = useState(() => `narration-${Date.now()}`)
   const [takeMap, setTakeMap] = useState<Record<string, NarrationTake[]>>({})
   const takeMapRef = useRef(takeMap)
@@ -146,7 +154,9 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
       setDirection(-1)
       activeRelativeIndexRef.current = 0
       setActiveRelativeIndex(0)
-      setRecordingSlideActivatedAtMs(0)
+      setRecordingRevealedThroughOrder(0)
+      recordingRevealedThroughOrderRef.current = 0
+      setRecordingActiveReveal(null)
       setRenderInstanceKey(`record-${Date.now()}`)
     },
     onFinished: handleFinishedRecording,
@@ -252,34 +262,51 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     }
   }
 
-  const moveVisual = useCallback((offset: -1 | 1, recordCue = false) => {
+  const moveRecordingVisual = useCallback((offset: -1 | 1) => {
     if (!selectedResolved?.valid) return
     const current = activeRelativeIndexRef.current
+    const currentSlide = selectedResolved.slides[current]
+    if (!currentSlide) return
+
+    if (offset === 1) {
+      const orders = slideRevealOrders(currentSlide, previousSlideFor(presentation.slides, currentSlide))
+      const order = nextRevealOrder(orders, recordingRevealedThroughOrderRef.current)
+      if (order !== null) {
+        const cueTime = recorder.addCue({ type: 'reveal', sceneId: currentSlide.id, order })
+        if (cueTime !== undefined) {
+          recordingRevealedThroughOrderRef.current = order
+          setRecordingRevealedThroughOrder(order)
+          setRecordingActiveReveal({ order, startedAtMs: cueTime })
+        }
+        return
+      }
+    }
+
     const next = Math.max(0, Math.min(current + offset, selectedResolved.slides.length - 1))
     if (next === current) return
     setDirection(offset)
-    if (recordCue) {
-      const cueTime = recorder.addCue(selectedResolved.slides[next].id)
-      if (cueTime !== undefined) setRecordingSlideActivatedAtMs(cueTime)
-    }
+    recorder.addCue({ type: 'slide', sceneId: selectedResolved.slides[next].id })
     activeRelativeIndexRef.current = next
     setActiveRelativeIndex(next)
-  }, [recorder.addCue, selectedResolved])
+    recordingRevealedThroughOrderRef.current = 0
+    setRecordingRevealedThroughOrder(0)
+    setRecordingActiveReveal(null)
+  }, [presentation.slides, recorder.addCue, selectedResolved])
 
   useEffect(() => {
     if (recorder.status !== 'recording') return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === ' ' || event.key === 'ArrowRight') {
         event.preventDefault()
-        moveVisual(1, true)
+        moveRecordingVisual(1)
       } else if (event.key === 'ArrowLeft') {
         event.preventDefault()
-        moveVisual(-1, true)
+        moveRecordingVisual(-1)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [moveVisual, recorder.status])
+  }, [moveRecordingVisual, recorder.status])
 
   const beginTake = () => {
     if (!selectedSection || !selectedResolved?.valid || !selectedResolved.slides[0]) return
@@ -330,11 +357,26 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   const nextSlide = selectedResolved?.slides[activeRelativeIndex + 1]
   const selectedTakes = selectedSection ? takeMap[selectedSection.id] ?? [] : []
   const playbackTake = Object.values(takeMap).flat().find((take) => take.id === playback.takeId)
-  const stageElapsedMs = recorder.status === 'recording'
-    ? slideElapsedMs(recorder.elapsedMs, recordingSlideActivatedAtMs)
-    : playbackTake && currentSlide
-      ? slideElapsedFromCues(playback.currentTimeMs, playbackTake.cues, currentSlide.id, CUE_SYNC_LEEWAY_MS)
+  const currentRevealOrders = currentSlide
+    ? slideRevealOrders(currentSlide, previousSlideFor(presentation.slides, currentSlide))
+    : []
+  const upcomingRevealOrder = nextRevealOrder(currentRevealOrders, recordingRevealedThroughOrder)
+  const playbackVisual = playbackTake
+    ? resolveNarrationVisualAtTime(playbackTake.cues, playback.currentTimeMs, presentation.slides, selectedResolved?.slides[0]?.id)
+    : null
+  const recordingRevealState: RevealVisualState = {
+    revealedThroughOrder: recordingRevealedThroughOrder,
+    activeRevealOrder: recordingActiveReveal?.order ?? null,
+    activeRevealElapsedMs: recordingActiveReveal
+      ? Math.max(0, recorder.elapsedMs - recordingActiveReveal.startedAtMs)
+      : 0,
+  }
+  const stageRevealState = recorder.status === 'recording'
+    ? recordingRevealState
+    : playbackTake
+      ? playbackVisual?.revealState ?? INITIAL_REVEAL_STATE
       : null
+  const revealedCount = currentRevealOrders.filter((order) => order <= (stageRevealState?.revealedThroughOrder ?? 0)).length
   const readyCount = sections.filter((section) => {
     const resolved = resolveSection(section, presentation)
     return (takeMap[section.id] ?? []).some((take) => take.selected && takeIsUsable(take, resolved))
@@ -367,7 +409,10 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
         </aside>
 
         <section className="narration-stage-panel">
-          {currentSlide ? <Stage
+          {currentSlide ? <div
+            style={{ display: 'contents' }}
+            onClick={recorder.status === 'recording' ? () => moveRecordingVisual(1) : undefined}
+          ><Stage
             slide={currentSlide}
             slides={presentation.slides}
             theme={presentation.theme}
@@ -377,11 +422,12 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
             slideCount={presentation.slides.length}
             direction={direction}
             renderInstanceKey={renderInstanceKey}
-            slideElapsedMs={stageElapsedMs}
+            revealState={stageRevealState}
             className="narration-stage"
-          /> : <div className="narration-empty-stage">Add a slide before recording narration.</div>}
+          /></div> : <div className="narration-empty-stage">Add a slide before recording narration.</div>}
           <div className="narration-progress">
             {selectedResolved && <span>Slide {Math.min(activeRelativeIndex + 1, selectedResolved.slides.length)} / {selectedResolved.slides.length} in section</span>}
+            {(recorder.status === 'recording' || playbackTake) && <span>Reveal {revealedCount} / {currentRevealOrders.length}</span>}
             {currentOverallIndex >= 0 && <span>Presentation slide {currentOverallIndex + 1} / {presentation.slides.length}</span>}
           </div>
         </section>
@@ -430,8 +476,8 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
           {recorder.status === 'countdown' && <><strong className="record-countdown">{recorder.countdown}</strong><span>Get ready…</span><button onClick={recorder.cancel}>Cancel Take</button></>}
           {recorder.status === 'recording' && <>
             <strong className="recording-timer">● REC {formatTimer(recorder.elapsedMs)}</strong>
-            <button onClick={() => moveVisual(-1, true)} disabled={activeRelativeIndex <= 0}><ArrowLeftIcon /> Previous slide</button>
-            <button onClick={() => moveVisual(1, true)} disabled={!selectedResolved || activeRelativeIndex >= selectedResolved.slides.length - 1}>Next slide <ArrowRightIcon /></button>
+            <button onClick={() => moveRecordingVisual(-1)} disabled={activeRelativeIndex <= 0}><ArrowLeftIcon /> Previous slide</button>
+            <button onClick={() => moveRecordingVisual(1)} disabled={!selectedResolved || (upcomingRevealOrder === null && activeRelativeIndex >= selectedResolved.slides.length - 1)}>{upcomingRevealOrder === null ? 'Next Slide' : 'Next Reveal'} <ArrowRightIcon /></button>
             <span className="recording-shortcuts">Space / → next · ← previous</span>
             <button className="stop-recording" onClick={recorder.stopRecording}>Stop Recording</button>
             <button onClick={recorder.cancel}>Cancel Take</button>

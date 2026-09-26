@@ -2,10 +2,7 @@ export const VIDEO_WIDTH = 1080
 export const VIDEO_HEIGHT = 1920
 export const VIDEO_FPS = 30
 
-export interface ExportCue {
-  sceneId: string
-  timeMs: number
-}
+export type ExportCue = SceneCue
 
 export interface NarrationExportSegment {
   type: 'narration'
@@ -64,3 +61,4 @@ export interface DesktopRenderFrameRequest {
   frameIndex: number
   elapsedMs: number
 }
+import type { SceneCue } from '../../src/narration/narrationTypes'

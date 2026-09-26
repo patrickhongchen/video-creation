@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sortSceneCues, synchronizeSceneCues } from '../narration/cueSynchronization'
+import { isSlideCue } from '../narration/narrationTypes'
 import type { FinalPlaybackPlan, FinalPlaybackSegment } from './finalPlaybackTypes'
 
 export type FinalPlaybackStatus = 'idle' | 'playing' | 'paused' | 'completed'
@@ -12,7 +13,7 @@ interface UseFinalPlaybackOptions {
 
 function firstSceneId(segment: FinalPlaybackSegment | undefined) {
   return segment?.type === 'narration'
-    ? segment.take.cues[0]?.sceneId ?? segment.sceneIds[0]
+    ? segment.take.cues.find(isSlideCue)?.sceneId ?? segment.sceneIds[0]
     : segment?.sceneId
 }
 

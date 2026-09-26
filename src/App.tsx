@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
 import type { Presentation, PresentationImageMimeType, Slide, SlideElement } from './model'
 import { createBlankPresentation, createSlideFromPreset, createSlideImageElement, duplicatePresentation, duplicateSlide, duplicateSlideElement, makePresentationIdUnique, type SlidePreset } from './presentationFactories'
 import { downloadPresentation, readPresentationFile } from './presentationFiles'
@@ -14,30 +14,12 @@ import { getDesktopBridge } from './desktop/desktopBridge'
 import type { DesktopImportedAsset, DesktopProjectExternalChange, DesktopProjectSnapshot } from './desktop/desktopTypes'
 import { presentationHistoryReducer } from './presentationHistory'
 import { canAutoApplyProjectChange, pendingChangeKind, selectionAfterProjectReload } from './projectSync'
-import { previousSlideFor, slideEntranceEndMs } from './entranceAnimation'
+import { DEFAULT_ENTRANCE_DURATION_MS, INITIAL_REVEAL_STATE, nextRevealOrder, previousSlideFor, slideRevealOrders } from './entranceAnimation'
 
 type AppMode = 'edit' | 'present' | 'narrate' | 'final-video'
 type PendingChoice = 'save' | 'discard' | 'cancel'
 
 const IMAGE_MIME_TYPES = new Set<PresentationImageMimeType>(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
-
-function PresentStage({ presentation, slide, index, direction }: { presentation: Presentation; slide: Slide; index: number; direction: 1 | -1 }) {
-  const [elapsedMs, setElapsedMs] = useState(0)
-
-  useLayoutEffect(() => {
-    const activatedAt = performance.now()
-    let frame = 0
-    setElapsedMs(0)
-    const update = (now: number) => {
-      setElapsedMs(now - activatedAt)
-      frame = requestAnimationFrame(update)
-    }
-    frame = requestAnimationFrame(update)
-    return () => cancelAnimationFrame(frame)
-  }, [slide.id])
-
-  return <Stage slide={slide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={index + 1} slideCount={presentation.slides.length} direction={direction} slideElapsedMs={elapsedMs} className="present-stage" />
-}
 
 function supportedImageMime(file: File): PresentationImageMimeType | null {
   const declared = file.type === 'image/jpg' ? 'image/jpeg' : file.type
@@ -101,7 +83,8 @@ export function App() {
   const [projectName, setProjectName] = useState('')
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [previewRun, setPreviewRun] = useState<{ slideId: string; presentationId: string; generation: number } | null>(null)
-  const [previewElapsedMs, setPreviewElapsedMs] = useState(0)
+  const [revealRun, setRevealRun] = useState<{ key: string; through: number; active: number; startedAt: number } | null>(null)
+  const [revealClockMs, setRevealClockMs] = useState(0)
   const [compositionGrid, setCompositionGrid] = useState(false)
   const [compositionGuides, setCompositionGuides] = useState(false)
   const [compositionSnap, setCompositionSnap] = useState(true)
@@ -118,34 +101,34 @@ export function App() {
 
   const presentation = library.presentations.find((item) => item.id === library.activePresentationId) ?? library.presentations[0]
   const selectedSlide = presentation.slides[selectedIndex] ?? presentation.slides[0]
-  const previewEndMs = slideEntranceEndMs(selectedSlide, previousSlideFor(presentation.slides, selectedSlide))
+  const revealOrders = useMemo(() => slideRevealOrders(selectedSlide, previousSlideFor(presentation.slides, selectedSlide)), [presentation.slides, selectedSlide])
   const isPreviewing = previewRun?.slideId === selectedSlide.id && previewRun.presentationId === presentation.id && mode === 'edit'
+  const revealKey = `${presentation.id}:${selectedSlide.id}:${mode}:${isPreviewing ? previewRun?.generation : ''}`
+  const currentReveal = revealRun?.key === revealKey ? revealRun : null
+  const revealState = currentReveal ? {
+    revealedThroughOrder: currentReveal.through,
+    activeRevealOrder: currentReveal.active,
+    activeRevealElapsedMs: Math.max(0, revealClockMs - currentReveal.startedAt),
+  } : INITIAL_REVEAL_STATE
   selectedIndexRef.current = selectedIndex
 
   useEffect(() => {
-    if (!isPreviewing) return
-    if (previewEndMs === null) {
-      setPreviewRun(null)
-      return
-    }
-    const startedAt = performance.now()
+    if (!currentReveal || currentReveal.active === null) return
     let frame = 0
     const update = (now: number) => {
-      const elapsed = Math.max(0, now - startedAt)
-      if (elapsed >= previewEndMs + 400) {
-        setPreviewRun(null)
-        return
-      }
-      setPreviewElapsedMs(elapsed)
-      frame = requestAnimationFrame(update)
+      setRevealClockMs(now)
+      if (now < currentReveal.startedAt + DEFAULT_ENTRANCE_DURATION_MS) frame = requestAnimationFrame(update)
     }
     frame = requestAnimationFrame(update)
     return () => cancelAnimationFrame(frame)
-  }, [isPreviewing, previewEndMs, previewRun?.generation])
+  }, [currentReveal?.key, currentReveal?.startedAt])
+
+  useEffect(() => {
+    if (isPreviewing && revealOrders.length === 0) setPreviewRun(null)
+  }, [isPreviewing, revealOrders.length])
 
   const startPreview = () => {
-    if (previewEndMs === null) return
-    setPreviewElapsedMs(0)
+    if (revealOrders.length === 0) return
     setPreviewRun((previous) => ({ slideId: selectedSlide.id, presentationId: presentation.id, generation: (previous?.generation ?? 0) + 1 }))
   }
 
@@ -172,12 +155,25 @@ export function App() {
 
   const selectSlide = useCallback((next: number) => {
     const safeIndex = Math.max(0, Math.min(next, presentation.slides.length - 1))
+    setRevealRun(null)
     setDirection(safeIndex >= selectedIndex ? 1 : -1)
     setSelectedIndex(safeIndex)
   }, [presentation.slides.length, selectedIndex])
 
   const previous = useCallback(() => selectSlide(selectedIndex - 1), [selectSlide, selectedIndex])
   const next = useCallback(() => selectSlide(selectedIndex + 1), [selectSlide, selectedIndex])
+
+  const advanceReveal = useCallback(() => {
+    const order = nextRevealOrder(revealOrders, revealState.revealedThroughOrder)
+    if (order === null) {
+      if (isPreviewing) setPreviewRun(null)
+      else if (selectedIndex < presentation.slides.length - 1) next()
+      return
+    }
+    const startedAt = performance.now()
+    setRevealClockMs(startedAt)
+    setRevealRun({ key: revealKey, through: order, active: order, startedAt })
+  }, [isPreviewing, next, presentation.slides.length, revealKey, revealOrders, revealState.revealedThroughOrder, selectedIndex])
 
   useEffect(() => {
     if (currentProject) return
@@ -211,13 +207,23 @@ export function App() {
   useEffect(() => {
     if (mode !== 'present') return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowRight' || event.key === ' ') { event.preventDefault(); next() }
-      if (event.key === 'ArrowLeft') { event.preventDefault(); previous() }
+      if (event.key === 'ArrowRight' || event.key === ' ') { event.preventDefault(); advanceReveal() }
+      if (event.key === 'ArrowLeft') { event.preventDefault(); if (selectedIndex > 0) previous() }
       if (event.key === 'Escape') setMode('edit')
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [mode, next, previous])
+  }, [advanceReveal, mode, previous, selectedIndex])
+
+  useEffect(() => {
+    if (!isPreviewing) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowRight' || event.key === ' ') { event.preventDefault(); advanceReveal() }
+      if (event.key === 'Escape') setPreviewRun(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [advanceReveal, isPreviewing])
 
   useEffect(() => {
     if (mode !== 'edit' || isPreviewing || !selectedElementId) return
@@ -859,9 +865,11 @@ export function App() {
   if (mode === 'present') {
     return (
       <><main className="present-mode">
-        <PresentStage presentation={presentation} slide={selectedSlide} index={selectedIndex} direction={direction} />
+        <div className="present-stage-advance" onClick={advanceReveal}>
+          <Stage slide={selectedSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={selectedIndex + 1} slideCount={presentation.slides.length} direction={direction} revealState={revealState} className="present-stage" />
+        </div>
         <button className="exit-present" onClick={() => setMode('edit')} aria-label="Exit presentation"><CloseIcon /> Exit</button>
-        <div className="present-hint" aria-hidden="true">← → navigate&nbsp;&nbsp; · &nbsp;&nbsp;Esc exit</div>
+        <div className="present-hint" aria-hidden="true">Click / Space / → reveal or advance&nbsp;&nbsp; · &nbsp;&nbsp;← previous slide&nbsp;&nbsp; · &nbsp;&nbsp;Esc exit</div>
       </main>{projectSafetyDialogs}</>
     )
   }
@@ -925,7 +933,7 @@ export function App() {
           <span className={`save-state${dirty ? ' is-dirty' : ''}`}>{!dirty && !externalPending && !externalIssue && <CheckIcon />} {externalIssue ? 'Project sync warning' : externalPending ? 'External changes pending' : dirty ? 'Unsaved changes' : currentProject ? syncStatus === 'updated' ? 'Updated from disk' : 'Watching for changes' : `Saved${saveTime ? ` ${saveTime}` : ''}`}</span>
           <button className="narrate-button" onClick={() => setMode('narrate')}>Narrate</button>
           <button className="final-video-button" onClick={() => setMode('final-video')}>Final Video</button>
-          <button className="present-button" onClick={() => setMode('present')}><PlayIcon /> Present</button>
+          <button className="present-button" onClick={() => { setRevealRun(null); setMode('present') }}><PlayIcon /> Present</button>
         </div>
       </header>
 
@@ -961,6 +969,7 @@ export function App() {
       <div className="workspace">
         <SlideList presentation={presentation} selectedIndex={selectedIndex} onSelect={selectSlide} onPrevious={previous} onNext={next} onAdd={addSlide} onDuplicate={copySlide} onDelete={deleteSlide} onMove={moveSlide} />
         <main className="canvas-workspace" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }} onDrop={(event) => void dropProjectImage(event)}>
+          <div className={isPreviewing ? 'preview-stage-advance' : 'edit-stage-host'} onClick={isPreviewing ? advanceReveal : undefined}>
           <Stage
             slide={selectedSlide}
             slides={isPreviewing ? presentation.slides : undefined}
@@ -970,7 +979,7 @@ export function App() {
             slideNumber={selectedIndex + 1}
             slideCount={presentation.slides.length}
             direction={direction}
-            slideElapsedMs={isPreviewing ? previewElapsedMs : null}
+            revealState={isPreviewing ? revealState : null}
             slideEditor={isPreviewing ? undefined : {
               selectedElementId,
               grid: compositionGrid,
@@ -980,6 +989,7 @@ export function App() {
               onElementChange: (element) => updateSlide({ ...selectedSlide, elements: selectedSlide.elements.map((candidate) => candidate.id === element.id ? element : candidate) }),
             }}
           />
+          </div>
         </main>
         <Inspector
           slide={selectedSlide}
@@ -992,7 +1002,10 @@ export function App() {
           hasNext={selectedIndex < presentation.slides.length - 1}
           selectedElementId={selectedElementId}
           isPreviewing={isPreviewing}
-          previewAvailable={previewEndMs !== null}
+          previewAvailable={revealOrders.length > 0}
+          revealCount={revealOrders.length}
+          revealedCount={revealOrders.filter((order) => order <= revealState.revealedThroughOrder).length}
+          onNextReveal={advanceReveal}
           onPreviewSlide={startPreview}
           onStopPreview={() => setPreviewRun(null)}
           compositionGrid={compositionGrid}

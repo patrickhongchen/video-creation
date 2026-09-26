@@ -2,7 +2,7 @@ import { motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { BarChart, LineChart } from '../charts'
 import { COMPOSITION_HEIGHT, COMPOSITION_WIDTH } from '../model'
-import { FINAL_ENTRANCE_STATE, entranceSuppressionReason, morphCompatibilityKey, resolveEntranceState } from '../entranceAnimation'
+import { FINAL_ENTRANCE_STATE, entranceSuppressionReason, morphCompatibilityKey, resolveEntranceState, type RevealVisualState } from '../entranceAnimation'
 import type {
   ElementFrame,
   PresentationImageAsset,
@@ -26,7 +26,7 @@ interface SlideRendererProps {
   layoutNamespace: string
   imageAssets?: PresentationImageAsset[]
   editor?: SlideEditorController
-  slideElapsedMs?: number | null
+  revealState?: RevealVisualState | null
   previousSlide?: Slide
   deterministicMotion?: boolean
 }
@@ -232,7 +232,7 @@ function elementStyle(frame: ElementFrame): CSSProperties {
 
 const noopMotionUpdate = () => undefined
 
-export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAssets, editor, slideElapsedMs = null, previousSlide, deterministicMotion = false }: SlideRendererProps) {
+export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAssets, editor, revealState = null, previousSlide, deterministicMotion = false }: SlideRendererProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<Interaction | null>(null)
   const previewFrameRef = useRef<ElementFrame | null>(null)
@@ -372,8 +372,8 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
         const assetMissing = element.type === 'image' && !assetsById.has(element.assetId)
         // An incoming Morph identity stays visible; its first appearance may still enter.
         const suppressEntrance = entranceSuppressionReason(element, previousSlide) !== null
-        const entrance = resolveEntranceState(element.animation, editor || suppressEntrance ? null : slideElapsedMs)
-        const animated = Boolean(element.animation && !suppressEntrance && slideElapsedMs !== null && !editor)
+        const entrance = resolveEntranceState(element.animation, editor || suppressEntrance ? null : revealState)
+        const animated = Boolean(element.animation && !suppressEntrance && revealState !== null && !editor)
         const entranceStyle = entrance === FINAL_ENTRANCE_STATE ? undefined : {
           opacity: entrance.opacity,
           transform: `translate3d(${entrance.x}px, ${entrance.y}px, 0) scale(${entrance.scale})`,

@@ -90,7 +90,7 @@ export function ExportRenderSurface() {
         direction={direction}
         renderInstanceKey={`desktop-export-${job.jobId}`}
         className="export-stage"
-        slideElapsedMs={visual.slideElapsedMs}
+        revealState={visual.revealState}
         deterministicMotion
       />
     </main>

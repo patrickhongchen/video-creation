@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { NarrationRecorderStatus, NarrationRecording, SceneCue } from './narrationTypes'
+import type { NarrationRecorderStatus, NarrationRecording, SceneCue, TypedSceneCue, TypedSceneCueInput } from './narrationTypes'
 
 const MIME_TYPE_PREFERENCES = [
   'audio/webm;codecs=opus',
@@ -206,7 +206,7 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
     }
     try {
       chunksRef.current = []
-      cuesRef.current = [{ sceneId: firstSceneId, timeMs: 0 }]
+      cuesRef.current = [{ type: 'slide', sceneId: firstSceneId, timeMs: 0 }]
       cancelledRef.current = false
       stopRequestedRef.current = false
       recorder.start(250)
@@ -239,10 +239,10 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
     }, 50)
   }, [beginAfterCountdown, updateStatus])
 
-  const addCue = useCallback((sceneId: string) => {
+  const addCue = useCallback((cue: TypedSceneCueInput) => {
     if (statusRef.current !== 'recording') return
     const timeMs = Math.max(0, performance.now() - startedAtRef.current)
-    cuesRef.current.push({ sceneId, timeMs })
+    cuesRef.current.push({ ...cue, timeMs } as TypedSceneCue)
     return timeMs
   }, [])
 

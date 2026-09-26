@@ -110,7 +110,7 @@ function progressContext(job: DesktopExportJob, elapsedMs: number) {
   let activeSceneId = cues[0]?.sceneId ?? active.sceneIds[0]
   for (const cue of cues) {
     if (cue.timeMs > localTime) break
-    activeSceneId = cue.sceneId
+    if (!('type' in cue) || cue.type !== 'reveal') activeSceneId = cue.sceneId
   }
   return { activeSceneId, activeSectionTitle: active.title }
 }

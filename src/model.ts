@@ -21,11 +21,10 @@ export interface ElementFrame {
 
 export type SlideEntranceAnimationType = 'appear' | 'fade' | 'pop' | 'slide-up' | 'slide-left' | 'slide-right'
 
-/** A deterministic entrance that starts relative to the slide activation time. */
+/** An entrance assigned to a click-driven reveal group. */
 export interface SlideEntranceAnimation {
   entrance: SlideEntranceAnimationType
-  delayMs: number
-  durationMs: number
+  order: number
 }
 
 export interface SlideElementBase {

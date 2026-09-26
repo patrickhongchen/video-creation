@@ -233,6 +233,7 @@ export function duplicateSlide(slide: Slide): Slide {
 export function createBlankPresentation(title = 'Untitled Presentation'): Presentation {
   return {
     schemaVersion: 2,
+    voiceEnhance: 'standard',
     id: createStableId(slugify(title)),
     title,
     tagline: 'A new presentation.',

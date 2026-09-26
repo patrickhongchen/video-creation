@@ -386,7 +386,17 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     <main className="narration-studio">
       <header className="narration-header">
         <div><span className="narration-kicker">Voiceover workspace</span><h1>Narration Studio</h1></div>
-        <div className="narration-readiness"><strong>{readyCount} of {sections.length}</strong> sections ready</div>
+        <div className="narration-header-settings">
+          <div className="narration-readiness"><strong>{readyCount} of {sections.length}</strong> sections ready</div>
+          <label className="voice-enhance-control" htmlFor="voice-enhance-mode">
+            <span>Voice Enhance</span>
+            <select id="voice-enhance-mode" value={presentation.voiceEnhance} onChange={(event) => onPresentationChange({ ...presentation, voiceEnhance: event.target.value as 'off' | 'standard' })}>
+              <option value="off">Off</option>
+              <option value="standard">Standard</option>
+            </select>
+          </label>
+          <small>Applied on export · previews play original audio</small>
+        </div>
         <button className="narration-exit" onClick={onExit} disabled={recorderBusy}><CloseIcon /> Exit</button>
       </header>
 

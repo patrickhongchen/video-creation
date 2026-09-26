@@ -86,6 +86,11 @@ export function validateExportJob(value: unknown): asserts value is DesktopExpor
     || presentation.slides.length === 0) {
     throw new Error('The export presentation is invalid or unsupported.')
   }
+  if (presentation.voiceEnhance !== undefined
+    && presentation.voiceEnhance !== 'off'
+    && presentation.voiceEnhance !== 'standard') {
+    throw new Error('The export presentation has an invalid Voice Enhance setting.')
+  }
   const slideIds = new Set<string>()
   for (const slide of presentation.slides) {
     if (!isRecord(slide) || !isNonEmptyString(slide.id) || slideIds.has(slide.id)) {

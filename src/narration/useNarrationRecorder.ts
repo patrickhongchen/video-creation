@@ -125,7 +125,23 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const supported = navigator.mediaDevices.getSupportedConstraints?.()
+      const speechConstraints: MediaTrackConstraints = {}
+      if (supported?.echoCancellation) speechConstraints.echoCancellation = true
+      if (supported?.noiseSuppression) speechConstraints.noiseSuppression = true
+      if (supported?.autoGainControl) speechConstraints.autoGainControl = false
+      if (supported?.channelCount) speechConstraints.channelCount = 1
+      let stream: MediaStream
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: Object.keys(speechConstraints).length > 0 ? speechConstraints : true,
+        })
+      } catch (captureError) {
+        // Some devices reject even advertised preferences. Retry only constraint failures.
+        if (!(captureError instanceof DOMException || captureError instanceof TypeError)
+          || !['OverconstrainedError', 'TypeError'].includes(captureError.name)) throw captureError
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      }
       if ((statusRef.current as NarrationRecorderStatus) !== 'requesting') {
         stream.getTracks().forEach((track) => track.stop())
         return

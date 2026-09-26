@@ -195,8 +195,11 @@ export interface NarrationStructure {
   sections: NarrationSection[]
 }
 
+export type VoiceEnhanceMode = 'off' | 'standard'
+
 export interface Presentation {
   schemaVersion: 2
+  voiceEnhance: VoiceEnhanceMode
   id: string
   title: string
   tagline: string

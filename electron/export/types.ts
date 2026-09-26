@@ -1,3 +1,5 @@
+import type { VoiceEnhanceMode } from '../../src/model'
+
 export const VIDEO_WIDTH = 1080
 export const VIDEO_HEIGHT = 1920
 export const VIDEO_FPS = 30
@@ -30,6 +32,7 @@ export interface DesktopExportJob {
   jobId: string
   presentation: {
     schemaVersion: number
+    voiceEnhance?: VoiceEnhanceMode
     id: string
     title: string
     slides: Array<{ id: string; [key: string]: unknown }>

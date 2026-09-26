@@ -186,6 +186,7 @@ export function migrateLegacyScene(scene: LegacyScene, accent = DEFAULT_EDITORIA
 export function migratePresentationV1ToV2(presentation: LegacyPresentation): Presentation {
   return {
     schemaVersion: 2,
+    voiceEnhance: 'off',
     id: presentation.id,
     title: presentation.title,
     tagline: presentation.tagline,

@@ -16,6 +16,7 @@ import type {
   SlideElement,
   SlideTransition,
   ThemeTextStyle,
+  VoiceEnhanceMode,
 } from './model'
 import { migratePresentationV1ToV2 } from './presentationMigration'
 import { isSafeProjectAssetPath } from './projectAssets'
@@ -647,6 +648,12 @@ export function validateLegacyPresentation(value: unknown): LegacyPresentation {
   }
 }
 
+function parseVoiceEnhance(value: unknown): VoiceEnhanceMode {
+  if (value === undefined) return 'off' // Projects saved before this setting retain their raw export behavior.
+  if (value === 'off' || value === 'standard') return value
+  return fail('presentation.voiceEnhance', 'expected "off" or "standard"')
+}
+
 export function validatePresentationV2(value: unknown): Presentation {
   const data = object(value, 'presentation')
   if (data.schemaVersion !== 2) fail('presentation.schemaVersion', 'unsupported or missing version (expected 2)')
@@ -664,6 +671,7 @@ export function validatePresentationV2(value: unknown): Presentation {
   const narration = parseNarrationV2(data.narration, slides)
   return {
     schemaVersion: 2,
+    voiceEnhance: parseVoiceEnhance(data.voiceEnhance),
     id: id(data.id, 'presentation.id'),
     title: string(data.title, 'presentation.title'),
     tagline: string(data.tagline, 'presentation.tagline'),

@@ -1,6 +1,7 @@
 import path from 'node:path'
 import { writeFile } from 'node:fs/promises'
 import type { DesktopExportJob, NarrationExportSegment } from './types'
+import { narrationProcessingSuffix } from './narrationAudioProcessing'
 
 function extensionForMimeType(mimeType: string) {
   const normalized = mimeType.toLowerCase().split(';', 1)[0]
@@ -78,7 +79,8 @@ export async function createAudioTimeline(job: DesktopExportJob, tempDirectory: 
     filters.push(`anullsrc=r=48000:cl=stereo:d=${seconds(job.finalHoldMs)},asetpts=PTS-STARTPTS[${holdLabel}]`)
     labels.push(`[${holdLabel}]`)
   }
-  filters.push(`${labels.join('')}concat=n=${labels.length}:v=0:a=1[aout]`)
+  const processing = narrationProcessingSuffix(job.presentation.voiceEnhance ?? 'off', inputIndexBySegment.size > 0, seconds(job.totalDurationMs))
+  filters.push(`${labels.join('')}concat=n=${labels.length}:v=0:a=1${processing}[aout]`)
 
   return { inputArgs, filterComplex: filters.join(';') }
 }

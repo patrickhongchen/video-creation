@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { loadPresentationLibrary, savePresentationLibrary } from './presentationStorage'
+import { createBlankPresentation } from '../presentationFactories'
 
 class MemoryStorage {
   private values = new Map<string, string>()
@@ -59,5 +60,13 @@ describe('presentation library schema upgrade', () => {
     expect(saved.presentations[0].schemaVersion).toBe(2)
     expect(saved.presentations[0].slides).toHaveLength(1)
     expect(saved.presentations[0]).not.toHaveProperty('scenes')
+  })
+
+  it('persists a project Voice Enhance selection', () => {
+    const presentation = createBlankPresentation('Narrated project')
+    presentation.voiceEnhance = 'off'
+    savePresentationLibrary({ presentations: [presentation], activePresentationId: presentation.id })
+
+    expect(loadPresentationLibrary().presentations[0].voiceEnhance).toBe('off')
   })
 })

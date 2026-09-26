@@ -16,6 +16,11 @@ function silentJob() {
 }
 
 describe('desktop export schema v2 boundary', () => {
+  it('accepts existing jobs without a setting and rejects invalid enhancement values', () => {
+    const { voiceEnhance: _previouslyAbsent, ...presentation } = demoPresentation
+    expect(() => validateExportJob({ ...silentJob(), presentation })).not.toThrow()
+    expect(() => validateExportJob({ ...silentJob(), presentation: { ...demoPresentation, voiceEnhance: 'boosted' } })).toThrow(/Voice Enhance/)
+  })
   it('accepts a canonical slide presentation and slide-referencing playback plan', () => {
     expect(() => validateExportJob(silentJob())).not.toThrow()
   })

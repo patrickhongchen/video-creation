@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LegacyPresentation, Presentation, Slide } from './model'
-import { createSlideFromPreset, duplicateSlide, slidePresetOptions } from './presentationFactories'
+import { createBlankPresentation, createSlideFromPreset, duplicateSlide, slidePresetOptions } from './presentationFactories'
 import { serializePresentation } from './presentationFiles'
 import { validatePresentation } from './presentationValidation'
 
@@ -91,6 +91,7 @@ describe('schema v1 migration', () => {
     const migrated = validatePresentation(legacyPresentation)
 
     expect(migrated.schemaVersion).toBe(2)
+    expect(migrated.voiceEnhance).toBe('off')
     expect(migrated.slides.map((slide) => slide.id)).toEqual(legacyPresentation.scenes.map((scene) => scene.id))
     expect(migrated.narration?.sections[0]).toEqual({
       id: 'section-1',
@@ -189,6 +190,20 @@ describe('slide presets and duplication', () => {
 })
 
 describe('v2 serialization and validation', () => {
+  it('defaults new projects to Standard and safely loads existing v2 projects without the field', () => {
+    const created = createBlankPresentation()
+    expect(created.voiceEnhance).toBe('standard')
+    expect(validatePresentation(created).voiceEnhance).toBe('standard')
+    const { voiceEnhance: _previouslyAbsent, ...existing } = created
+    expect(validatePresentation(existing).voiceEnhance).toBe('off')
+  })
+
+  it('preserves the selection through project serialization and rejects invalid settings', () => {
+    const presentation = createBlankPresentation()
+    presentation.voiceEnhance = 'off'
+    expect(validatePresentation(JSON.parse(serializePresentation(presentation))).voiceEnhance).toBe('off')
+    expect(() => validatePresentation({ ...presentation, voiceEnhance: 'boosted' })).toThrow(/presentation\.voiceEnhance/)
+  })
   it('round-trips the canonical representation without legacy scenes', () => {
     const presentation = validatePresentation(legacyPresentation)
     const serialized = serializePresentation(presentation)

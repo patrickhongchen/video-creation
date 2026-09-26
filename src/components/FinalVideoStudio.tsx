@@ -284,7 +284,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
         </aside>
 
         <section className="final-stage-panel">
-          <div className="final-panel-heading"><span>02</span><div><small>Playback source</small><h2>Final Playback Preview</h2></div></div>
+          <div className="final-panel-heading"><span>02</span><div><small>{presentation.voiceEnhance === 'standard' ? 'Original audio preview · Voice Enhance on export' : 'Playback source'}</small><h2>Final Playback Preview</h2></div></div>
           <div className="final-stage-well">
             <Stage slide={activeSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={activeSlideIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} revealState={activeRevealState} className="final-stage" />
           </div>

@@ -102,6 +102,20 @@ export function useNarrationPlayback({ onSceneCue, onError }: UseNarrationPlayba
 
   const pause = useCallback(() => audioRef.current?.pause(), [])
 
+  const seek = useCallback((seconds: number) => {
+    const audio = audioRef.current
+    if (!audio) return
+    const requestedSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0
+    const nextSeconds = Number.isFinite(audio.duration)
+      ? Math.min(requestedSeconds, Math.max(0, audio.duration))
+      : requestedSeconds
+    audio.currentTime = nextSeconds
+    const timeMs = nextSeconds * 1000
+    setCurrentTimeMs(timeMs)
+    nextCueIndexRef.current = 0
+    syncCues(timeMs, true)
+  }, [syncCues])
+
   const restart = useCallback(async () => {
     const audio = audioRef.current
     if (!audio) return
@@ -125,5 +139,5 @@ export function useNarrationPlayback({ onSceneCue, onError }: UseNarrationPlayba
 
   useEffect(() => stop, [stop])
 
-  return { takeId, isPlaying, currentTimeMs, play, pause, restart, stop }
+  return { takeId, isPlaying, currentTimeMs, play, pause, seek, restart, stop }
 }

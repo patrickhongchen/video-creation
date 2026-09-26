@@ -29,6 +29,7 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
   const [elapsedMs, setElapsedMs] = useState(0)
   const [level, setLevel] = useState(0)
   const [error, setError] = useState('')
+  const [usedDefaultAfterFallback, setUsedDefaultAfterFallback] = useState(false)
   const statusRef = useRef<NarrationRecorderStatus>('idle')
   const callbacksRef = useRef({ onRecordingStarted, onFinished, onError })
   const streamRef = useRef<MediaStream | null>(null)
@@ -110,9 +111,10 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
     update()
   }, [])
 
-  const prepare = useCallback(async () => {
+  const prepare = useCallback(async (selectedDeviceId?: string) => {
     if (statusRef.current !== 'idle' && statusRef.current !== 'error') return
     setError('')
+    setUsedDefaultAfterFallback(false)
     updateStatus('requesting')
 
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -131,22 +133,47 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
       if (supported?.noiseSuppression) speechConstraints.noiseSuppression = true
       if (supported?.autoGainControl) speechConstraints.autoGainControl = false
       if (supported?.channelCount) speechConstraints.channelCount = 1
+      const requestedDeviceId = selectedDeviceId?.trim()
+      const preferredConstraints = requestedDeviceId
+        ? { ...speechConstraints, deviceId: { exact: requestedDeviceId } }
+        : speechConstraints
       let stream: MediaStream
+      let fellBackToDefault = false
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: Object.keys(speechConstraints).length > 0 ? speechConstraints : true,
+          audio: Object.keys(preferredConstraints).length > 0 ? preferredConstraints : true,
         })
       } catch (captureError) {
-        // Some devices reject even advertised preferences. Retry only constraint failures.
-        if (!(captureError instanceof DOMException || captureError instanceof TypeError)
-          || !['OverconstrainedError', 'TypeError'].includes(captureError.name)) throw captureError
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        const problemName = captureError instanceof DOMException || captureError instanceof TypeError
+          ? captureError.name
+          : ''
+        const selectedDeviceUnavailable = Boolean(requestedDeviceId)
+          && ['NotFoundError', 'DevicesNotFoundError', 'OverconstrainedError', 'ConstraintNotSatisfiedError', 'TypeError'].includes(problemName)
+        const optionalConstraintsRejected = !requestedDeviceId
+          && ['OverconstrainedError', 'ConstraintNotSatisfiedError', 'TypeError'].includes(problemName)
+        if (!selectedDeviceUnavailable && !optionalConstraintsRejected) throw captureError
+        fellBackToDefault = selectedDeviceUnavailable
+
+        // A saved microphone can disappear between enumeration and capture. Fall back
+        // to the current default while keeping supported speech preferences when possible.
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: Object.keys(speechConstraints).length > 0 ? speechConstraints : true,
+          })
+        } catch (fallbackError) {
+          const fallbackName = fallbackError instanceof DOMException || fallbackError instanceof TypeError
+            ? fallbackError.name
+            : ''
+          if (!['OverconstrainedError', 'ConstraintNotSatisfiedError', 'TypeError'].includes(fallbackName)) throw fallbackError
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        }
       }
       if ((statusRef.current as NarrationRecorderStatus) !== 'requesting') {
         stream.getTracks().forEach((track) => track.stop())
         return
       }
       streamRef.current = stream
+      setUsedDefaultAfterFallback(fellBackToDefault)
 
       const mimeType = typeof MediaRecorder.isTypeSupported === 'function'
         ? MIME_TYPE_PREFERENCES.find((candidate) => MediaRecorder.isTypeSupported(candidate))
@@ -322,6 +349,7 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
     elapsedMs,
     level,
     error,
+    usedDefaultAfterFallback,
     prepare,
     startRecording,
     addCue,

@@ -35,4 +35,36 @@ describe('synchronizeSceneCues', () => {
     expect(onSceneCue).toHaveBeenCalledWith('two')
     expect(nextCueIndex).toBe(2)
   })
+
+  it('resynchronizes the active slide and cue cursor when seeking backward or forward', () => {
+    const onSceneCue = vi.fn()
+    const cues = [
+      { type: 'slide' as const, sceneId: 'one', timeMs: 0 },
+      { type: 'reveal' as const, sceneId: 'one', order: 1, timeMs: 400 },
+      { type: 'slide' as const, sceneId: 'two', timeMs: 1000 },
+      { type: 'slide' as const, sceneId: 'three', timeMs: 2000 },
+    ]
+
+    const backwardIndex = synchronizeSceneCues({
+      cues,
+      timeMs: 600,
+      nextCueIndex: cues.length,
+      onSceneCue,
+      forceCurrentCue: true,
+    })
+
+    expect(onSceneCue).toHaveBeenLastCalledWith('one')
+    expect(backwardIndex).toBe(2)
+
+    const forwardIndex = synchronizeSceneCues({
+      cues,
+      timeMs: 1500,
+      nextCueIndex: backwardIndex,
+      onSceneCue,
+      forceCurrentCue: true,
+    })
+
+    expect(onSceneCue).toHaveBeenLastCalledWith('two')
+    expect(forwardIndex).toBe(3)
+  })
 })

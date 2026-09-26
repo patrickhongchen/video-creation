@@ -129,6 +129,22 @@ export async function selectNarrationTake(presentationId: string, sectionId: str
   })
 }
 
+/** Marks existing takes unusable after their section's slide range changes. */
+export async function invalidateSectionTakes(presentationId: string, sectionId: string) {
+  return withDatabase(async (database) => {
+    const transaction = database.transaction(TAKE_STORE, 'readwrite')
+    const store = transaction.objectStore(TAKE_STORE)
+    const records = await requestResult(store.index(SECTION_INDEX).getAll(
+      IDBKeyRange.only(sectionKey(presentationId, sectionId)),
+    )) as StoredNarrationTake[]
+
+    for (const record of records) {
+      if (!record.invalidated) store.put({ ...record, invalidated: true })
+    }
+    await transactionDone(transaction)
+  })
+}
+
 async function deleteByIndex(indexName: string, value: string) {
   return withDatabase(async (database) => {
     const transaction = database.transaction(TAKE_STORE, 'readwrite')

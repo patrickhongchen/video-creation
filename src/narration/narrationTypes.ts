@@ -42,6 +42,8 @@ export interface NarrationTake {
   mimeType: string
   cues: SceneCue[]
   selected: boolean
+  /** The section's slide range changed after this take was recorded. */
+  invalidated?: boolean
   blob: Blob
 }
 

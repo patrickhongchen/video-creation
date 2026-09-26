@@ -61,6 +61,9 @@ export function getTakeUsabilityIssue(
   take: NarrationTake,
   section: ResolvedNarrationSection,
 ): string | null {
+  if (take.invalidated) {
+    return 'This take was recorded for an earlier slide range. Re-record it before using it.'
+  }
   if (!section.valid) return section.issue || 'The narration section is invalid.'
   if (!(take.blob instanceof Blob)) return 'The selected take is missing its audio.'
   if (take.blob.size === 0) return 'The selected take has no audio data.'

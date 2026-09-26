@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Slide } from '../model'
 import type { NarrationTake, SceneCue } from './narrationTypes'
 import { samplePresentation } from '../samplePresentation'
-import { getTakeRevealCoverageIssue, getTakeUsabilityIssue, type ResolvedNarrationSection } from './narrationValidation'
+import { getTakeRevealCoverageIssue, getTakeUsabilityIssue, takeIsUsable, type ResolvedNarrationSection } from './narrationValidation'
 
 const slide: Slide = {
   id: 'slide-1',
@@ -36,6 +36,16 @@ function take(cues: SceneCue[]): NarrationTake {
 describe('narration cue validation', () => {
   it('preserves legacy untyped slide cues', () => {
     expect(getTakeUsabilityIssue(take([{ sceneId: slide.id, timeMs: 0 }]), section)).toBeNull()
+  })
+
+  it('rejects a take invalidated by a section range change without removing its audio', () => {
+    const invalidatedTake = { ...take([{ sceneId: slide.id, timeMs: 0 }]), invalidated: true }
+
+    expect(getTakeUsabilityIssue(invalidatedTake, section)).toBe(
+      'This take was recorded for an earlier slide range. Re-record it before using it.',
+    )
+    expect(takeIsUsable(invalidatedTake, section)).toBe(false)
+    expect(invalidatedTake.blob.size).toBeGreaterThan(0)
   })
 
   it('accepts typed slide and positive safe-integer reveal cues', () => {

@@ -11,8 +11,9 @@ import { NarrationStudio } from './components/NarrationStudio'
 import { deletePresentationTakes, deleteSectionTakes } from './narration/narrationDb'
 import { FinalVideoStudio } from './components/FinalVideoStudio'
 import { getDesktopBridge } from './desktop/desktopBridge'
-import type { DesktopImportedAsset, DesktopProjectSnapshot } from './desktop/desktopTypes'
+import type { DesktopImportedAsset, DesktopProjectExternalChange, DesktopProjectSnapshot } from './desktop/desktopTypes'
 import { presentationHistoryReducer } from './presentationHistory'
+import { canAutoApplyProjectChange, pendingChangeKind, selectionAfterProjectReload } from './projectSync'
 
 type AppMode = 'edit' | 'present' | 'narrate' | 'final-video'
 type PendingChoice = 'save' | 'discard' | 'cancel'
@@ -68,6 +69,12 @@ export function App() {
   const [saveTime, setSaveTime] = useState('')
   const [currentProject, setCurrentProject] = useState<DesktopProjectSnapshot | null>(null)
   const [dirty, setDirty] = useState(false)
+  const [externalPending, setExternalPending] = useState<{ kind: 'presentation' | 'asset'; revision: number } | null>(null)
+  const [externalIssue, setExternalIssue] = useState('')
+  const [externalIssueDismissed, setExternalIssueDismissed] = useState(false)
+  const [externalBannerDismissed, setExternalBannerDismissed] = useState(false)
+  const [syncStatus, setSyncStatus] = useState<'watching' | 'updated'>('watching')
+  const [syncPulse, setSyncPulse] = useState(0)
   const [unsavedPrompt, setUnsavedPrompt] = useState(false)
   const [conflictPrompt, setConflictPrompt] = useState(false)
   const [error, setError] = useState('')
@@ -84,9 +91,13 @@ export function App() {
   const unsavedResolver = useRef<((choice: PendingChoice) => void) | null>(null)
   const conflictResolver = useRef<((choice: 'reload' | 'overwrite' | 'cancel') => void) | null>(null)
   const savedPresentation = useRef<Presentation | null>(null)
+  const selectedIndexRef = useRef(selectedIndex)
+  const externalRevision = useRef(0)
+  const externalSyncInFlight = useRef(false)
 
   const presentation = library.presentations.find((item) => item.id === library.activePresentationId) ?? library.presentations[0]
   const selectedSlide = presentation.slides[selectedIndex] ?? presentation.slides[0]
+  selectedIndexRef.current = selectedIndex
 
   const updateCurrent = useCallback((update: (current: Presentation) => Presentation) => {
     dispatchHistory({ type: 'edit', update })
@@ -134,7 +145,7 @@ export function App() {
   }, [currentProject, desktop, dirty])
 
   useEffect(() => {
-    document.title = `${dirty ? '• ' : ''}${presentation.title || 'Untitled Presentation'} — Video Presentation Studio`
+    document.title = `${dirty ? '• ' : ''}${presentation.title || 'Untitled Presentation'} — AI Presentation Studio`
   }, [dirty, presentation.title])
 
   useEffect(() => {
@@ -201,18 +212,25 @@ export function App() {
     return () => window.removeEventListener('blur', onBlur)
   }, [])
 
-  const applyProjectSnapshot = useCallback((project: DesktopProjectSnapshot, preferredSlideId?: string) => {
+  const applyProjectSnapshot = useCallback((project: DesktopProjectSnapshot, preferredSlideId?: string, preferredElementId?: string) => {
     savedPresentation.current = project.presentation
     setCurrentProject(project)
     setLibrary((current) => {
       const withoutSameId = current.presentations.filter((item) => item.id !== project.presentation.id)
       return { presentations: [...withoutSameId, project.presentation], activePresentationId: project.presentation.id }
     })
-    const nextIndex = preferredSlideId ? project.presentation.slides.findIndex((slide) => slide.id === preferredSlideId) : 0
-    setSelectedIndex(nextIndex >= 0 ? nextIndex : 0)
-    setSelectedElementId(null)
+    const selection = selectionAfterProjectReload(project.presentation.slides, {
+      slideId: preferredSlideId, index: selectedIndexRef.current, elementId: preferredElementId,
+    })
+    setSelectedIndex(selection.index)
+    setSelectedElementId(selection.elementId)
     setDirty(false)
     setError(project.missingAssets.length ? project.missingAssets.map((asset) => asset.message).join(' ') : '')
+    setExternalPending(null)
+    setExternalIssue('')
+    setExternalIssueDismissed(false)
+    setExternalBannerDismissed(false)
+    setSyncStatus('watching')
   }, [])
 
   const askUnsaved = useCallback(() => new Promise<PendingChoice>((resolve) => {
@@ -244,7 +262,7 @@ export function App() {
         if (choice === 'cancel') return false
         if (choice === 'reload') {
           const reloaded = await desktop.reloadProject(currentProject.projectId)
-          applyProjectSnapshot(reloaded, selectedSlide.id)
+          applyProjectSnapshot(reloaded, selectedSlide.id, selectedElementId ?? undefined)
           return false
         }
         result = await desktop.saveProject({ projectId: currentProject.projectId, presentation, overwriteExternal: true })
@@ -253,14 +271,17 @@ export function App() {
       savedPresentation.current = presentation
       setCurrentProject(result.project)
       setDirty(false)
+      setSyncStatus('watching')
       setSaveTime(new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date()))
       setError(result.project.missingAssets.length ? result.project.missingAssets.map((asset) => asset.message).join(' ') : '')
+      setExternalPending(null)
+      setExternalIssue('')
       return true
     } catch (problem) {
       setError(problem instanceof Error ? `Save failed: ${problem.message}` : 'Save failed.')
       return false
     }
-  }, [applyProjectSnapshot, currentProject, desktop, presentation, selectedSlide.id])
+  }, [applyProjectSnapshot, currentProject, desktop, presentation, selectedElementId, selectedSlide.id])
 
   const protectUnsavedChanges = useCallback(async () => {
     if (!dirty || !currentProject) return true
@@ -271,14 +292,14 @@ export function App() {
       try {
         await desktop.setProjectDirty(currentProject.projectId, false)
         const reloaded = await desktop.reloadProject(currentProject.projectId)
-        applyProjectSnapshot(reloaded, selectedSlide.id)
+        applyProjectSnapshot(reloaded, selectedSlide.id, selectedElementId ?? undefined)
       } catch (problem) {
         setError(problem instanceof Error ? `Could not discard changes: ${problem.message}` : 'Could not discard changes.')
         return false
       }
     }
     return true
-  }, [applyProjectSnapshot, askUnsaved, currentProject, desktop, dirty, saveDesktopProject, selectedSlide.id])
+  }, [applyProjectSnapshot, askUnsaved, currentProject, desktop, dirty, saveDesktopProject, selectedElementId, selectedSlide.id])
 
   const createDesktopProject = useCallback(async (source = createBlankPresentation('Untitled Presentation')) => {
     if (!desktop || !await protectUnsavedChanges()) return
@@ -304,11 +325,89 @@ export function App() {
     if (!desktop || !currentProject || !await protectUnsavedChanges()) return
     try {
       const reloaded = await desktop.reloadProject(currentProject.projectId)
-      applyProjectSnapshot(reloaded, selectedSlide.id)
+      applyProjectSnapshot(reloaded, selectedSlide.id, selectedElementId ?? undefined)
     } catch (problem) {
       setError(problem instanceof Error ? `Reload failed: ${problem.message}` : 'Reload failed. The current presentation was kept open.')
     }
-  }, [applyProjectSnapshot, currentProject, desktop, protectUnsavedChanges, selectedSlide.id])
+  }, [applyProjectSnapshot, currentProject, desktop, protectUnsavedChanges, selectedElementId, selectedSlide.id])
+
+  // Filesystem events identify possible changes; the store reads the latest disk state.
+  // Protected modes and local edits keep the event pending until Edit is safe again.
+  const canAutoApplyExternal = canAutoApplyProjectChange({
+    projectOpen: Boolean(currentProject), mode, dirty, modalOpen: unsavedPrompt || conflictPrompt,
+  })
+
+  useEffect(() => {
+    if (!desktop || !currentProject) return
+    const projectId = currentProject.projectId
+    return desktop.onProjectExternalChange((change: DesktopProjectExternalChange) => {
+      if (change.projectId !== projectId) return
+      if (change.kind === 'invalid' || change.kind === 'unavailable') {
+        setExternalIssue(change.message)
+        setExternalIssueDismissed(false)
+        return
+      }
+      if (change.kind === 'recovered') {
+        setExternalIssue('')
+        return
+      }
+      setExternalIssue('')
+      setExternalBannerDismissed(false)
+      const revision = ++externalRevision.current
+      setExternalPending((previous) => ({
+        kind: pendingChangeKind(previous?.kind ?? null, change.kind),
+        revision,
+      }))
+    })
+  }, [currentProject?.projectId, desktop])
+
+  useEffect(() => {
+    if (!desktop || !currentProject || !externalPending || !canAutoApplyExternal || externalSyncInFlight.current) return
+    const pendingRevision = externalPending.revision
+    let cancelled = false
+    externalSyncInFlight.current = true
+    void (async () => {
+      try {
+        if (externalPending.kind === 'presentation') {
+          const reloaded = await desktop.reloadProject(currentProject.projectId)
+          if (cancelled) return
+          applyProjectSnapshot(reloaded, selectedSlide.id, selectedElementId ?? undefined)
+        } else {
+          const refreshed = await desktop.refreshProjectAssets(currentProject.projectId, presentation)
+          if (cancelled) return
+          savedPresentation.current = refreshed.presentation
+          setCurrentProject(refreshed)
+          dispatchHistory({ type: 'refresh-assets', presentation: refreshed.presentation })
+          setError(refreshed.missingAssets.map((asset) => asset.message).join(' '))
+        }
+        setSyncStatus('updated')
+        setExternalIssue('')
+        if (externalRevision.current !== pendingRevision) {
+          setExternalPending({ kind: 'presentation', revision: externalRevision.current })
+        } else {
+          setExternalPending(null)
+        }
+      } catch (problem) {
+        if (!cancelled) setExternalIssue(problem instanceof Error ? `External update is not valid yet. ${problem.message}` : 'External update is not valid yet. The current presentation was kept.')
+      } finally {
+        externalSyncInFlight.current = false
+        if (cancelled || externalRevision.current !== pendingRevision) setSyncPulse((value) => value + 1)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [applyProjectSnapshot, canAutoApplyExternal, currentProject, desktop, externalPending, presentation, selectedElementId, selectedSlide.id, syncPulse])
+
+  const reloadPendingFromDisk = useCallback(async () => {
+    if (!desktop || !currentProject) return
+    if (dirty && !window.confirm('Discard your unsaved changes and reload the latest Project from disk?')) return
+    try {
+      const reloaded = await desktop.reloadProject(currentProject.projectId)
+      applyProjectSnapshot(reloaded, selectedSlide.id, selectedElementId ?? undefined)
+      setSyncStatus('updated')
+    } catch (problem) {
+      setExternalIssue(problem instanceof Error ? `Could not reload Project: ${problem.message}` : 'Could not reload Project. The current presentation was kept.')
+    }
+  }, [applyProjectSnapshot, currentProject, desktop, dirty, selectedElementId, selectedSlide.id])
 
   useEffect(() => {
     if (!desktop) return
@@ -699,7 +798,7 @@ export function App() {
 
   const projectSafetyDialogs = <>
     {unsavedPrompt && <div className="dialog-backdrop" role="presentation"><section className="project-dialog" role="dialog" aria-modal="true" aria-labelledby="unsaved-title"><div className="project-dialog-heading"><h2 id="unsaved-title">Save changes?</h2></div><p>“{presentation.title}” has unsaved changes.</p><div className="project-dialog-actions"><button onClick={() => finishUnsavedPrompt('cancel')}>Cancel</button><button onClick={() => finishUnsavedPrompt('discard')}>Don’t Save</button><button className="primary-button" onClick={() => finishUnsavedPrompt('save')}>Save</button></div></section></div>}
-    {conflictPrompt && <div className="dialog-backdrop" role="presentation"><section className="project-dialog" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><div className="project-dialog-heading"><h2 id="conflict-title">presentation.json changed</h2></div><p>The file changed outside Video Presentation Studio while you also have unsaved edits.</p><div className="project-dialog-actions"><button onClick={() => finishConflictPrompt('cancel')}>Cancel</button><button onClick={() => finishConflictPrompt('reload')}>Reload from Disk</button><button className="danger-button" onClick={() => finishConflictPrompt('overwrite')}>Overwrite with My Version</button></div></section></div>}
+    {conflictPrompt && <div className="dialog-backdrop" role="presentation"><section className="project-dialog" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><div className="project-dialog-heading"><h2 id="conflict-title">presentation.json changed</h2></div><p>The file changed outside AI Presentation Studio while you also have unsaved edits.</p><div className="project-dialog-actions"><button onClick={() => finishConflictPrompt('cancel')}>Cancel</button><button onClick={() => finishConflictPrompt('reload')}>Reload from Disk</button><button className="danger-button" onClick={() => finishConflictPrompt('overwrite')}>Overwrite with My Version</button></div></section></div>}
   </>
 
   if (mode === 'present') {
@@ -738,7 +837,7 @@ export function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="project-picker">
-          <strong>Video Presentation Studio</strong>
+          <strong>AI Presentation Studio</strong>
           {desktop ? <span className="project-identity"><b>{presentation.title || 'Untitled Presentation'}{dirty ? ' •' : ''}</b><small>{currentProject?.rootPath ?? 'Local presentation — save as a Project to use files'}</small></span> : <select aria-label="Open presentation" value={presentation.id} onChange={(event) => openPresentation(event.target.value)}>
             {library.presentations.map((item) => <option key={item.id} value={item.id}>{item.title || 'Untitled Presentation'}</option>)}
           </select>}
@@ -768,7 +867,7 @@ export function App() {
           <input ref={fileInput} className="visually-hidden" type="file" accept="application/json,.json" onChange={(event) => void importFile(event.target.files?.[0])} />
         </div>
         <div className="topbar-end">
-          <span className={`save-state${dirty ? ' is-dirty' : ''}`}>{!dirty && <CheckIcon />} {dirty ? 'Unsaved changes' : `Saved${saveTime ? ` ${saveTime}` : ''}`}</span>
+          <span className={`save-state${dirty ? ' is-dirty' : ''}`}>{!dirty && !externalPending && !externalIssue && <CheckIcon />} {externalIssue ? 'Project sync warning' : externalPending ? 'External changes pending' : dirty ? 'Unsaved changes' : currentProject ? syncStatus === 'updated' ? 'Updated from disk' : 'Watching for changes' : `Saved${saveTime ? ` ${saveTime}` : ''}`}</span>
           <button className="narrate-button" onClick={() => setMode('narrate')}>Narrate</button>
           <button className="final-video-button" onClick={() => setMode('final-video')}>Final Video</button>
           <button className="present-button" onClick={() => setMode('present')}><PlayIcon /> Present</button>
@@ -776,6 +875,9 @@ export function App() {
       </header>
 
       {error && <div className="error-banner" role="alert"><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><CloseIcon /></button></div>}
+
+      {currentProject && externalIssue && !externalIssueDismissed && <div className="error-banner" role="status"><span>{externalIssue} The last valid presentation remains open.</span><button onClick={() => setExternalIssueDismissed(true)} aria-label="Dismiss sync warning"><CloseIcon /></button></div>}
+      {currentProject && externalPending && !externalBannerDismissed && (dirty || !canAutoApplyExternal) && <div className="error-banner" role="status"><span>External changes detected. Your current work has been kept.</span><button onClick={() => void reloadPendingFromDisk()}>Reload from Disk</button><button onClick={() => setExternalBannerDismissed(true)}>Keep Editing</button></div>}
 
       {projectDialog && (
         <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setProjectDialog(null) }}>

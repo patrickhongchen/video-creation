@@ -2,7 +2,7 @@
 
 An Electron desktop application for AI-first, PowerPoint-like presentations with flexible 1080×1920 slides, structured editable elements, automatic Morph animation, narration recording, direct MP4 export, and normal file-based project folders.
 
-The intended workflow is simple: Codex authors a Project folder, the user reloads it, makes quick corrections when needed, narrates, and exports an MP4. This is not a general-purpose graphics or video editor.
+The intended workflow is simple: open a Project in AI Presentation Studio, open the same folder in Codex, ask Codex to create or redesign slides, and review the changes as they appear automatically. Make quick corrections when needed, then narrate and export an MP4.
 
 ## Run
 
@@ -51,7 +51,7 @@ New Projects receive the current authoring guidance. Existing Project `AGENTS.md
 
 Normal image editing does not require managing `assets/` by hand. Choosing an image, pasting an image onto the slide with Cmd+V—including an image copied from a web browser—or dropping an image from Finder copies or writes a PNG, JPEG, WebP, or SVG under the project's `assets/` directory, assigns a readable duplicate-safe filename, registers the asset, creates an image element, and selects it. The original external file is never retained as an absolute dependency. Deleting an image element does not automatically delete its potentially shared asset file.
 
-Codex can edit `presentation.json` and add files under `assets/` directly. Use **Reload Project** to validate and load those external changes. Before saving, the app detects whether the file changed on disk; if both disk and in-memory state changed, it asks whether to reload, overwrite, or cancel rather than attempting an automatic merge. **Show Project in Finder** makes the working folder easy to hand off. Automatic file watching and live reload are intentionally deferred.
+Codex can edit `presentation.json` and add files under `assets/` directly. The desktop app watches the open Project and automatically loads stable, valid changes while Edit mode is clean. **Reload Project** remains a manual fallback. Unsaved in-app edits keep external changes pending; Save still detects disk conflicts and asks whether to reload, overwrite, or cancel. Present, Narration Studio, and Final Video defer updates until Edit mode. **Show Project in Finder** makes the working folder easy to hand off.
 
 ## Editing
 
@@ -82,7 +82,7 @@ Narration audio, recorded takes, and selected-take state remain in IndexedDB in 
 - `src/presentationValidation.ts` validates untrusted v2 directly and routes v1 through migration, with path-specific errors.
 - `src/presentationFactories.ts` owns slide presets, element factories, duplication rules, stable IDs, and presentation defaults.
 - `src/storage/presentationStorage.ts` owns v2 local persistence and loading of earlier library keys.
-- The desktop project layer owns project creation/open/save/reload, atomic JSON writes, external-change conflict detection, managed asset ingestion, and secure project-relative asset resolution.
+- The desktop project layer owns project creation/open/save/reload, scoped file watching, atomic JSON writes, external-change conflict detection, managed asset ingestion, and secure project-relative asset resolution.
 - `src/scenes/CompositionSceneRenderer.tsx` is the single canonical slide/element renderer and direct-manipulation surface. Its historical filename remains only to limit mechanical churn.
 - `src/scenes/SceneRenderers.tsx` is now a thin compatibility import location; specialized runtime renderers were removed.
 - `src/components/Stage.tsx` owns slide transitions and the shared Motion layout namespace used by Edit, Present, Narration, Final Playback, and export.
@@ -94,13 +94,13 @@ The seeded **Small Screens, Bigger Questions** and **Chart Story Lab** presentat
 
 ## Intentional boundaries
 
-There is no built-in LLM/chat UI, Codex/OpenAI API integration, automatic file watching, arbitrary JSON merging, stock search, video element, music, captions, timeline, keyframes, grouping, nested components, symbol system, theme editor, plugin system, cloud backend, or collaboration. Phase 6A supplies the transparent project-folder foundation for later AI workflows; slides remain the animation timeline and narration remains the source of narrated timing.
+There is no built-in LLM/chat UI, Codex/OpenAI API integration, arbitrary JSON merging, stock search, video element, music, captions, timeline, keyframes, grouping, nested components, symbol system, theme editor, plugin system, cloud backend, or collaboration. Slides remain the animation timeline and narration remains the source of narrated timing.
 
 See [docs/PRESENTATION_FORMAT.md](docs/PRESENTATION_FORMAT.md) for the schema, complete example, migration mapping, and validation rules. See [docs/CODEX_AUTHORING.md](docs/CODEX_AUTHORING.md) for the practical Codex workflow, design recipes, prompt patterns, theme guidance, anti-patterns, and completion checklist.
 
 ## Codex authoring workflow
 
-Create or open a Project in the desktop app, then give Codex its folder and a presentation request. Codex reads `AGENTS.md`, `presentation.json`, and `assets/`, plans the story, edits ordinary Slides and Elements, and validates its work. Choose **Reload Project** to load those edits, make any quick corrections, save, narrate, preview, and export MP4. See the [prompt patterns](docs/CODEX_AUTHORING.md#prompt-patterns) for creation and redesign requests.
+Create or open a Project in the desktop app, then open that same folder in Codex and give it a presentation request. Codex reads `AGENTS.md`, `presentation.json`, and `assets/`, plans the story, edits ordinary Slides and Elements, and validates its work. Stable valid edits appear automatically in Edit mode; make quick corrections, save, narrate, preview, and export MP4. **Reload Project** remains available for troubleshooting or an explicit disk reload. See the [prompt patterns](docs/CODEX_AUTHORING.md#prompt-patterns) for creation and redesign requests.
 
 ```bash
 npm run validate-project -- /path/to/project

@@ -19,7 +19,9 @@ Read the current JSON and inspect `assets/` before changing anything. Preserve t
 4. Give every slide one main communication idea and choose the simplest useful visual treatment.
 5. Compose the slides with explicit frames, then add useful notes and intentional Morph continuity.
 6. Check the whole sequence for rhythm and variation. A repeated layout is useful only when it communicates a deliberate progression.
-7. Run `npm run validate-project -- <project-folder> --strict`, fix errors and meaningful warnings, then reload the Project in the app.
+7. Write related assets and JSON close together, keep JSON valid when possible, then run `npm run validate-project -- <project-folder> --strict` and fix errors and meaningful warnings. AI Presentation Studio automatically detects and loads stable valid changes in an open, clean Project; do not try to trigger Reload from Codex.
+
+The app keeps the last valid deck open during invalid intermediate writes. Unsaved edits in the app block automatic replacement and leave an external update pending. Present mode, Narration Studio, and Final Video defer updates until Edit mode. **Reload Project** remains available as a manual fallback or explicit discard and reload.
 
 ## Composition and hierarchy
 

@@ -13,9 +13,24 @@ export type PresentationHistoryAction =
   | { type: 'edit'; update: (presentation: Presentation) => Presentation }
   | { type: 'undo' | 'redo' }
   | { type: 'replace'; update: (library: PresentationLibrary) => PresentationLibrary }
+  | { type: 'refresh-assets'; presentation: Presentation }
 
 export function presentationHistoryReducer(state: PresentationHistoryState, action: PresentationHistoryAction): PresentationHistoryState {
   if (action.type === 'replace') return { library: action.update(state.library), past: [], future: [] }
+
+  if (action.type === 'refresh-assets') {
+    const sources = new Map((action.presentation.imageAssets ?? []).map((asset) => [asset.id, asset.source]))
+    const refresh = (presentation: Presentation): Presentation => ({
+      ...presentation,
+      imageAssets: presentation.imageAssets?.map((asset) => ({ ...asset, source: sources.get(asset.id) })),
+    })
+    return {
+      library: { ...state.library, presentations: state.library.presentations.map((item) =>
+        item.id === state.library.activePresentationId ? refresh(item) : item) },
+      past: state.past.map(refresh),
+      future: state.future.map(refresh),
+    }
+  }
 
   const activeId = state.library.activePresentationId
   const current = state.library.presentations.find((item) => item.id === activeId)

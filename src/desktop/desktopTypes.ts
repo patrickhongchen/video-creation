@@ -73,6 +73,38 @@ export interface DesktopProjectSnapshot {
   missingAssets: DesktopMissingAsset[]
 }
 
+export type DesktopProjectExternalChange =
+  | {
+      projectId: string
+      kind: 'presentation'
+      contentHash: string
+      detectedAt: number
+    }
+  | {
+      projectId: string
+      kind: 'asset'
+      relativePaths: string[]
+      assetRevision: string
+      detectedAt: number
+    }
+  | {
+      projectId: string
+      kind: 'invalid'
+      message: string
+      detectedAt: number
+    }
+  | {
+      projectId: string
+      kind: 'unavailable'
+      message: string
+      detectedAt: number
+    }
+  | {
+      projectId: string
+      kind: 'recovered'
+      detectedAt: number
+    }
+
 export type DesktopProjectDialogResult =
   | { status: 'completed'; project: DesktopProjectSnapshot }
   | { status: 'cancelled' }
@@ -114,6 +146,7 @@ export interface VideoEssayDesktopApi {
   openProject: () => Promise<DesktopProjectDialogResult>
   saveProject: (request: DesktopProjectSaveRequest) => Promise<DesktopProjectSaveResult>
   reloadProject: (projectId: string) => Promise<DesktopProjectSnapshot>
+  refreshProjectAssets: (projectId: string, presentation: Presentation) => Promise<DesktopProjectSnapshot>
   revealProject: (projectId: string) => Promise<void>
   chooseImage: (projectId: string) => Promise<DesktopAssetImportResult>
   importDroppedImage: (projectId: string, file: File) => Promise<DesktopImportedAsset>
@@ -124,6 +157,7 @@ export interface VideoEssayDesktopApi {
   onProjectNewRequested: (listener: () => void) => () => void
   onProjectOpenRequested: (listener: () => void) => () => void
   onProjectSaveRequested: (listener: () => void) => () => void
+  onProjectExternalChange: (listener: (change: DesktopProjectExternalChange) => void) => () => void
   onUndoRequested: (listener: () => void) => () => void
   onRedoRequested: (listener: () => void) => () => void
   exportVideo: (job: DesktopExportJob) => Promise<DesktopExportResult>

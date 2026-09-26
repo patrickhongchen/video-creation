@@ -24,4 +24,13 @@ describe('presentation history', () => {
     const switched = presentationHistoryReducer(edited, { type: 'replace', update: (library) => ({ presentations: [...library.presentations, other], activePresentationId: other.id }) })
     expect(presentationHistoryReducer(switched, { type: 'undo' })).toBe(switched)
   })
+
+  it('starts a new undo baseline after an external Project snapshot', () => {
+    const before = initialState()
+    const external = { ...before.library.presentations[0], title: 'Codex version' }
+    const loaded = presentationHistoryReducer(before, { type: 'replace', update: (library) => ({ ...library, presentations: [external] }) })
+    expect(presentationHistoryReducer(loaded, { type: 'undo' })).toBe(loaded)
+    const edited = presentationHistoryReducer(loaded, { type: 'edit', update: (item) => ({ ...item, title: 'Local correction' }) })
+    expect(presentationHistoryReducer(edited, { type: 'undo' }).library.presentations[0].title).toBe('Codex version')
+  })
 })

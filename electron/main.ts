@@ -26,6 +26,9 @@ let allowWindowCloseOnce = false
 let closePromptOpen = false
 let pendingCloseAfterSave = false
 const projects = new ProjectStore()
+projects.onExternalChange((change) => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(CHANNELS.projectExternalChange, change)
+})
 
 const preloadPath = path.join(__dirname, 'preload.cjs')
 
@@ -107,7 +110,7 @@ async function createMainWindow() {
     }).finally(() => { closePromptOpen = false })
   })
   mainWindow.once('ready-to-show', () => mainWindow?.show())
-  mainWindow.on('closed', () => { mainWindow = null })
+  mainWindow.on('closed', () => { projects.close(); mainWindow = null })
   if (process.env.VITE_DEV_SERVER_URL) {
     await mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL)
   } else {
@@ -206,6 +209,11 @@ function installIpcHandlers() {
     if (typeof projectId !== 'string') throw new Error('Invalid Project ID.')
     return projects.reload(projectId)
   })
+  ipcMain.handle(CHANNELS.projectRefreshAssets, async (event, projectId: unknown, presentation: unknown) => {
+    assertMainSender(event.sender)
+    if (typeof projectId !== 'string') throw new Error('Invalid Project ID.')
+    return projects.refreshAssets(projectId, presentation)
+  })
   ipcMain.handle(CHANNELS.projectReveal, async (event, projectId: unknown) => {
     assertMainSender(event.sender)
     if (typeof projectId !== 'string') throw new Error('Invalid Project ID.')
@@ -287,7 +295,12 @@ function installIpcHandlers() {
     assertMainSender(event.sender)
     validateExportJob(value)
     await projects.assertRequiredAssetsAvailable(value.presentation)
-    return exporter!.export(value, event.sender)
+    const presentation = await projects.captureExportAssets(value.jobId, value.presentation)
+    try {
+      return await exporter!.export({ ...value, presentation: presentation as unknown as typeof value.presentation }, event.sender)
+    } finally {
+      projects.releaseExportAssets(value.jobId)
+    }
   })
   ipcMain.handle(CHANNELS.exportCancel, async (event) => {
     assertMainSender(event.sender)
@@ -320,8 +333,19 @@ function installProjectAssetProtocol() {
   protocol.handle(PROJECT_ASSET_PROTOCOL, async (request) => {
     try {
       const url = new URL(request.url)
-      if (url.hostname !== 'project') return new Response('Not found', { status: 404 })
       const segments = url.pathname.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment))
+      if (url.hostname === 'export' && segments.length === 2) {
+        const asset = projects.resolveExportAsset(segments[0], segments[1])
+        return new Response(new Uint8Array(asset.bytes), {
+          status: 200,
+          headers: {
+            'Content-Type': asset.mimeType,
+            'Content-Length': String(asset.bytes.byteLength),
+            'Cache-Control': 'no-store',
+          },
+        })
+      }
+      if (url.hostname !== 'project') return new Response('Not found', { status: 404 })
       const projectId = segments.shift()
       if (!projectId) return new Response('Not found', { status: 404 })
       const relativePath = segments.join('/')

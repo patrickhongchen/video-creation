@@ -7,6 +7,7 @@ import type {
 } from './export/types'
 import type {
   DesktopImageBytesRequest,
+  DesktopProjectExternalChange,
   DesktopProjectSaveRequest,
   DesktopRemoteImageRequest,
 } from '../src/desktop/desktopTypes'
@@ -20,6 +21,7 @@ const CHANNELS = {
   projectOpen: 'video-essay:project:open',
   projectSave: 'video-essay:project:save',
   projectReload: 'video-essay:project:reload',
+  projectRefreshAssets: 'video-essay:project:refresh-assets',
   projectReveal: 'video-essay:project:reveal',
   projectChooseImage: 'video-essay:project:choose-image',
   projectImportImage: 'video-essay:project:import-image',
@@ -27,6 +29,7 @@ const CHANNELS = {
   projectImportClipboardImage: 'video-essay:project:import-clipboard-image',
   projectSaveImageBytes: 'video-essay:project:save-image-bytes',
   projectSetDirty: 'video-essay:project:set-dirty',
+  projectExternalChange: 'video-essay:project:external-change',
   projectNewRequested: 'video-essay:project:new-requested',
   projectOpenRequested: 'video-essay:project:open-requested',
   projectSaveRequested: 'video-essay:project:save-requested',
@@ -57,6 +60,7 @@ const videoEssayDesktop = Object.freeze({
   openProject: () => ipcRenderer.invoke(CHANNELS.projectOpen),
   saveProject: (request: DesktopProjectSaveRequest) => ipcRenderer.invoke(CHANNELS.projectSave, request),
   reloadProject: (projectId: string) => ipcRenderer.invoke(CHANNELS.projectReload, projectId),
+  refreshProjectAssets: (projectId: string, presentation: Presentation) => ipcRenderer.invoke(CHANNELS.projectRefreshAssets, projectId, presentation),
   revealProject: (projectId: string) => ipcRenderer.invoke(CHANNELS.projectReveal, projectId),
   chooseImage: (projectId: string) => ipcRenderer.invoke(CHANNELS.projectChooseImage, projectId),
   importDroppedImage: (projectId: string, file: File) => ipcRenderer.invoke(CHANNELS.projectImportImage, {
@@ -70,6 +74,8 @@ const videoEssayDesktop = Object.freeze({
   onProjectNewRequested: (listener: () => void) => subscribe(CHANNELS.projectNewRequested, listener),
   onProjectOpenRequested: (listener: () => void) => subscribe(CHANNELS.projectOpenRequested, listener),
   onProjectSaveRequested: (listener: () => void) => subscribe(CHANNELS.projectSaveRequested, listener),
+  onProjectExternalChange: (listener: (change: DesktopProjectExternalChange) => void) =>
+    subscribe(CHANNELS.projectExternalChange, listener),
   onUndoRequested: (listener: () => void) => subscribe(CHANNELS.undoRequested, listener),
   onRedoRequested: (listener: () => void) => subscribe(CHANNELS.redoRequested, listener),
   exportVideo: (job: DesktopExportJob): Promise<DesktopExportResult> => ipcRenderer.invoke(CHANNELS.exportStart, job),

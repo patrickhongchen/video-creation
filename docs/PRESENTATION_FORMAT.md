@@ -78,6 +78,7 @@ All elements have:
 | `locked` | Optional. Prevents direct drag/resize but does not hide the element. |
 | `hidden` | Optional. Omits the element from editing output, playback, and export. |
 | `sharedElementId` | Optional semantic identity for compatible cross-slide Morph. |
+| `animation` | Optional slide-relative entrance animation. |
 
 Coordinates are explicit design units, not percentages or responsive constraints:
 
@@ -86,6 +87,22 @@ Coordinates are explicit design units, not percentages or responsive constraints
 ```
 
 Elements may extend outside the canvas for intentional crops. Keep important content roughly inside `x: 80–1000` and `y: 120–1720` unless the design calls for otherwise.
+
+### Element entrance animation
+
+An element may enter after its slide becomes active:
+
+```json
+"animation": {
+  "entrance": "pop",
+  "delayMs": 500,
+  "durationMs": 350
+}
+```
+
+`entrance` is one of `appear`, `fade`, `pop`, `slide-up`, `slide-left`, or `slide-right`. `delayMs` and `durationMs` are finite, nonnegative milliseconds; delays may be at most 60,000 ms and durations at most 10,000 ms. `appear` becomes visible at the delay, so its duration has no visual effect. The animation runs from the slide activation time in presentation, narration replay, final playback, and export. Edit mode shows the completed element so it remains selectable and editable.
+
+Element entrances are intentionally independent. They do not add narration cues, exits, keyframes, or timeline controls. Elements with `sharedElementId` (or a continuing chart `chartId`) skip their entrance during playback so Morph continuity is preserved. Apply entrances to new supporting elements instead.
 
 ## TextElement
 

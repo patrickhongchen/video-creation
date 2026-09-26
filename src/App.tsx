@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
 import type { Presentation, PresentationImageMimeType, Slide, SlideElement } from './model'
 import { createBlankPresentation, createSlideFromPreset, createSlideImageElement, duplicatePresentation, duplicateSlide, duplicateSlideElement, makePresentationIdUnique, type SlidePreset } from './presentationFactories'
 import { downloadPresentation, readPresentationFile } from './presentationFiles'
@@ -19,6 +19,24 @@ type AppMode = 'edit' | 'present' | 'narrate' | 'final-video'
 type PendingChoice = 'save' | 'discard' | 'cancel'
 
 const IMAGE_MIME_TYPES = new Set<PresentationImageMimeType>(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
+
+function PresentStage({ presentation, slide, index, direction }: { presentation: Presentation; slide: Slide; index: number; direction: 1 | -1 }) {
+  const [elapsedMs, setElapsedMs] = useState(0)
+
+  useLayoutEffect(() => {
+    const activatedAt = performance.now()
+    let frame = 0
+    setElapsedMs(0)
+    const update = (now: number) => {
+      setElapsedMs(now - activatedAt)
+      frame = requestAnimationFrame(update)
+    }
+    frame = requestAnimationFrame(update)
+    return () => cancelAnimationFrame(frame)
+  }, [slide.id])
+
+  return <Stage slide={slide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={index + 1} slideCount={presentation.slides.length} direction={direction} slideElapsedMs={elapsedMs} className="present-stage" />
+}
 
 function supportedImageMime(file: File): PresentationImageMimeType | null {
   const declared = file.type === 'image/jpg' ? 'image/jpeg' : file.type
@@ -804,7 +822,7 @@ export function App() {
   if (mode === 'present') {
     return (
       <><main className="present-mode">
-        <Stage slide={selectedSlide} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={selectedIndex + 1} slideCount={presentation.slides.length} direction={direction} className="present-stage" />
+        <PresentStage presentation={presentation} slide={selectedSlide} index={selectedIndex} direction={direction} />
         <button className="exit-present" onClick={() => setMode('edit')} aria-label="Exit presentation"><CloseIcon /> Exit</button>
         <div className="present-hint" aria-hidden="true">← → navigate&nbsp;&nbsp; · &nbsp;&nbsp;Esc exit</div>
       </main>{projectSafetyDialogs}</>

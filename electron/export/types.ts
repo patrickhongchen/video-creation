@@ -59,7 +59,8 @@ export type DesktopExportResult =
   | { status: 'save-cancelled' }
   | { status: 'cancelled' }
 
-export interface DesktopRenderStart {
+export interface DesktopRenderFrameRequest {
   jobId: string
-  startedAtMs: number
+  frameIndex: number
+  elapsedMs: number
 }

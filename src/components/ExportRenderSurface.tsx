@@ -1,14 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { DesktopExportJob } from '../desktop/desktopTypes'
+import type { DesktopExportJob, DesktopRenderFrameRequest } from '../desktop/desktopTypes'
 import { resolvePlaybackVisual } from '../finalPlayback/resolvePlaybackVisual'
 import { Stage } from './Stage'
 import { decodePresentationAssets } from '../projectAssetReadiness'
+import { MotionGlobalConfig, frameData } from 'motion/react'
 
 export function ExportRenderSurface() {
+  // Motion's JS driver uses the requested video timestamp in this isolated renderer.
+  MotionGlobalConfig.useManualTiming = true
   const bridge = window.videoEssayDesktop
   const [job, setJob] = useState<DesktopExportJob | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
-  const frameRef = useRef<number | null>(null)
+  const [requestedFrame, setRequestedFrame] = useState<DesktopRenderFrameRequest | null>(null)
   const previousSlideIndexRef = useRef(0)
 
   useEffect(() => {
@@ -21,10 +24,9 @@ export function ExportRenderSurface() {
   useEffect(() => {
     if (!bridge) return
     return bridge.onRenderJob((nextJob) => {
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
-      frameRef.current = null
       previousSlideIndexRef.current = 0
       setElapsedMs(0)
+      setRequestedFrame(null)
       setJob(nextJob)
     })
   }, [bridge])
@@ -44,24 +46,20 @@ export function ExportRenderSurface() {
 
   useEffect(() => {
     if (!bridge) return
-    return bridge.onRenderStart(({ jobId }) => {
-      if (!job || job.jobId !== jobId) return
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
-      const startedAt = performance.now()
-      setElapsedMs(0)
-      bridge.renderStarted(jobId)
-      const update = (now: number) => {
-        const nextTime = Math.min(job.totalDurationMs, Math.max(0, now - startedAt))
-        setElapsedMs(nextTime)
-        if (nextTime < job.totalDurationMs) frameRef.current = requestAnimationFrame(update)
-      }
-      frameRef.current = requestAnimationFrame(update)
+    return bridge.onRenderFrame((request) => {
+      if (!job || job.jobId !== request.jobId) return
+      frameData.delta = Math.max(0, request.elapsedMs - frameData.timestamp)
+      frameData.timestamp = request.elapsedMs
+      setElapsedMs(request.elapsedMs)
+      setRequestedFrame(request)
     })
   }, [bridge, job])
 
-  useEffect(() => () => {
-    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
-  }, [])
+  useLayoutEffect(() => {
+    if (!bridge || !job || !requestedFrame || requestedFrame.jobId !== job.jobId) return
+    const frame = requestAnimationFrame(() => bridge.renderFrameRendered(requestedFrame))
+    return () => cancelAnimationFrame(frame)
+  }, [bridge, job, requestedFrame])
 
   const visual = useMemo(() => job ? resolvePlaybackVisual(job, elapsedMs) : null, [elapsedMs, job])
   const direction: 1 | -1 = visual && visual.slideIndex < previousSlideIndexRef.current ? -1 : 1
@@ -83,6 +81,7 @@ export function ExportRenderSurface() {
     >
       <Stage
         slide={visual.slide}
+        slides={job.presentation.slides}
         theme={job.presentation.theme}
         imageAssets={job.presentation.imageAssets}
         presentationId={job.presentation.id}
@@ -91,6 +90,8 @@ export function ExportRenderSurface() {
         direction={direction}
         renderInstanceKey={`desktop-export-${job.jobId}`}
         className="export-stage"
+        slideElapsedMs={visual.slideElapsedMs}
+        deterministicMotion
       />
     </main>
   )

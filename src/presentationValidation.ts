@@ -12,6 +12,7 @@ import type {
   PresentationImageMimeType,
   PresentationTheme,
   Slide,
+  SlideEntranceAnimation,
   SlideElement,
   SlideTransition,
   ThemeTextStyle,
@@ -194,6 +195,23 @@ function elementFrame(value: unknown, path: string) {
   }
 }
 
+const MAX_ELEMENT_ENTRANCE_DELAY_MS = 60_000
+const MAX_ELEMENT_ENTRANCE_DURATION_MS = 10_000
+
+function elementAnimation(value: unknown, path: string): SlideEntranceAnimation | undefined {
+  if (value === undefined) return undefined
+  const data = object(value, path)
+  const entrances = ['appear', 'fade', 'pop', 'slide-up', 'slide-left', 'slide-right'] as const
+  if (!entrances.includes(data.entrance as typeof entrances[number])) {
+    fail(`${path}.entrance`, `expected one of ${entrances.join(', ')}`)
+  }
+  return {
+    entrance: data.entrance as SlideEntranceAnimation['entrance'],
+    delayMs: boundedNumber(data.delayMs, `${path}.delayMs`, 0, MAX_ELEMENT_ENTRANCE_DELAY_MS),
+    durationMs: boundedNumber(data.durationMs, `${path}.durationMs`, 0, MAX_ELEMENT_ENTRANCE_DURATION_MS),
+  }
+}
+
 function elementBase(data: Record<string, unknown>, path: string) {
   return {
     id: id(data.id, `${path}.id`),
@@ -202,6 +220,7 @@ function elementBase(data: Record<string, unknown>, path: string) {
     locked: optionalBoolean(data.locked, `${path}.locked`),
     hidden: optionalBoolean(data.hidden, `${path}.hidden`),
     sharedElementId: optionalId(data.sharedElementId, `${path}.sharedElementId`),
+    animation: elementAnimation(data.animation, `${path}.animation`),
   }
 }
 

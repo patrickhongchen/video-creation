@@ -2,7 +2,7 @@ import { BrowserWindow, type Rectangle } from 'electron'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { CHANNELS } from './channels'
-import { VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH, type DesktopExportJob, type DesktopRenderStart } from './types'
+import { VIDEO_FPS, VIDEO_HEIGHT, VIDEO_WIDTH, type DesktopExportJob, type DesktopRenderFrameRequest } from './types'
 
 export type InputPixelFormat = 'bgra' | 'rgba'
 
@@ -41,7 +41,7 @@ export class OffscreenRenderSession {
   private calibrationSignal = deferred<InputPixelFormat>()
   private calibrationRequested = false
   private readySignals = new Map<string, Resolver<void>>()
-  private startedSignals = new Map<string, Resolver<void>>()
+  private renderedFrameSignals = new Map<number, Resolver<void>>()
   private frameWaiters: Array<{ after: number; signal: Resolver<void> }> = []
 
   constructor(preloadPath: string) {
@@ -130,21 +130,28 @@ export class OffscreenRenderSession {
     this.readySignals.delete(jobId)
   }
 
-  async start(jobId: string) {
-    const started = deferred<void>()
-    this.startedSignals.set(jobId, started)
-    const payload: DesktopRenderStart = { jobId, startedAtMs: Date.now() }
-    this.window.webContents.send(CHANNELS.renderStart, payload)
+  async requestFrame(request: DesktopRenderFrameRequest) {
+    const rendered = deferred<void>()
+    this.renderedFrameSignals.set(request.frameIndex, rendered)
+    this.window.webContents.send(CHANNELS.renderFrame, request)
     await withFailureTimeout(
-      started.promise,
+      rendered.promise,
       15_000,
-      'The export renderer did not acknowledge playback start within 15 seconds.',
+      `The export renderer did not render frame ${request.frameIndex} within 15 seconds.`,
+    )
+    const sequenceBeforeInvalidation = this.frameSequence
+    const painted = this.waitForFrameAfter(sequenceBeforeInvalidation)
+    this.window.webContents.invalidate()
+    await withFailureTimeout(
+      painted,
+      15_000,
+      `The export renderer did not paint frame ${request.frameIndex} within 15 seconds.`,
     )
   }
 
-  handleRenderStarted(jobId: string) {
-    this.startedSignals.get(jobId)?.resolve()
-    this.startedSignals.delete(jobId)
+  handleRenderFrameRendered(request: DesktopRenderFrameRequest) {
+    this.renderedFrameSignals.get(request.frameIndex)?.resolve()
+    this.renderedFrameSignals.delete(request.frameIndex)
   }
 
   getFrame() {
@@ -221,10 +228,10 @@ export class OffscreenRenderSession {
   private rejectPending(reason: Error) {
     this.calibrationSignal.reject(reason)
     this.readySignals.forEach((signal) => signal.reject(reason))
-    this.startedSignals.forEach((signal) => signal.reject(reason))
+    this.renderedFrameSignals.forEach((signal) => signal.reject(reason))
     this.frameWaiters.forEach(({ signal }) => signal.reject(reason))
     this.readySignals.clear()
-    this.startedSignals.clear()
+    this.renderedFrameSignals.clear()
     this.frameWaiters = []
   }
 }

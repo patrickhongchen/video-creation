@@ -91,6 +91,26 @@ Usually continue one or two concepts and introduce new information around them. 
 
 Slides should be natural narration beats. Avoid both unnecessary micro-slides and slides carrying many talking points. Put the spoken explanation and source reminders in `notes`; do not turn a narration script into visible text.
 
+## Element entrances
+
+Use a small entrance animation only when a slide needs a staged reveal within one narration beat. Add it to the element itself; timings are milliseconds from the moment that slide activates:
+
+```json
+{
+  "id": "supporting-photo",
+  "type": "image",
+  "name": "Supporting photo",
+  "frame": { "x": 120, "y": 760, "width": 840, "height": 620 },
+  "assetId": "theater-photo",
+  "fit": "cover",
+  "animation": { "entrance": "pop", "delayMs": 500, "durationMs": 350 }
+}
+```
+
+Allowed entrances are `appear`, `fade`, `pop`, `slide-up`, `slide-left`, and `slide-right`. Keep them restrained: a short 300–400 ms duration and a few deliberate delays are usually enough. `appear` is immediate at its delay. Do not add animation metadata to every element or use it to replace slide-to-slide Morph. Shared elements should generally remain continuous through Morph; animate new supporting elements instead. Animation runs during presentation, narration replay, final playback, and export, while Edit mode always shows the finished elements.
+
+For a compact staged reveal, leave the headline without `animation`, set the first supporting image to `pop` at `500ms`, the second image to `pop` at `1200ms`, and a short annotation to `fade` at `2000ms`. Each entrance can take `350ms`. `examples/image-story/presentation.json` contains a complete slide using that pattern. Elements with `sharedElementId` or a continuing chart `chartId` skip entrance playback to preserve Morph continuity.
+
 ## Prompt patterns
 
 **Create:** “Create an 8-slide presentation explaining why movie theaters are declining for a general audience. Make it playful and conversational. Keep visible text minimal, use charts only when the numbers add understanding, and include a few humorous visual beats. Add useful speaker notes. Reuse assets where appropriate, add new files under `assets/`, and run the Project validator before finishing.”

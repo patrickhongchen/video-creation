@@ -239,6 +239,87 @@
           "fontSize": 40
         }
       ]
+    },
+    {
+      "id": "staged-reveal",
+      "title": "Staged reveal",
+      "duration": 5,
+      "notes": "The headline is immediate. Let each image arrive, then land the annotation after both are visible.",
+      "transition": {
+        "type": "fade",
+        "duration": 0.5
+      },
+      "elements": [
+        {
+          "id": "reveal-headline",
+          "type": "text",
+          "name": "Headline",
+          "frame": {
+            "x": 100,
+            "y": 160,
+            "width": 880,
+            "height": 220
+          },
+          "text": "A calm start has two scenes.",
+          "role": "headline",
+          "fontSize": 76
+        },
+        {
+          "id": "reveal-sunrise",
+          "type": "image",
+          "name": "Image A — Sunrise",
+          "frame": {
+            "x": 80,
+            "y": 560,
+            "width": 440,
+            "height": 650
+          },
+          "assetId": "sunrise",
+          "fit": "cover",
+          "animation": {
+            "entrance": "pop",
+            "delayMs": 500,
+            "durationMs": 350
+          }
+        },
+        {
+          "id": "reveal-desk",
+          "type": "image",
+          "name": "Image B — Desk",
+          "frame": {
+            "x": 560,
+            "y": 560,
+            "width": 440,
+            "height": 650
+          },
+          "assetId": "desk",
+          "fit": "cover",
+          "animation": {
+            "entrance": "pop",
+            "delayMs": 1200,
+            "durationMs": 350
+          }
+        },
+        {
+          "id": "reveal-annotation",
+          "type": "text",
+          "name": "Annotation",
+          "frame": {
+            "x": 100,
+            "y": 1370,
+            "width": 880,
+            "height": 120
+          },
+          "text": "Before work begins, the room makes space for a thought.",
+          "role": "caption",
+          "color": "#1d77c9",
+          "animation": {
+            "entrance": "fade",
+            "delayMs": 2000,
+            "durationMs": 350
+          }
+        }
+      ]
     }
   ]
 }

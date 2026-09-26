@@ -51,9 +51,10 @@ export type DesktopExportResult =
   | { status: 'save-cancelled' }
   | { status: 'cancelled' }
 
-export interface DesktopRenderStart {
+export interface DesktopRenderFrameRequest {
   jobId: string
-  startedAtMs: number
+  frameIndex: number
+  elapsedMs: number
 }
 
 export interface DesktopMissingAsset {
@@ -166,10 +167,10 @@ export interface VideoEssayDesktopApi {
   openVideo: (path: string) => Promise<void>
   showInFinder: (path: string) => Promise<void>
   onRenderJob: (listener: (job: DesktopExportJob) => void) => () => void
-  onRenderStart: (listener: (start: DesktopRenderStart) => void) => () => void
+  onRenderFrame: (listener: (request: DesktopRenderFrameRequest) => void) => () => void
   renderCalibrationReady: () => void
   renderReady: (jobId: string) => void
-  renderStarted: (jobId: string) => void
+  renderFrameRendered: (request: DesktopRenderFrameRequest) => void
 }
 
 declare global {

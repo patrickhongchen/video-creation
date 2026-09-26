@@ -2,6 +2,7 @@ import { motion } from 'motion/react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { BarChart, LineChart } from '../charts'
 import { COMPOSITION_HEIGHT, COMPOSITION_WIDTH } from '../model'
+import { FINAL_ENTRANCE_STATE, chartMorphKey, resolveEntranceState } from '../entranceAnimation'
 import type {
   ElementFrame,
   PresentationImageAsset,
@@ -25,6 +26,9 @@ interface SlideRendererProps {
   layoutNamespace: string
   imageAssets?: PresentationImageAsset[]
   editor?: SlideEditorController
+  slideElapsedMs?: number | null
+  sharedChartKeys?: ReadonlySet<string>
+  deterministicMotion?: boolean
 }
 
 type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
@@ -155,12 +159,13 @@ function imagePosition(position: string | undefined) {
   return (position ?? 'center').replace('-', ' ')
 }
 
-function ElementContent({ element, theme, foreground, layoutNamespace, imageAssets }: {
+function ElementContent({ element, theme, foreground, layoutNamespace, imageAssets, deterministicMotion }: {
   element: SlideElement
   theme: PresentationTheme
   foreground: string
   layoutNamespace: string
   imageAssets?: PresentationImageAsset[]
+  deterministicMotion?: boolean
 }) {
   switch (element.type) {
     case 'text': {
@@ -186,8 +191,8 @@ function ElementContent({ element, theme, foreground, layoutNamespace, imageAsse
     }
     case 'chart': {
       return element.chartType === 'bar'
-        ? <BarChart scene={element} accent={theme.accent} layoutNamespace={layoutNamespace} />
-        : <LineChart scene={element} accent={theme.accent} layoutNamespace={layoutNamespace} />
+        ? <BarChart scene={element} accent={theme.accent} layoutNamespace={layoutNamespace} deterministicMotion={deterministicMotion} />
+        : <LineChart scene={element} accent={theme.accent} layoutNamespace={layoutNamespace} deterministicMotion={deterministicMotion} />
     }
     case 'shape':
       if (element.shape === 'line') {
@@ -230,7 +235,9 @@ function elementStyle(frame: ElementFrame): CSSProperties {
   }
 }
 
-export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAssets, editor }: SlideRendererProps) {
+const noopMotionUpdate = () => undefined
+
+export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAssets, editor, slideElapsedMs = null, sharedChartKeys, deterministicMotion = false }: SlideRendererProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<Interaction | null>(null)
   const previewFrameRef = useRef<ElementFrame | null>(null)
@@ -368,12 +375,22 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
         const frame = preview?.elementId === element.id ? preview.frame : element.frame
         const selected = editor?.selectedElementId === element.id
         const assetMissing = element.type === 'image' && !assetsById.has(element.assetId)
+        // Shared Motion identities must remain continuous through Morph transitions.
+        // Their entrance metadata is retained, but playback treats them as already visible.
+        const shared = Boolean(element.sharedElementId || (element.type === 'chart' && element.chartId && sharedChartKeys?.has(chartMorphKey(element))))
+        const entrance = resolveEntranceState(element.animation, editor || shared ? null : slideElapsedMs)
+        const animated = Boolean(element.animation && !shared && slideElapsedMs !== null && !editor)
+        const entranceStyle = entrance === FINAL_ENTRANCE_STATE ? undefined : {
+          opacity: entrance.opacity,
+          transform: `translate3d(${entrance.x}px, ${entrance.y}px, 0) scale(${entrance.scale})`,
+        }
         return <motion.div
-          className={`composition-element composition-element--${element.type}${selected ? ' is-selected' : ''}${element.locked ? ' is-locked' : ''}${assetMissing ? ' has-missing-asset' : ''}`}
+          className={`composition-element composition-element--${element.type}${selected ? ' is-selected' : ''}${element.locked ? ' is-locked' : ''}${assetMissing ? ' has-missing-asset' : ''}${animated ? ' has-entrance' : ''}`}
           key={elementRenderKey(element)}
           layoutId={layoutId(element, layoutNamespace)}
           layout
           transition={{ type: 'spring', stiffness: 150, damping: 22 }}
+          onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
           style={element.type === 'chart' ? {
             ...elementStyle(frame),
             color: scene.background === 'dark' || scene.background === 'accent' ? foreground : theme.chartStyle.foreground,
@@ -383,7 +400,9 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
           onPointerDown={editor ? (event) => startInteraction(event, element, 'drag') : undefined}
           aria-label={element.name}
         >
-          <ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} />
+          {animated
+            ? <div className="composition-entrance" style={entranceStyle}><ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} deterministicMotion={deterministicMotion} /></div>
+            : <ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} deterministicMotion={deterministicMotion} />}
           {selected && editor && <div className="composition-selection" aria-hidden="true">
             {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as Corner[]).map((corner) => <button
               type="button"

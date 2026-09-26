@@ -1,5 +1,6 @@
 import type { Slide } from '../model'
 import type { DesktopExportJob, DesktopExportSegment } from '../desktop/desktopTypes'
+import { slideElapsedFromCues, slideElapsedMs } from '../entranceAnimation'
 
 function firstSceneId(segment: DesktopExportSegment | undefined) {
   if (!segment) return undefined
@@ -11,6 +12,8 @@ function firstSceneId(segment: DesktopExportSegment | undefined) {
 export interface ResolvedPlaybackVisual {
   slide: Slide
   slideIndex: number
+  /** Milliseconds since the active slide was selected by its segment or cue. */
+  slideElapsedMs: number
   segmentIndex: number
   segment: DesktopExportSegment | undefined
 }
@@ -46,9 +49,14 @@ export function resolvePlaybackVisual(job: Pick<DesktopExportJob, 'presentation'
 
   sceneId ??= firstSceneId(segments[0]) ?? presentation.slides[0]?.id
   const slideIndex = Math.max(0, presentation.slides.findIndex((slide) => slide.id === sceneId))
+  const localTimeMs = Math.max(0, elapsedMs - segmentStartMs)
+  const resolvedSlideElapsedMs = activeSegment?.type === 'narration' && sceneId
+    ? slideElapsedFromCues(localTimeMs, activeSegment.cues, sceneId)
+    : slideElapsedMs(elapsedMs, segmentStartMs)
   return {
     slide: presentation.slides[slideIndex] ?? presentation.slides[0],
     slideIndex,
+    slideElapsedMs: resolvedSlideElapsedMs,
     segmentIndex,
     segment: activeSegment,
   }

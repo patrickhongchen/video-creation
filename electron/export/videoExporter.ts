@@ -1,4 +1,3 @@
-import { performance } from 'node:perf_hooks'
 import { mkdir, mkdtemp, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { app, dialog, type BrowserWindow, type SaveDialogOptions, type WebContents } from 'electron'
@@ -14,6 +13,7 @@ import {
   type DesktopExportJob,
   type DesktopExportProgress,
   type DesktopExportResult,
+  type DesktopRenderFrameRequest,
   type ExportSegment,
 } from './types'
 
@@ -55,27 +55,6 @@ function dateStamp(date = new Date()) {
 
 function throwIfCancelled(signal: AbortSignal) {
   if (signal.aborted) throw new ExportCancelledError()
-}
-
-async function cancellableDelay(durationMs: number, signal: AbortSignal) {
-  if (durationMs <= 0) return
-  throwIfCancelled(signal)
-  await new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(done, durationMs)
-    function done() {
-      cleanup()
-      resolve()
-    }
-    function cancelled() {
-      cleanup()
-      reject(new ExportCancelledError())
-    }
-    function cleanup() {
-      clearTimeout(timer)
-      signal.removeEventListener('abort', cancelled)
-    }
-    signal.addEventListener('abort', cancelled, { once: true })
-  })
 }
 
 async function writeFrame(child: ChildProcessWithoutNullStreams, frame: Buffer, signal: AbortSignal) {
@@ -202,9 +181,9 @@ export class VideoExporter {
     }
   }
 
-  handleRenderStarted(sender: WebContents, jobId: string) {
-    if (this.ownsRenderSender(sender) && this.active?.job.jobId === jobId) {
-      this.active.renderSession?.handleRenderStarted(jobId)
+  handleRenderFrameRendered(sender: WebContents, request: DesktopRenderFrameRequest) {
+    if (this.ownsRenderSender(sender) && this.active?.job.jobId === request.jobId) {
+      this.active.renderSession?.handleRenderFrameRendered(request)
     }
   }
 
@@ -321,9 +300,6 @@ export class VideoExporter {
       // Mark the process promise handled even while the render-start handshake is
       // pending; it is awaited authoritatively after frame pumping begins.
       void exitPromise.catch(() => undefined)
-      await renderSession.start(active.job.jobId)
-      throwIfCancelled(signal)
-
       let pumping = true
       const exitDuringPump = exitPromise.then(
         () => {
@@ -361,11 +337,14 @@ export class VideoExporter {
     if (!renderSession) throw new Error('The offscreen renderer was not initialized.')
     const totalFrames = Math.ceil(job.totalDurationMs * VIDEO_FPS / 1000)
     const intervalMs = 1000 / VIDEO_FPS
-    const startedAt = performance.now()
 
     for (let frameIndex = 0; frameIndex < totalFrames; frameIndex += 1) {
-      const targetTime = startedAt + frameIndex * intervalMs
-      await cancellableDelay(targetTime - performance.now(), abortController.signal)
+      throwIfCancelled(abortController.signal)
+      await renderSession.requestFrame({
+        jobId: job.jobId,
+        frameIndex,
+        elapsedMs: frameIndex * intervalMs,
+      })
       await writeFrame(child, renderSession.getFrame(), abortController.signal)
 
       if (frameIndex % 6 === 0 || frameIndex === totalFrames - 1) {

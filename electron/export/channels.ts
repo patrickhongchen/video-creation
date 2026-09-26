@@ -23,8 +23,8 @@ export const CHANNELS = {
   openVideo: 'video-essay:file:open-video',
   showInFinder: 'video-essay:file:show-in-finder',
   renderJob: 'video-essay:render:job',
-  renderStart: 'video-essay:render:start',
+  renderFrame: 'video-essay:render:frame',
   renderCalibrationReady: 'video-essay:render:calibration-ready',
   renderReady: 'video-essay:render:ready',
-  renderStarted: 'video-essay:render:started',
+  renderFrameRendered: 'video-essay:render:frame-rendered',
 } as const

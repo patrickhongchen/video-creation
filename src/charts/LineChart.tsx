@@ -6,6 +6,7 @@ export interface LineChartProps {
   scene: ChartRenderModel
   accent: string
   layoutNamespace: string
+  deterministicMotion?: boolean
 }
 
 const VIEWBOX_WIDTH = 840
@@ -19,7 +20,9 @@ function datumLayoutId(scene: ChartRenderModel, layoutNamespace: string, datumId
   return JSON.stringify([layoutNamespace, scene.chartId ?? scene.id, scene.chartType, datumId])
 }
 
-export function LineChart({ scene, accent, layoutNamespace }: LineChartProps) {
+const noopMotionUpdate = () => undefined
+
+export function LineChart({ scene, accent, layoutNamespace, deterministicMotion = false }: LineChartProps) {
   const reducedMotion = useReducedMotion()
   const orientation = scene.orientation ?? 'vertical'
   const domain = resolveChartDomain(scene.data.map((datum) => datum.value), scene.domain)
@@ -78,6 +81,7 @@ export function LineChart({ scene, accent, layoutNamespace }: LineChartProps) {
 
           {path && (
             <motion.path
+              onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
               className="chart-line"
               fill="none"
               stroke={accent}
@@ -101,6 +105,7 @@ export function LineChart({ scene, accent, layoutNamespace }: LineChartProps) {
               return (
                 <g className="chart-datum" key={point.id}>
                   <motion.circle
+                    onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
                     className={`chart-point${highlighted ? ' chart-point--highlighted' : ''}${hasHighlights && !highlighted ? ' chart-point--muted' : ''}`}
                     layoutId={datumLayoutId(scene, layoutNamespace, point.id)}
                     r={radius}
@@ -118,6 +123,7 @@ export function LineChart({ scene, accent, layoutNamespace }: LineChartProps) {
                   </text>
                   {scene.showValues && (
                     <motion.text
+                      onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
                       className="chart-value-label"
                       x={point.x}
                       y={Math.max(18, point.y - 18)}

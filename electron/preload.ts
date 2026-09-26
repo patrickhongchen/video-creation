@@ -3,7 +3,7 @@ import type {
   DesktopExportJob,
   DesktopExportProgress,
   DesktopExportResult,
-  DesktopRenderStart,
+  DesktopRenderFrameRequest,
 } from './export/types'
 import type {
   DesktopImageBytesRequest,
@@ -41,10 +41,10 @@ const CHANNELS = {
   openVideo: 'video-essay:file:open-video',
   showInFinder: 'video-essay:file:show-in-finder',
   renderJob: 'video-essay:render:job',
-  renderStart: 'video-essay:render:start',
+  renderFrame: 'video-essay:render:frame',
   renderCalibrationReady: 'video-essay:render:calibration-ready',
   renderReady: 'video-essay:render:ready',
-  renderStarted: 'video-essay:render:started',
+  renderFrameRendered: 'video-essay:render:frame-rendered',
 } as const
 
 type Unsubscribe = () => void
@@ -87,10 +87,10 @@ const videoEssayDesktop = Object.freeze({
 
   // These methods are consumed only by the hidden ?mode=export-render surface.
   onRenderJob: (listener: (job: DesktopExportJob) => void) => subscribe(CHANNELS.renderJob, listener),
-  onRenderStart: (listener: (start: DesktopRenderStart) => void) => subscribe(CHANNELS.renderStart, listener),
+  onRenderFrame: (listener: (request: DesktopRenderFrameRequest) => void) => subscribe(CHANNELS.renderFrame, listener),
   renderCalibrationReady: () => ipcRenderer.send(CHANNELS.renderCalibrationReady),
   renderReady: (jobId: string) => ipcRenderer.send(CHANNELS.renderReady, jobId),
-  renderStarted: (jobId: string) => ipcRenderer.send(CHANNELS.renderStarted, jobId),
+  renderFrameRendered: (request: DesktopRenderFrameRequest) => ipcRenderer.send(CHANNELS.renderFrameRendered, request),
 })
 
 contextBridge.exposeInMainWorld('videoEssayDesktop', videoEssayDesktop)

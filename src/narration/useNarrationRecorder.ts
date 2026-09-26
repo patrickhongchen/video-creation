@@ -241,7 +241,9 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
 
   const addCue = useCallback((sceneId: string) => {
     if (statusRef.current !== 'recording') return
-    cuesRef.current.push({ sceneId, timeMs: Math.max(0, performance.now() - startedAtRef.current) })
+    const timeMs = Math.max(0, performance.now() - startedAtRef.current)
+    cuesRef.current.push({ sceneId, timeMs })
+    return timeMs
   }, [])
 
   const stopRecording = useCallback(() => {

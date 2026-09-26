@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, session, shell, type WebContents } from 'electron'
 import { CHANNELS } from './export/channels'
 import { VideoExporter } from './export/videoExporter'
-import { validateCompletedVideoPath, validateExportJob, validateJobId } from './export/validation'
+import { validateCompletedVideoPath, validateExportJob, validateJobId, validateRenderFrameRequest } from './export/validation'
 import { PROJECT_ASSET_PROTOCOL, ProjectStore } from './project/projectStore'
 
 protocol.registerSchemesAsPrivileged([{
@@ -322,10 +322,10 @@ function installIpcHandlers() {
     const jobId = validateJobId(value)
     exporter.handleRenderReady(event.sender, jobId)
   })
-  ipcMain.on(CHANNELS.renderStarted, (event, value: unknown) => {
+  ipcMain.on(CHANNELS.renderFrameRendered, (event, value: unknown) => {
     if (!exporter?.ownsRenderSender(event.sender)) return
-    const jobId = validateJobId(value)
-    exporter.handleRenderStarted(event.sender, jobId)
+    const request = validateRenderFrameRequest(value)
+    exporter.handleRenderFrameRendered(event.sender, request)
   })
 }
 

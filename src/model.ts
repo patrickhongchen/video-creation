@@ -19,6 +19,15 @@ export interface ElementFrame {
   opacity?: number
 }
 
+export type SlideEntranceAnimationType = 'appear' | 'fade' | 'pop' | 'slide-up' | 'slide-left' | 'slide-right'
+
+/** A deterministic entrance that starts relative to the slide activation time. */
+export interface SlideEntranceAnimation {
+  entrance: SlideEntranceAnimationType
+  delayMs: number
+  durationMs: number
+}
+
 export interface SlideElementBase {
   id: string
   name: string
@@ -26,6 +35,7 @@ export interface SlideElementBase {
   locked?: boolean
   hidden?: boolean
   sharedElementId?: string
+  animation?: SlideEntranceAnimation
 }
 
 export type TextRole = 'headline' | 'body' | 'caption' | 'label'

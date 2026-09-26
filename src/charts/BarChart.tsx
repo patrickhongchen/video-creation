@@ -6,6 +6,7 @@ export interface BarChartProps {
   scene: ChartRenderModel
   accent: string
   layoutNamespace: string
+  deterministicMotion?: boolean
 }
 
 export interface ChartRenderModel {
@@ -42,7 +43,9 @@ function chartValue(scene: ChartRenderModel, value: number) {
   })
 }
 
-export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
+const noopMotionUpdate = () => undefined
+
+export function BarChart({ scene, accent, layoutNamespace, deterministicMotion = false }: BarChartProps) {
   const reducedMotion = useReducedMotion()
   const domain = resolveChartDomain(scene.data.map((datum) => datum.value), scene.domain)
   const ticks = createChartTicks(domain)
@@ -129,6 +132,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
 
                 return (
                   <motion.g
+                    onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
                     className="chart-datum"
                     key={datum.id}
                     initial={{ y }}
@@ -139,6 +143,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
                       {datum.label}
                     </text>
                     <motion.rect
+                      onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
                       className={`chart-bar${highlighted ? ' chart-bar--highlighted' : ''}${hasHighlights && !highlighted ? ' chart-bar--muted' : ''}`}
                       layoutId={datumLayoutId(scene, layoutNamespace, datum.id)}
                       y={0}
@@ -151,6 +156,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
                     />
                     {scene.showValues && (
                       <motion.text
+                        onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
                         className="chart-value-label"
                         x={labelX}
                         y={barSize / 2 + 7}
@@ -174,6 +180,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
 
               return (
                 <motion.g
+                  onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
                   className="chart-datum"
                   key={datum.id}
                   initial={{ x }}
@@ -181,6 +188,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
                   transition={reducedMotion ? { duration: 0 } : { duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
                 >
                   <motion.rect
+                    onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
                     className={`chart-bar${highlighted ? ' chart-bar--highlighted' : ''}${hasHighlights && !highlighted ? ' chart-bar--muted' : ''}`}
                     layoutId={datumLayoutId(scene, layoutNamespace, datum.id)}
                     x={0}
@@ -201,6 +209,7 @@ export function BarChart({ scene, accent, layoutNamespace }: BarChartProps) {
                   </text>
                   {scene.showValues && (
                     <motion.text
+                      onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
                       className="chart-value-label"
                       x={barSize / 2}
                       y={labelY}

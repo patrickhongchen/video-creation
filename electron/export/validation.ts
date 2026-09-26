@@ -1,5 +1,5 @@
 import path from 'node:path'
-import type { DesktopExportJob, ExportCue, ExportSegment, NarrationExportSegment } from './types'
+import type { DesktopExportJob, DesktopRenderFrameRequest, ExportCue, ExportSegment, NarrationExportSegment } from './types'
 
 const MAX_JOB_DURATION_MS = 4 * 60 * 60 * 1000
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024 * 1024
@@ -115,6 +115,15 @@ export function validateExportJob(value: unknown): asserts value is DesktopExpor
 export function validateJobId(value: unknown) {
   if (!isNonEmptyString(value, 200)) throw new Error('Invalid export job identifier.')
   return value
+}
+
+export function validateRenderFrameRequest(value: unknown): DesktopRenderFrameRequest {
+  if (!isRecord(value) || !isNonEmptyString(value.jobId, 200)
+    || typeof value.frameIndex !== 'number' || !Number.isInteger(value.frameIndex) || value.frameIndex < 0
+    || !isDuration(value.elapsedMs, true)) {
+    throw new Error('Invalid export render frame request.')
+  }
+  return { jobId: value.jobId, frameIndex: value.frameIndex, elapsedMs: value.elapsedMs }
 }
 
 export function validateCompletedVideoPath(value: unknown, completedOutputs: ReadonlySet<string>) {

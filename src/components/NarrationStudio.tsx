@@ -13,6 +13,8 @@ import { useNarrationPlayback } from '../narration/useNarrationPlayback'
 import { useNarrationRecorder } from '../narration/useNarrationRecorder'
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, PlayIcon } from './Icons'
 import { Stage } from './Stage'
+import { slideElapsedFromCues, slideElapsedMs } from '../entranceAnimation'
+import { CUE_SYNC_LEEWAY_MS } from '../narration/cueSynchronization'
 
 interface NarrationStudioProps {
   presentation: Presentation
@@ -51,6 +53,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   const activeRelativeIndexRef = useRef(0)
   const [fallbackSlideIndex, setFallbackSlideIndex] = useState(safeInitialSlideIndex)
   const [direction, setDirection] = useState<1 | -1>(1)
+  const [recordingSlideActivatedAtMs, setRecordingSlideActivatedAtMs] = useState(0)
   const [renderInstanceKey, setRenderInstanceKey] = useState(() => `narration-${Date.now()}`)
   const [takeMap, setTakeMap] = useState<Record<string, NarrationTake[]>>({})
   const takeMapRef = useRef(takeMap)
@@ -143,6 +146,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
       setDirection(-1)
       activeRelativeIndexRef.current = 0
       setActiveRelativeIndex(0)
+      setRecordingSlideActivatedAtMs(0)
       setRenderInstanceKey(`record-${Date.now()}`)
     },
     onFinished: handleFinishedRecording,
@@ -254,7 +258,10 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     const next = Math.max(0, Math.min(current + offset, selectedResolved.slides.length - 1))
     if (next === current) return
     setDirection(offset)
-    if (recordCue) recorder.addCue(selectedResolved.slides[next].id)
+    if (recordCue) {
+      const cueTime = recorder.addCue(selectedResolved.slides[next].id)
+      if (cueTime !== undefined) setRecordingSlideActivatedAtMs(cueTime)
+    }
     activeRelativeIndexRef.current = next
     setActiveRelativeIndex(next)
   }, [recorder.addCue, selectedResolved])
@@ -322,6 +329,12 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   const currentOverallIndex = currentSlide ? presentation.slides.findIndex((slide) => slide.id === currentSlide.id) : -1
   const nextSlide = selectedResolved?.slides[activeRelativeIndex + 1]
   const selectedTakes = selectedSection ? takeMap[selectedSection.id] ?? [] : []
+  const playbackTake = Object.values(takeMap).flat().find((take) => take.id === playback.takeId)
+  const stageElapsedMs = recorder.status === 'recording'
+    ? slideElapsedMs(recorder.elapsedMs, recordingSlideActivatedAtMs)
+    : playbackTake && currentSlide
+      ? slideElapsedFromCues(playback.currentTimeMs, playbackTake.cues, currentSlide.id, CUE_SYNC_LEEWAY_MS)
+      : null
   const readyCount = sections.filter((section) => {
     const resolved = resolveSection(section, presentation)
     return (takeMap[section.id] ?? []).some((take) => take.selected && takeIsUsable(take, resolved))
@@ -356,6 +369,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
         <section className="narration-stage-panel">
           {currentSlide ? <Stage
             slide={currentSlide}
+            slides={presentation.slides}
             theme={presentation.theme}
             imageAssets={presentation.imageAssets}
             presentationId={presentation.id}
@@ -363,6 +377,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
             slideCount={presentation.slides.length}
             direction={direction}
             renderInstanceKey={renderInstanceKey}
+            slideElapsedMs={stageElapsedMs}
             className="narration-stage"
           /> : <div className="narration-empty-stage">Add a slide before recording narration.</div>}
           <div className="narration-progress">

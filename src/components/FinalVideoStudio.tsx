@@ -9,6 +9,8 @@ import { useFinalPlayback } from '../finalPlayback/useFinalPlayback'
 import { buildDesktopExportJob, getDesktopBridge } from '../desktop/desktopBridge'
 import type { DesktopExportProgress } from '../desktop/desktopTypes'
 import { Stage } from './Stage'
+import { slideElapsedFromCues, slideElapsedMs } from '../entranceAnimation'
+import { CUE_SYNC_LEEWAY_MS } from '../narration/cueSynchronization'
 import { CheckIcon, CloseIcon, PlayIcon } from './Icons'
 import { validatePresentation } from '../presentationValidation'
 import { decodePresentationAssets, findMissingPresentationAssets } from '../projectAssetReadiness'
@@ -131,6 +133,14 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
 
   const activeSlideIndex = Math.max(0, presentation.slides.findIndex((slide) => slide.id === playback.activeSceneId))
   const activeSlide = presentation.slides[activeSlideIndex] ?? presentation.slides[0]
+  const activeSegmentIndex = playback.activeSegment ? plan.segments.indexOf(playback.activeSegment) : -1
+  const segmentStartMs = activeSegmentIndex < 0 ? 0 : plan.segments.slice(0, activeSegmentIndex).reduce((sum, segment) => sum + segment.durationMs, 0)
+  const segmentElapsedMs = slideElapsedMs(playback.currentTimeMs, segmentStartMs)
+  const activeSlideElapsedMs = playback.status === 'idle' || !playback.activeSegment
+    ? null
+    : playback.activeSegment.type === 'narration'
+      ? slideElapsedFromCues(segmentElapsedMs, playback.activeSegment.take.cues, activeSlide.id, CUE_SYNC_LEEWAY_MS)
+      : segmentElapsedMs
   const previousSlideIndexRef = useRef(activeSlideIndex)
   const direction: 1 | -1 = activeSlideIndex >= previousSlideIndexRef.current ? 1 : -1
   useEffect(() => { previousSlideIndexRef.current = activeSlideIndex }, [activeSlideIndex])
@@ -264,7 +274,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
         <section className="final-stage-panel">
           <div className="final-panel-heading"><span>02</span><div><small>Playback source</small><h2>Final Playback Preview</h2></div></div>
           <div className="final-stage-well">
-            <Stage slide={activeSlide} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={activeSlideIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} className="final-stage" />
+            <Stage slide={activeSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={activeSlideIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} slideElapsedMs={activeSlideElapsedMs} className="final-stage" />
           </div>
           <div className="final-playback-status">
             <span>{formatTime(playback.currentTimeMs)} / {formatTime(playback.totalDurationMs)}</span>

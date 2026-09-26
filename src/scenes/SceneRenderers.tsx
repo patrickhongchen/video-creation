@@ -4,6 +4,9 @@ import { SlideRenderer, type SlideEditorController } from './CompositionSceneRen
 interface RenderSlideOptions {
   imageAssets?: PresentationImageAsset[]
   editor?: SlideEditorController
+  slideElapsedMs?: number | null
+  sharedChartKeys?: ReadonlySet<string>
+  deterministicMotion?: boolean
 }
 
 /**
@@ -22,5 +25,8 @@ export function renderSlide(
     layoutNamespace={layoutNamespace}
     imageAssets={options.imageAssets}
     editor={options.editor}
+    slideElapsedMs={options.slideElapsedMs}
+    sharedChartKeys={options.sharedChartKeys}
+    deterministicMotion={options.deterministicMotion}
   />
 }

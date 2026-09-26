@@ -8,7 +8,7 @@ import {
   storeNarrationTake,
 } from '../narration/narrationDb'
 import type { NarrationRecording, NarrationTake } from '../narration/narrationTypes'
-import { resolveSection, takeIsUsable } from '../narration/narrationValidation'
+import { getTakeRevealCoverageIssue, resolveSection, takeIsUsable } from '../narration/narrationValidation'
 import { useNarrationPlayback } from '../narration/useNarrationPlayback'
 import { useNarrationRecorder } from '../narration/useNarrationRecorder'
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, PlayIcon } from './Icons'
@@ -490,15 +490,20 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
           {!selectedSection && <p className="narration-empty">Select or create a section to record takes.</p>}
           {selectedSection && selectedTakes.length === 0 && <p className="narration-empty">No takes yet. The first completed take will be selected automatically.</p>}
           <ol>
-            {selectedTakes.map((take, index) => <li key={take.id} className={take.selected ? 'is-selected' : ''}>
+            {selectedTakes.map((take, index) => {
+              const usable = selectedResolved ? takeIsUsable(take, selectedResolved) : false
+              const coverageIssue = take.selected && usable && selectedResolved ? getTakeRevealCoverageIssue(take, selectedResolved, presentation) : null
+              return <li key={take.id} className={take.selected ? 'is-selected' : ''}>
               <span className="take-name"><strong>Take {index + 1}</strong><small>{new Date(take.createdAt).toLocaleString()}</small></span>
               <span>{formatDuration(take.durationMs)}</span>
               <button onClick={() => void playTake(take)} disabled={recorderBusy}>{playback.takeId === take.id && playback.isPlaying ? 'Pause' : <><PlayIcon /> Play</>}</button>
               {playback.takeId === take.id && <button onClick={() => void restartTake()} disabled={recorderBusy}>Restart</button>}
               {playback.takeId === take.id && <button onClick={playback.stop} disabled={recorderBusy}>Stop</button>}
-              {take.selected ? <span className={`selected-take ${selectedResolved && takeIsUsable(take, selectedResolved) ? '' : 'is-invalid'}`}><CheckIcon /> {selectedResolved && takeIsUsable(take, selectedResolved) ? 'Selected Take' : 'Selected · Re-record needed'}</span> : <button onClick={() => void chooseTake(take.id)} disabled={recorderBusy}>Use Take</button>}
+              {take.selected ? <span className={`selected-take ${usable ? coverageIssue ? 'is-warning' : '' : 'is-invalid'}`}><CheckIcon /> {usable ? coverageIssue ? 'Selected · Review reveals' : 'Selected Take' : 'Selected · Re-record needed'}</span> : <button onClick={() => void chooseTake(take.id)} disabled={recorderBusy}>Use Take</button>}
               <button className="delete-take" onClick={() => void removeTake(take)} disabled={recorderBusy}>Delete</button>
-            </li>)}
+              {coverageIssue && <small className="narration-coverage-warning">{coverageIssue}</small>}
+            </li>
+            })}
           </ol>
         </div>
       </section>

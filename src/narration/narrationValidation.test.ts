@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Slide } from '../model'
 import type { NarrationTake, SceneCue } from './narrationTypes'
-import { getTakeUsabilityIssue, type ResolvedNarrationSection } from './narrationValidation'
+import { samplePresentation } from '../samplePresentation'
+import { getTakeRevealCoverageIssue, getTakeUsabilityIssue, type ResolvedNarrationSection } from './narrationValidation'
 
 const slide: Slide = {
   id: 'slide-1',
@@ -61,5 +62,32 @@ describe('narration cue validation', () => {
       { type: 'slide', sceneId: slide.id, timeMs: 0 },
       unknownCue,
     ]), section)).toBe('The selected take contains an unknown cue type.')
+  })
+})
+
+describe('typed take reveal coverage', () => {
+  const source = samplePresentation.slides[0]
+  const animatedSlide = { ...source, elements: source.elements.slice(0, 2).map((element, index) => ({ ...element, animation: { entrance: 'fade' as const, order: index + 1 } })) }
+  const animatedSection = { ...section, slides: [animatedSlide] }
+  const presentation = { ...samplePresentation, slides: [animatedSlide] }
+
+  it('warns for missing and stale playable steps without rejecting the take', () => {
+    const selected = take([
+      { type: 'slide', sceneId: animatedSlide.id, timeMs: 0 },
+      { type: 'reveal', sceneId: animatedSlide.id, order: 1, timeMs: 500 },
+      { type: 'reveal', sceneId: animatedSlide.id, order: 3, timeMs: 1000 },
+    ])
+    expect(getTakeUsabilityIssue(selected, animatedSection)).toBeNull()
+    expect(getTakeRevealCoverageIssue(selected, animatedSection, presentation)).toContain('1 playable reveal step without a recorded cue')
+    expect(getTakeRevealCoverageIssue(selected, animatedSection, presentation)).toContain('1 recorded cue for a step that no longer plays')
+  })
+
+  it('ignores legacy takes and hidden reveal steps', () => {
+    expect(getTakeRevealCoverageIssue(take([{ sceneId: animatedSlide.id, timeMs: 0 }]), animatedSection, presentation)).toBeNull()
+    const hiddenSlide = { ...animatedSlide, elements: animatedSlide.elements.map((element, index) => index === 1 ? { ...element, hidden: true } : element) }
+    expect(getTakeRevealCoverageIssue(take([
+      { type: 'slide', sceneId: hiddenSlide.id, timeMs: 0 },
+      { type: 'reveal', sceneId: hiddenSlide.id, order: 1, timeMs: 500 },
+    ]), { ...section, slides: [hiddenSlide] }, { ...presentation, slides: [hiddenSlide] })).toBeNull()
   })
 })

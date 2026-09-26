@@ -280,7 +280,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
             <div><span>Run time</span><strong>{formatTime(plan.totalDurationMs)}</strong></div>
           </div>
           {plan.unassignedSlideCount > 0 ? <p className="final-notice">{plan.unassignedSlideCount} slide{plan.unassignedSlideCount === 1 ? ' has' : 's have'} no narration and will play as silent visual beat{plan.unassignedSlideCount === 1 ? '' : 's'}.</p> : null}
-          {plan.warnings.filter((warning) => warning.kind === 'incomplete-cue-coverage').map((warning) => <p key={warning.sectionId} className="final-warning">{warning.message}</p>)}
+          {plan.warnings.filter((warning) => warning.kind === 'incomplete-cue-coverage' || warning.kind === 'reveal-cue-coverage').map((warning) => <p key={`${warning.kind}-${warning.sectionId}`} className="final-warning">{warning.message}</p>)}
         </aside>
 
         <section className="final-stage-panel">

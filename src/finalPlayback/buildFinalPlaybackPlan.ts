@@ -8,6 +8,7 @@ import {
   slideRevealOrders,
 } from '../entranceAnimation'
 import {
+  getTakeRevealCoverageIssue,
   getTakeUsabilityIssue,
   resolveSection,
 } from '../narration/narrationValidation'
@@ -78,6 +79,9 @@ export function buildFinalPlaybackPlan(
 
     if (!ready || !selectedTake) continue
     selectedTakes.set(section.id, selectedTake)
+
+    const revealIssue = getTakeRevealCoverageIssue(selectedTake, resolved, presentation)
+    if (revealIssue) warnings.push({ kind: 'reveal-cue-coverage', sectionId: section.id, title: section.title, message: `“${section.title}”: ${revealIssue}` })
 
     const cuedSlideCount = new Set(selectedTake.cues.filter(isSlideCue).map((cue) => cue.sceneId)).size
     if (cuedSlideCount < resolved.slides.length) {

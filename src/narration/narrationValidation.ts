@@ -1,5 +1,6 @@
 import type { NarrationSection, Presentation, Slide } from '../model'
-import { isRevealCue, isSlideCue, type NarrationTake } from './narrationTypes'
+import { previousSlideFor, slideRevealOrders } from '../entranceAnimation'
+import { cuesAreLegacy, isRevealCue, isSlideCue, type NarrationTake } from './narrationTypes'
 
 export const NARRATION_CUE_DURATION_TOLERANCE_MS = 100
 
@@ -97,4 +98,24 @@ export function getTakeUsabilityIssue(
 
 export function takeIsUsable(take: NarrationTake, section: ResolvedNarrationSection) {
   return getTakeUsabilityIssue(take, section) === null
+}
+
+/** A nonblocking warning for typed takes after a slide's playable reveals change. */
+export function getTakeRevealCoverageIssue(
+  take: NarrationTake,
+  section: ResolvedNarrationSection,
+  presentation: Presentation,
+): string | null {
+  if (!section.valid || cuesAreLegacy(take.cues) || getTakeUsabilityIssue(take, section)) return null
+  let missing = 0
+  let stale = 0
+  for (const slide of section.slides) {
+    const playable = new Set(slideRevealOrders(slide, previousSlideFor(presentation.slides, slide)))
+    const recorded = new Set(take.cues.filter(isRevealCue).filter((cue) => cue.sceneId === slide.id).map((cue) => cue.order))
+    for (const order of playable) if (!recorded.has(order)) missing += 1
+    for (const order of recorded) if (!playable.has(order)) stale += 1
+  }
+  if (missing === 0 && stale === 0) return null
+  const parts = [missing && `${missing} playable reveal step${missing === 1 ? '' : 's'} without a recorded cue`, stale && `${stale} recorded cue${stale === 1 ? ' for a step that no longer plays' : 's for steps that no longer play'}`].filter(Boolean)
+  return `Re-record recommended: ${parts.join(' and ')}.`
 }

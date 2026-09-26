@@ -34,7 +34,7 @@ export interface FinalPlaybackSectionReadiness {
   selectedTake: NarrationTake | null
 }
 
-export type FinalPlaybackWarningKind = 'incomplete-cue-coverage' | 'no-narration-sections'
+export type FinalPlaybackWarningKind = 'incomplete-cue-coverage' | 'reveal-cue-coverage' | 'no-narration-sections'
 
 export interface FinalPlaybackWarning {
   kind: FinalPlaybackWarningKind

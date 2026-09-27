@@ -9,7 +9,7 @@ import { Inspector } from './components/Inspector'
 import { CanvasToolbar } from './components/CompositionInspector'
 import { CheckIcon, CloseIcon, PlayIcon } from './components/Icons'
 import { NarrationStudio } from './components/NarrationStudio'
-import { deletePresentationTakes, deleteSectionTakes } from './narration/narrationDb'
+import { createNarrationStorage } from './narration/narrationStorage'
 import { getDesktopBridge } from './desktop/desktopBridge'
 import type { DesktopImportedAsset, DesktopProjectExternalChange, DesktopProjectSnapshot } from './desktop/desktopTypes'
 import { presentationHistoryReducer } from './presentationHistory'
@@ -577,7 +577,7 @@ export function App() {
     })
     setSelectedIndex(0)
     setProjectDialog(null)
-    void deletePresentationTakes(deletedPresentationId).catch(() => {
+    void createNarrationStorage(currentProject?.projectId ?? null).deletePresentation(deletedPresentationId).catch(() => {
       setError('The presentation was deleted, but its local narration recordings could not be removed.')
     })
   }
@@ -593,7 +593,7 @@ export function App() {
       importReservations.current.add(uniqueId)
       let cleanupWarning = false
       try {
-        await deletePresentationTakes(uniqueId)
+        await createNarrationStorage(null).deletePresentation(uniqueId)
       } catch {
         cleanupWarning = true
       }
@@ -822,7 +822,7 @@ export function App() {
       }
     })
     affectedSectionIds.forEach((sectionId) => {
-      void deleteSectionTakes(presentation.id, sectionId).catch(() => setError('The slide was deleted, but an affected section’s local recordings could not be removed.'))
+      void createNarrationStorage(currentProject?.projectId ?? null).deleteSection(presentation.id, sectionId).catch(() => setError('The slide was deleted, but an affected section’s recordings could not be removed.'))
     })
     setDirection(-1)
     setSelectedIndex(Math.max(0, Math.min(selectedIndex, presentation.slides.length - 2)))
@@ -851,7 +851,7 @@ export function App() {
       ...(current.narration ? { narration: { sections: narrationSections ?? [] } } : {}),
     }))
     reorderedSectionIds.forEach((sectionId) => {
-      void deleteSectionTakes(presentation.id, sectionId).catch(() => setError('Slides were reordered, but stale narration recordings could not be removed.'))
+      void createNarrationStorage(currentProject?.projectId ?? null).deleteSection(presentation.id, sectionId).catch(() => setError('Slides were reordered, but stale narration recordings could not be removed.'))
     })
     setDirection(offset)
     setSelectedIndex(target)
@@ -878,6 +878,7 @@ export function App() {
     return (
       <><NarrationStudio
         presentation={presentation}
+        projectId={currentProject?.projectId ?? null}
         initialSlideIndex={selectedIndex}
         onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)}
         onExit={() => setMode('edit')}

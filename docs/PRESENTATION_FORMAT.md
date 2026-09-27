@@ -18,14 +18,18 @@ A desktop project is an ordinary folder, not a database or archive:
 my-presentation/
 ├── presentation.json
 ├── AGENTS.md
-└── assets/
-    ├── theater.jpg
-    └── stick-pointing.svg
+├── assets/
+│   ├── theater.jpg
+│   └── stick-pointing.svg
+└── narration/
+    ├── manifest.json
+    └── takes/
+        └── take-....webm
 ```
 
 `presentation.json` is canonical. It contains the presentation model described below and is saved as readable, two-space-indented JSON with a final newline. It does not contain absolute filesystem paths, image binary data, runtime asset URLs, narration Blob bytes, generated videos, current selection, zoom, panel state, or temporary export information.
 
-`AGENTS.md` is a concise authoring guide for Codex and other tools: keep JSON valid, use the fixed coordinate system, store images below `assets/`, preserve stable IDs, and maintain Morph/chart identities. It also directs an author to outline the story first, keep one main idea per slide, prefer visual explanation to paragraphs, vary layouts intentionally, and run the Project validator. It is guidance rather than application state. The `assets/` directory contains the presentation's portable visual files. Moving the complete folder is supported because the JSON refers to these files only through project-relative paths.
+`AGENTS.md` is a concise authoring guide for Codex and other tools: keep JSON valid, use the fixed coordinate system, store images below `assets/`, preserve stable IDs, and maintain Morph/chart identities. It also directs an author to outline the story first, keep one main idea per slide, prefer visual explanation to paragraphs, vary layouts intentionally, and run the Project validator. It is guidance rather than application state. The `assets/` directory contains portable visual files. The app creates `narration/` when takes are stored; its versioned manifest and separate audio files travel with the complete folder.
 
 ## Presentation
 
@@ -39,7 +43,7 @@ my-presentation/
 | `theme` | object | Presentation-wide visual defaults. |
 | `imageAssets` | array | Optional presentation-scoped image registry using project-relative paths on desktop. |
 | `slides` | array | One or more canonical slides. |
-| `narration` | object | Optional narration section structure. Audio remains in IndexedDB and is never embedded in JSON. |
+| `narration` | object | Optional narration section structure. Recorded take media and metadata live under `narration/` in desktop Projects, or IndexedDB in browser/local mode. |
 
 ### Theme
 
@@ -160,9 +164,9 @@ Schema v2 section structure is:
 }
 ```
 
-Section ranges must be non-empty, contiguous in slide order, non-overlapping, and reference existing slide IDs. Recorded takes, audio Blobs, and selected-take state remain profile-local IndexedDB data keyed by presentation and section ID. Existing stored cue records retain their historical internal `sceneId` property, but its value is simply the unchanged slide ID; this preserves old takes without re-recording.
+Section ranges must be non-empty, contiguous in slide order, non-overlapping, and reference existing slide IDs. `presentation.json` remains the source of truth for section structure. In a desktop Project, `narration/manifest.json` records take IDs, section IDs, duration, MIME type, cues, pointer tracks, selected and invalidated state, and safe paths to media under `narration/takes/`. The audio bytes are separate files. Browser/local mode uses IndexedDB. Existing stored cue records retain their historical internal `sceneId` property, but its value is simply the unchanged slide ID; this preserves old takes without re-recording.
 
-Opening and saving the same project preserves these IDs, so editing text, frames, charts, or illustrations does not by itself detach narration. Narration recordings are not currently files in the project: moving the folder on the same machine/profile keeps its association, while copying the folder alone to another computer or browser profile does not transfer the audio.
+Opening and saving the same project preserves these IDs, so editing text, frames, charts, or illustrations does not by itself detach narration. Desktop recordings are saved immediately under `narration/` without a presentation Save. When no portable narration exists, Narration Studio migrates matching legacy IndexedDB takes once while retaining the originals. After migration, the Project folder is authoritative and can be copied to another computer or browser profile with its narration.
 
 ## Morph and duplication
 

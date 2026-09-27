@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Presentation } from '../model'
 import { slugify } from '../presentationFactories'
-import { listNarrationTakes } from '../narration/narrationDb'
+import { createNarrationStorage } from '../narration/narrationStorage'
 import { buildFinalPlaybackPlan } from '../finalPlayback/buildFinalPlaybackPlan'
 import type { NarrationTakesBySection } from '../finalPlayback/finalPlaybackTypes'
 import { useFinalProgramPlayback } from '../finalPlayback/useFinalProgramPlayback'
@@ -20,6 +20,7 @@ import { resolveFinalPlaybackSeek } from '../finalPlayback/resolveFinalPlaybackS
 
 interface FinalVideoStudioProps {
   presentation: Presentation
+  projectId: string | null
   onExit: () => void
   onOpenNarration: (sectionId: string) => void
 }
@@ -43,8 +44,9 @@ function createJobId() {
     : `export-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: FinalVideoStudioProps) {
+export function FinalVideoStudio({ presentation, projectId, onExit, onOpenNarration }: FinalVideoStudioProps) {
   const desktop = getDesktopBridge()
+  const narrationStorage = useMemo(() => createNarrationStorage(projectId), [projectId])
   const [takesBySection, setTakesBySection] = useState<NarrationTakesBySection>({})
   const [takesStatus, setTakesStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [previewAudioStatus, setPreviewAudioStatus] = useState<'waiting' | 'preparing' | 'ready' | 'error'>('waiting')
@@ -82,7 +84,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
     setPreviewWarnings([])
     Promise.all((presentation.narration?.sections ?? []).map(async (section) => [
       section.id,
-      await listNarrationTakes(presentation.id, section.id),
+      await narrationStorage.list(presentation.id, section.id),
     ] as const))
       .then((entries) => {
         if (cancelled) return
@@ -95,7 +97,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
         setError(problem instanceof Error ? `Narration recordings could not be loaded: ${problem.message}` : 'Narration recordings could not be loaded.')
       })
     return () => { cancelled = true }
-  }, [presentation.id, presentation.narration?.sections])
+  }, [narrationStorage, presentation.id, presentation.narration?.sections])
 
   useEffect(() => {
     if (!desktop || takesStatus !== 'ready' || !plan.isReady) return

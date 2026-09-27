@@ -38,12 +38,16 @@ The desktop app works with ordinary, movable folders:
 my-presentation/
 ├── presentation.json
 ├── AGENTS.md
-└── assets/
-    ├── theater.jpg
-    └── stick-pointing.svg
+├── assets/
+│   ├── theater.jpg
+│   └── stick-pointing.svg
+└── narration/
+    ├── manifest.json
+    └── takes/
+        └── take-....webm
 ```
 
-`presentation.json` is the canonical, human- and AI-readable source of truth for presentation metadata, theme, slides, elements, explicit frames, charts, Morph identities, narration section structure, and the asset registry. Desktop saves use formatted, two-space-indented JSON with project-relative asset paths such as `assets/theater.jpg`; they do not persist image bytes, absolute machine paths, runtime URLs, editor state, export state, or narration recordings. Because the paths are relative, the whole project folder can be moved and reopened elsewhere without breaking its visual assets.
+`presentation.json` is the canonical, human- and AI-readable source of truth for presentation metadata, theme, slides, elements, explicit frames, charts, Morph identities, narration section structure, and the asset registry. Desktop saves use formatted, two-space-indented JSON with project-relative asset paths such as `assets/theater.jpg`; they do not persist image bytes, absolute machine paths, runtime URLs, editor state, export state, or narration recordings. The `narration/` directory is created when recordings are stored and keeps a versioned metadata manifest and separate audio files. The complete folder can be moved or copied with its visual assets and narration intact.
 
 New Project creates the JSON file, a concise project-specific `AGENTS.md`, and the `assets/` directory. Open Project validates the document and required assets before replacing the current presentation. Save writes `presentation.json` safely, tracks unsaved changes, and protects against silent loss when switching projects or closing the app.
 
@@ -77,7 +81,7 @@ Import supports current v2 JSON and schema v1 through a deterministic migration 
 
 Migration preserves slide IDs, notes, duration, transitions, narration section IDs and membership, assets, chart IDs, datum IDs, and legacy Big Stat/Stat Detail Morph identity. A migrated library is saved under the v2 localStorage key on the next normal save, so it is not repeatedly migrated at startup. JSON export always emits schema v2.
 
-Narration audio, recorded takes, and selected-take state remain in IndexedDB in the current application/profile, not in the project folder. `presentation.json` contains only narration sections and slide membership. Opening and saving the same project preserves its presentation and section IDs, so ordinary visual edits keep their narration association. Copying or moving the folder preserves all visual content, but copying it to another computer or browser profile does **not** carry recorded narration yet.
+For desktop Projects, `presentation.json` contains narration sections and slide membership, while `narration/manifest.json` stores take metadata, cues, pointer tracks, selected state, and invalidation state. Audio is stored separately under `narration/takes/`. Recordings are saved immediately without pressing Save. When an older desktop Project has no portable narration, Narration Studio copies matching IndexedDB takes into the Project folder once and leaves the originals untouched. Once portable narration exists, the Project folder is authoritative. Browser/local mode continues to store recordings in IndexedDB.
 
 ## Architecture
 

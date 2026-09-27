@@ -75,6 +75,17 @@ export async function listNarrationTakes(presentationId: string, sectionId: stri
   })
 }
 
+/** Used only to copy legacy profile recordings into an empty desktop Project. */
+export async function listNarrationTakesForPresentation(presentationId: string) {
+  return withDatabase(async (database) => {
+    const transaction = database.transaction(TAKE_STORE, 'readonly')
+    const records = await requestResult(transaction.objectStore(TAKE_STORE).index(PRESENTATION_INDEX)
+      .getAll(IDBKeyRange.only(presentationId))) as StoredNarrationTake[]
+    await transactionDone(transaction)
+    return records.map(fromStored).sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+  })
+}
+
 export async function getNarrationTake(id: string) {
   return withDatabase(async (database) => {
     const transaction = database.transaction(TAKE_STORE, 'readonly')

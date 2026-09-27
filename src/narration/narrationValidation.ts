@@ -61,6 +61,7 @@ export function getTakeUsabilityIssue(
   take: NarrationTake,
   section: ResolvedNarrationSection,
 ): string | null {
+  if (take.storageError) return take.storageError
   if (take.invalidated) {
     return 'This take was recorded for an earlier slide range. Re-record it before using it.'
   }

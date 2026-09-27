@@ -47,7 +47,7 @@ export const PROJECT_AGENTS_MD = `# AI Presentation Studio Project
 3. Choose layouts for the idea: a statement, image, comparison, explanation, chart, or visual joke. Vary scale and composition intentionally; leave useful whitespace. Important content is usually within x ≈ 80–1000 and y ≈ 120–1720, but deliberate crops and asymmetry are welcome.
 4. Use charts only when numeric relationships matter. Never invent factual values for appearance; label illustrative data. Use \`contain\` for illustrations and \`cover\` for photos. Reuse existing assets before adding new files under \`assets/\`.
 5. Use \`sharedElementId\` only when the viewer should perceive the same concept moving or changing across Slides. For continuing charts, preserve \`chartId\` and datum IDs as well. Slides, not timestamps, define motion.
-6. Preserve \`presentation.id\`, surviving Slide and element IDs, narration section IDs, asset IDs, chart identities, and shared identities when revising an existing Project. Create readable unique IDs for genuinely new objects. The app manages narration recordings separately.
+6. Preserve \`presentation.id\`, surviving Slide and element IDs, narration section IDs, asset IDs, chart identities, and shared identities when revising an existing Project. Create readable unique IDs for genuinely new objects. Recorded audio and take-specific timing metadata live under \`narration/\`; preserve that directory when moving or copying a Project.
 7. Write related \`presentation.json\` and \`assets/\` changes close together, then run \`npm run validate-project -- /path/to/this/project\` from the AI Presentation Studio repository. Fix errors and review actionable warnings, then check the story, readability, visual variety, and factual accuracy.
 
 AI Presentation Studio watches the open Project and applies stable, valid external changes automatically. Keep \`presentation.json\` valid JSON. Do not use remote image URLs or add a separate layout type.
@@ -631,6 +631,39 @@ export class ProjectStore {
 
   revealPath(projectId: string) {
     return this.assertActive(projectId).realRootPath
+  }
+
+  /**
+   * Resolves the narration directory only for the currently active Project.
+   * Existing symlinks are rejected so callers can safely resolve files beneath it.
+   */
+  async resolveActiveNarrationRoot(projectId: string, create = false) {
+    const active = this.assertActive(projectId)
+    await this.assertActiveRootAvailable(active)
+    const narrationRoot = path.join(active.realRootPath, 'narration')
+    try {
+      const info = await lstat(narrationRoot)
+      if (info.isSymbolicLink() || !info.isDirectory()) {
+        throw new Error('The Project narration path must be a regular directory.')
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      if (!create) return null
+      try {
+        await mkdir(narrationRoot)
+      } catch (mkdirError) {
+        if ((mkdirError as NodeJS.ErrnoException).code !== 'EEXIST') throw mkdirError
+      }
+      const info = await lstat(narrationRoot)
+      if (info.isSymbolicLink() || !info.isDirectory()) {
+        throw new Error('The Project narration path must be a regular directory.')
+      }
+    }
+    const realNarrationRoot = await realpath(narrationRoot)
+    if (!pathIsWithin(active.realRootPath, realNarrationRoot)) {
+      throw new Error('The Project narration path escapes the active Project.')
+    }
+    return realNarrationRoot
   }
 
   async importFile(projectId: string, sourcePath: string) {

@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { NarrationSection, Presentation } from '../model'
-import {
-  deleteNarrationTake,
-  deleteSectionTakes,
-  invalidateSectionTakes,
-  listNarrationTakes,
-  selectNarrationTake,
-  storeNarrationTake,
-} from '../narration/narrationDb'
+import { createNarrationStorage } from '../narration/narrationStorage'
 import type { NarrationRecording, NarrationTake } from '../narration/narrationTypes'
 import { getTakeRevealCoverageIssue, resolveSection, takeIsUsable } from '../narration/narrationValidation'
 import { useNarrationPlayback } from '../narration/useNarrationPlayback'
@@ -31,6 +24,7 @@ import { coverSlidesWithSections, mergeSectionIntoPrevious, sectionsWithChangedS
 
 interface NarrationStudioProps {
   presentation: Presentation
+  projectId: string | null
   initialSlideIndex: number
   onPresentationChange: (presentation: Presentation) => void
   onExit: () => void
@@ -75,7 +69,8 @@ function NarrationScript({ currentNotes, nextNotes, nextTitle, textSize, onSizeC
   </>
 }
 
-export function NarrationStudio({ presentation, initialSlideIndex, onPresentationChange, onExit, onError }: NarrationStudioProps) {
+export function NarrationStudio({ presentation, projectId, initialSlideIndex, onPresentationChange, onExit, onError }: NarrationStudioProps) {
+  const narrationStorage = useMemo(() => createNarrationStorage(projectId), [projectId])
   const sections = presentation.narration?.sections ?? EMPTY_SECTIONS
   const safeInitialSlideIndex = Math.max(0, Math.min(initialSlideIndex, Math.max(0, presentation.slides.length - 1)))
   const initialSlideId = presentation.slides[safeInitialSlideIndex]?.id
@@ -148,12 +143,12 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   const loadTakes = useCallback(async () => {
     const sequence = ++takeLoadSequenceRef.current
     try {
-      const entries = await Promise.all(sections.map(async (section) => [section.id, await listNarrationTakes(presentation.id, section.id)] as const))
+      const entries = await Promise.all(sections.map(async (section) => [section.id, await narrationStorage.list(presentation.id, section.id)] as const))
       if (sequence === takeLoadSequenceRef.current) setTakeMap(Object.fromEntries(entries))
     } catch (problem) {
       showError(problem instanceof Error ? `Narration storage failed: ${problem.message}` : 'Narration takes could not be loaded.')
     }
-  }, [presentation.id, sections, showError])
+  }, [narrationStorage, presentation.id, sections, showError])
 
   useEffect(() => { void loadTakes() }, [loadTakes])
 
@@ -205,7 +200,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
       selected: !hasSelectedTake,
       blob: recording.blob,
     }
-    await storeNarrationTake(take)
+    await narrationStorage.store(take)
     await loadTakes()
     activeRelativeIndexRef.current = 0
     setActiveRelativeIndex(0)
@@ -214,7 +209,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     recordingRevealedThroughOrderRef.current = 0
     setRecordingActiveReveal(null)
     setLatestTakeId(take.id)
-  }, [loadTakes, presentation.id])
+  }, [loadTakes, narrationStorage, presentation.id])
 
   const recorder = useNarrationRecorder({
     onRecordingStarted: () => {
@@ -327,7 +322,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     void (async () => {
       try {
         await Promise.all(sectionsWithChangedSlideRanges(sections, covered)
-          .map((sectionId) => invalidateSectionTakes(presentation.id, sectionId)))
+          .map((sectionId) => narrationStorage.invalidate(presentation.id, sectionId)))
         await loadTakes()
         if (coverageSyncKeyRef.current !== sourceKey) return
         const targetSlideId = pendingSetupSlideIdRef.current ?? initialSlideId ?? presentation.slides[0]?.id
@@ -338,7 +333,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
         showError(problem instanceof Error ? `Sections could not be updated: ${problem.message}` : 'Sections could not be updated.')
       }
     })()
-  }, [initialSlideId, loadTakes, presentation.id, presentation.slides, sections, showError, updateSections])
+  }, [initialSlideId, loadTakes, narrationStorage, presentation.id, presentation.slides, sections, showError, updateSections])
 
   const selectSlide = (index: number) => {
     if (recorderBusy) return
@@ -365,7 +360,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     if (nextSections.length === sections.length) return
     try {
       await Promise.all(sectionsWithChangedSlideRanges(sections, nextSections)
-        .map((sectionId) => invalidateSectionTakes(presentation.id, sectionId)))
+        .map((sectionId) => narrationStorage.invalidate(presentation.id, sectionId)))
       await loadTakes()
       const targetSlideId = currentSlide?.id ?? presentation.slides[index]?.id
       pendingSetupSlideIdRef.current = targetSlideId ?? null
@@ -386,8 +381,8 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     try {
       const nextSections = mergeSectionIntoPrevious(sections, sectionId)
       await Promise.all(sectionsWithChangedSlideRanges(sections, nextSections)
-        .map((changedId) => invalidateSectionTakes(presentation.id, changedId)))
-      await deleteSectionTakes(presentation.id, sectionId)
+        .map((changedId) => narrationStorage.invalidate(presentation.id, changedId)))
+      await narrationStorage.deleteSection(presentation.id, sectionId)
       await loadTakes()
       const targetSlideId = currentSlide?.id ?? presentation.slides[0]?.id
       pendingSetupSlideIdRef.current = targetSlideId ?? null
@@ -411,8 +406,8 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
       const remaining = sections.filter((item) => item.id !== sectionId)
       const covered = coverSlidesWithSections(presentation.slides, remaining, makeId('section'))
       await Promise.all(sectionsWithChangedSlideRanges(remaining, covered)
-        .map((changedId) => invalidateSectionTakes(presentation.id, changedId)))
-      await deleteSectionTakes(presentation.id, sectionId)
+        .map((changedId) => narrationStorage.invalidate(presentation.id, changedId)))
+      await narrationStorage.deleteSection(presentation.id, sectionId)
       await loadTakes()
       setSelectedSectionId(covered[0]?.id ?? null)
       updateSections(covered)
@@ -542,7 +537,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   const chooseTake = async (takeId: string) => {
     if (!selectedSection || recorderBusy) return
     try {
-      await selectNarrationTake(presentation.id, selectedSection.id, takeId)
+      await narrationStorage.select(presentation.id, selectedSection.id, takeId)
       await loadTakes()
     } catch (problem) {
       showError(problem instanceof Error ? `Take could not be selected: ${problem.message}` : 'Take could not be selected.')
@@ -554,7 +549,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     if (!window.confirm('Delete this take and its audio recording? This cannot be undone.')) return
     if (playback.takeId === take.id) playback.stop()
     try {
-      await deleteNarrationTake(take.id)
+      await narrationStorage.delete(presentation.id, take.id)
       await loadTakes()
       if (latestTakeId === take.id) setLatestTakeId(null)
     } catch (problem) {
@@ -573,6 +568,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     if (presentation.voiceEnhance !== 'standard') return
     const bridge = getDesktopBridge()
     for (const take of [...selectedTakes].reverse()) {
+      if (take.storageError || take.blob.size === 0) continue
       const key = takePreviewKey(take)
       if (previewBlobsRef.current.has(key) || previewStates[take.id]?.key === key) continue
       if (!bridge) {
@@ -647,6 +643,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   if (workspaceView === 'preview') {
     return <FinalVideoStudio
       presentation={presentation}
+      projectId={projectId}
       onExit={() => setWorkspaceView('narration')}
       onOpenNarration={(sectionId) => {
         if (sectionId) {
@@ -759,13 +756,14 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
               return <li key={take.id} ref={take.id === latestTakeId ? latestTakeRef : undefined} className={`narration-take${take.selected && usable ? ' is-selected' : ''}${take.id === latestTakeId ? ' is-new' : ''}`}>
                 <div className="take-summary"><div><strong>Take {index + 1}</strong><small className={!usable ? 'is-invalid' : ''}>{!usable ? 'Re-record needed' : take.selected ? 'Selected for final video' : take.id === latestTakeId ? 'Just recorded' : 'Ready to use'}</small></div><time>{formatDuration(take.durationMs)}</time></div>
                 <div className="take-actions">
-                  <button onClick={() => void playTake(take)} disabled={recorderBusy} aria-label={`${isPlaying ? 'Pause' : 'Play'} Take ${index + 1}`}>{isPlaying ? 'Pause' : <><PlayIcon /> Play</>}</button>
+                  <button onClick={() => void playTake(take)} disabled={recorderBusy || Boolean(take.storageError) || take.blob.size === 0} aria-label={`${isPlaying ? 'Pause' : 'Play'} Take ${index + 1}`}>{isPlaying ? 'Pause' : <><PlayIcon /> Play</>}</button>
                   {take.selected && usable ? <span className="take-selected"><CheckIcon /> Selected</span> : <button className="use-take" onClick={() => void chooseTake(take.id)} disabled={!usable || recorderBusy}>Use take</button>}
                   <button className="delete-take" onClick={() => void removeTake(take)} disabled={recorderBusy} aria-label={`Delete Take ${index + 1}`}>Delete</button>
                 </div>
                 {playback.takeId === take.id && <div className="narration-scrubber"><input type="range" min="0" max={Math.max(1, take.durationMs)} step="100" value={Math.min(playback.currentTimeMs, take.durationMs)} onChange={(event) => playback.seek(Number(event.target.value) / 1000)} aria-label={`Seek Take ${index + 1}`} /><span>{formatDuration(playback.currentTimeMs)} / {formatDuration(take.durationMs)}</span></div>}
                 {presentation.voiceEnhance === 'standard' && previewState?.status === 'preparing' && <small className="narration-processing-status" role="status">Preparing enhanced preview… {comparisonMode === 'enhanced' ? 'Play uses original audio for now.' : ''}</small>}
                 {presentation.voiceEnhance === 'standard' && previewState?.warning && <small className="narration-processing-status" role="status">{previewState.warning}</small>}
+                {take.storageError && <small className="narration-coverage-warning" role="alert">{take.storageError}</small>}
                 {coverageIssue && <small className="narration-coverage-warning">{coverageIssue}</small>}
               </li>
             })}</ol>

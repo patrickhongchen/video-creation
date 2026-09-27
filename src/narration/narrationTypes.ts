@@ -53,6 +53,8 @@ export interface NarrationTake {
   selected: boolean
   /** The section's slide range changed after this take was recorded. */
   invalidated?: boolean
+  /** Read failure for portable media; this take stays visible but cannot be used. */
+  storageError?: string
   blob: Blob
 }
 

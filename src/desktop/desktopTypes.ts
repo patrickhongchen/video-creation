@@ -1,5 +1,5 @@
 import type { Presentation, PresentationImageAsset, PresentationImageMimeType } from '../model'
-import type { SceneCue } from '../narration/narrationTypes'
+import type { NarrationTake, SceneCue } from '../narration/narrationTypes'
 import type { NarrationPointerSample } from '../narration/resolveNarrationPointer'
 
 export const DESKTOP_VIDEO_WIDTH = 1080
@@ -63,6 +63,12 @@ export interface DesktopNarrationPreviewRequest {
 export interface DesktopNarrationPreviewResult {
   bytes: ArrayBuffer
   warning?: string
+}
+
+export type DesktopNarrationTakeWrite = Omit<NarrationTake, 'blob'> & { bytes: ArrayBuffer }
+export type DesktopNarrationTakeData = Omit<NarrationTake, 'blob'> & {
+  bytes: ArrayBuffer | null
+  storageError?: string
 }
 
 export type DesktopFinalPreviewAudioSegment =
@@ -196,6 +202,16 @@ export interface VideoEssayDesktopApi {
   importClipboardImage: (projectId: string) => Promise<DesktopAssetImportResult>
   saveImageBytes: (request: DesktopImageBytesRequest) => Promise<DesktopImportedAsset>
   setProjectDirty: (projectId: string, dirty: boolean) => Promise<void>
+  narrationStatus: (projectId: string, presentationId: string) => Promise<{ exists: boolean }>
+  narrationList: (projectId: string, presentationId: string, sectionId: string) => Promise<DesktopNarrationTakeData[]>
+  narrationGet: (projectId: string, presentationId: string, takeId: string) => Promise<DesktopNarrationTakeData | undefined>
+  narrationStore: (projectId: string, take: DesktopNarrationTakeWrite) => Promise<void>
+  narrationDelete: (projectId: string, presentationId: string, takeId: string) => Promise<void>
+  narrationSelect: (projectId: string, presentationId: string, sectionId: string, takeId: string | null) => Promise<void>
+  narrationInvalidate: (projectId: string, presentationId: string, sectionId: string) => Promise<void>
+  narrationDeleteSection: (projectId: string, presentationId: string, sectionId: string) => Promise<void>
+  narrationDeletePresentation: (projectId: string, presentationId: string) => Promise<void>
+  narrationMigrate: (projectId: string, presentationId: string, takes: DesktopNarrationTakeWrite[]) => Promise<void>
   onProjectNewRequested: (listener: () => void) => () => void
   onProjectOpenRequested: (listener: () => void) => () => void
   onProjectSaveRequested: (listener: () => void) => () => void

@@ -6,6 +6,8 @@ import { CHANNELS } from './export/channels'
 import { VideoExporter } from './export/videoExporter'
 import { validateCompletedVideoPath, validateExportJob, validateJobId, validateRenderFrameRequest } from './export/validation'
 import { PROJECT_ASSET_PROTOCOL, ProjectStore } from './project/projectStore'
+import { PortableNarrationStore } from './project/portableNarrationStore'
+import type { DesktopNarrationTakeWrite } from '../src/desktop/desktopTypes'
 import { narrationPreviewCache } from './narrationPreviewProcessor'
 import { finalPreviewAudioCache } from './finalPreviewAudioProcessor'
 
@@ -28,6 +30,7 @@ let allowWindowCloseOnce = false
 let closePromptOpen = false
 let pendingCloseAfterSave = false
 const projects = new ProjectStore()
+const narration = new PortableNarrationStore(projects)
 projects.onExternalChange((change) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(CHANNELS.projectExternalChange, change)
 })
@@ -40,6 +43,12 @@ function isMainSender(sender: WebContents) {
 
 function assertMainSender(sender: WebContents) {
   if (!isMainSender(sender)) throw new Error('This desktop operation is only available to the editor window.')
+}
+
+function assertNarrationIdentity(projectId: unknown, presentationId: unknown) {
+  if (typeof projectId !== 'string' || typeof presentationId !== 'string') {
+    throw new Error('Invalid narration Project or presentation ID.')
+  }
 }
 
 function rendererOrigin() {
@@ -292,6 +301,63 @@ function installIpcHandlers() {
     projects.setDirty(projectId, dirty)
     pendingCloseAfterSave = false
     if (dirty) appQuitRequested = false
+  })
+  ipcMain.handle(CHANNELS.narrationStatus, (event, projectId: unknown, presentationId: unknown) => {
+    assertMainSender(event.sender)
+    assertNarrationIdentity(projectId, presentationId)
+    return narration.status(projectId as string, presentationId as string)
+  })
+  ipcMain.handle(CHANNELS.narrationList, (event, projectId: unknown, presentationId: unknown, sectionId: unknown) => {
+    assertMainSender(event.sender)
+    assertNarrationIdentity(projectId, presentationId)
+    if (typeof sectionId !== 'string') throw new Error('Invalid narration section ID.')
+    return narration.list(projectId as string, presentationId as string, sectionId)
+  })
+  ipcMain.handle(CHANNELS.narrationGet, (event, projectId: unknown, presentationId: unknown, takeId: unknown) => {
+    assertMainSender(event.sender)
+    assertNarrationIdentity(projectId, presentationId)
+    if (typeof takeId !== 'string') throw new Error('Invalid narration take ID.')
+    return narration.get(projectId as string, presentationId as string, takeId)
+  })
+  ipcMain.handle(CHANNELS.narrationStore, (event, projectId: unknown, take: unknown) => {
+    assertMainSender(event.sender)
+    if (typeof projectId !== 'string' || !take || typeof take !== 'object') throw new Error('Invalid narration take request.')
+    return narration.store(projectId, take as DesktopNarrationTakeWrite)
+  })
+  ipcMain.handle(CHANNELS.narrationDelete, (event, projectId: unknown, presentationId: unknown, takeId: unknown) => {
+    assertMainSender(event.sender)
+    assertNarrationIdentity(projectId, presentationId)
+    if (typeof takeId !== 'string') throw new Error('Invalid narration take ID.')
+    return narration.delete(projectId as string, presentationId as string, takeId)
+  })
+  ipcMain.handle(CHANNELS.narrationSelect, (event, projectId: unknown, presentationId: unknown, sectionId: unknown, takeId: unknown) => {
+    assertMainSender(event.sender)
+    assertNarrationIdentity(projectId, presentationId)
+    if (typeof sectionId !== 'string' || (takeId !== null && typeof takeId !== 'string')) throw new Error('Invalid narration selection.')
+    return narration.select(projectId as string, presentationId as string, sectionId, takeId as string | null)
+  })
+  ipcMain.handle(CHANNELS.narrationInvalidate, (event, projectId: unknown, presentationId: unknown, sectionId: unknown) => {
+    assertMainSender(event.sender)
+    assertNarrationIdentity(projectId, presentationId)
+    if (typeof sectionId !== 'string') throw new Error('Invalid narration section ID.')
+    return narration.invalidate(projectId as string, presentationId as string, sectionId)
+  })
+  ipcMain.handle(CHANNELS.narrationDeleteSection, (event, projectId: unknown, presentationId: unknown, sectionId: unknown) => {
+    assertMainSender(event.sender)
+    assertNarrationIdentity(projectId, presentationId)
+    if (typeof sectionId !== 'string') throw new Error('Invalid narration section ID.')
+    return narration.deleteSection(projectId as string, presentationId as string, sectionId)
+  })
+  ipcMain.handle(CHANNELS.narrationDeletePresentation, (event, projectId: unknown, presentationId: unknown) => {
+    assertMainSender(event.sender)
+    assertNarrationIdentity(projectId, presentationId)
+    return narration.deletePresentation(projectId as string, presentationId as string)
+  })
+  ipcMain.handle(CHANNELS.narrationMigrate, (event, projectId: unknown, presentationId: unknown, takes: unknown) => {
+    assertMainSender(event.sender)
+    assertNarrationIdentity(projectId, presentationId)
+    if (!Array.isArray(takes)) throw new Error('Invalid legacy narration takes.')
+    return narration.migrate(projectId as string, presentationId as string, takes as DesktopNarrationTakeWrite[])
   })
   ipcMain.handle(CHANNELS.exportStart, async (event, value: unknown) => {
     assertMainSender(event.sender)

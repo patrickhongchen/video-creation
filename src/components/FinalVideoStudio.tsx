@@ -6,12 +6,13 @@ import { buildFinalPlaybackPlan } from '../finalPlayback/buildFinalPlaybackPlan'
 import type { NarrationTakesBySection } from '../finalPlayback/finalPlaybackTypes'
 import { useFinalProgramPlayback } from '../finalPlayback/useFinalProgramPlayback'
 import { buildFinalPreviewAudioRequest } from '../finalPlayback/buildFinalPreviewAudioRequest'
-import { buildDesktopExportJob, getDesktopBridge } from '../desktop/desktopBridge'
+import { buildDesktopExportJob, desktopSegmentsFromFinalPlan, getDesktopBridge } from '../desktop/desktopBridge'
 import type { DesktopExportProgress } from '../desktop/desktopTypes'
 import { Stage } from './Stage'
 import { NarrationSlideThumbnail } from './NarrationSlideThumbnail'
 import { previousSlideFor, slideRevealOrders, timedRevealStateAtTime } from '../entranceAnimation'
 import { resolveNarrationVisualAtTime } from '../narration/resolveNarrationVisual'
+import { resolveNarrationPointerAtTime } from '../narration/resolveNarrationPointer'
 import { ArrowLeftIcon, CheckIcon, CloseIcon, PlayIcon } from './Icons'
 import { validatePresentation } from '../presentationValidation'
 import { decodePresentationAssets, findMissingPresentationAssets } from '../projectAssetReadiness'
@@ -149,6 +150,9 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
   const activeSlideIndex = narrationVisual?.slideIndex
     ?? Math.max(0, presentation.slides.findIndex((slide) => slide.id === (scrubPosition?.sceneId ?? playback.activeSceneId)))
   const activeSlide = presentation.slides[activeSlideIndex] ?? presentation.slides[0]
+  const pointerState = visualSegment?.type === 'narration' && activeSlide && (playback.status !== 'idle' || scrubPosition)
+    ? resolveNarrationPointerAtTime(visualSegment.take.pointerTrack, segmentElapsedMs, activeSlide.id)
+    : null
   const activeRevealState = (playback.status === 'idle' && !scrubPosition) || !visualSegment
     ? null
     : narrationVisual
@@ -187,19 +191,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
     setExportState('preparing')
     try {
       await decodePresentationAssets(presentation)
-      const sourceSegments = plan.segments.map((segment) => segment.type === 'silent-scene'
-        ? { ...segment }
-        : {
-            type: 'narration' as const,
-            sectionId: segment.sectionId,
-            title: segment.title,
-            sceneIds: [...segment.sceneIds],
-            durationMs: segment.durationMs,
-            cues: segment.take.cues.map((cue) => ({ ...cue })),
-            takeId: segment.take.id,
-            mimeType: segment.take.mimeType,
-            blob: segment.take.blob,
-          })
+      const sourceSegments = desktopSegmentsFromFinalPlan(plan)
       const job = await buildDesktopExportJob({
         jobId: createJobId(),
         presentation: structuredClone(presentation),
@@ -289,7 +281,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
 
         <section className="final-stage-panel">
           <div className="final-stage-well">
-            {activeSlide && <Stage slide={activeSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={activeSlideIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} revealState={activeRevealState} className="final-stage" />}
+            {activeSlide && <Stage slide={activeSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={activeSlideIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} revealState={activeRevealState} pointerState={pointerState} className="final-stage" />}
           </div>
           <div className="final-scrubber-panel">
             <div className="final-scrubber-row">

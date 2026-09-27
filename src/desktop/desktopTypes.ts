@@ -1,5 +1,6 @@
 import type { Presentation, PresentationImageAsset, PresentationImageMimeType } from '../model'
 import type { SceneCue } from '../narration/narrationTypes'
+import type { NarrationPointerSample } from '../narration/resolveNarrationPointer'
 
 export const DESKTOP_VIDEO_WIDTH = 1080
 export const DESKTOP_VIDEO_HEIGHT = 1920
@@ -12,6 +13,7 @@ export interface DesktopNarrationSegment {
   sceneIds: string[]
   durationMs: number
   cues: SceneCue[]
+  pointerTrack?: NarrationPointerSample[]
   audio: {
     takeId: string
     mimeType: string

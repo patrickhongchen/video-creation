@@ -3,6 +3,7 @@ import type { DesktopExportJob, DesktopRenderFrameRequest, ExportCue, ExportSegm
 
 const MAX_JOB_DURATION_MS = 4 * 60 * 60 * 1000
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024 * 1024
+const POINTER_DURATION_TOLERANCE_MS = 100
 const MIME_PATTERN = /^audio\/[a-z0-9.+-]+(?:\s*;[^\r\n]*)?$/i
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -26,6 +27,23 @@ function isCue(value: unknown): value is ExportCue {
     && isDuration(value.timeMs, true)
     && (value.type === undefined || value.type === 'slide'
       || (value.type === 'reveal' && typeof value.order === 'number' && Number.isSafeInteger(value.order) && value.order > 0))
+}
+
+function isPointerSample(value: unknown, sceneIds: readonly string[], durationMs: number) {
+  return isRecord(value)
+    && isDuration(value.timeMs, true)
+    && value.timeMs <= durationMs + POINTER_DURATION_TOLERANCE_MS
+    && isNonEmptyString(value.sceneId)
+    && sceneIds.includes(value.sceneId)
+    && typeof value.x === 'number'
+    && Number.isFinite(value.x)
+    && value.x >= 0
+    && value.x <= 1
+    && typeof value.y === 'number'
+    && Number.isFinite(value.y)
+    && value.y >= 0
+    && value.y <= 1
+    && typeof value.visible === 'boolean'
 }
 
 function byteLength(value: unknown) {
@@ -60,6 +78,12 @@ function assertSegment(value: unknown, sceneIds: Set<string>): asserts value is 
   if (!Array.isArray(cues) || !cues.every(isCue)
     || !cues.every((cue) => segmentSceneIds.includes(cue.sceneId) && cue.timeMs <= segmentDurationMs)) {
     throw new Error(`Narration section “${value.title}” contains invalid narration cues.`)
+  }
+  const pointerTrack = value.pointerTrack
+  if (pointerTrack !== undefined
+    && (!Array.isArray(pointerTrack)
+      || !pointerTrack.every((sample) => isPointerSample(sample, segmentSceneIds, segmentDurationMs)))) {
+    throw new Error(`Narration section “${value.title}” contains invalid pointer samples.`)
   }
   const audio = value.audio
   if (!isRecord(audio)

@@ -1,4 +1,6 @@
 import type { VoiceEnhanceMode } from '../../src/model'
+import type { SceneCue } from '../../src/narration/narrationTypes'
+import type { NarrationPointerSample } from '../../src/narration/resolveNarrationPointer'
 
 export const VIDEO_WIDTH = 1080
 export const VIDEO_HEIGHT = 1920
@@ -13,6 +15,7 @@ export interface NarrationExportSegment {
   sceneIds: string[]
   durationMs: number
   cues: ExportCue[]
+  pointerTrack?: NarrationPointerSample[]
   audio: {
     takeId: string
     mimeType: string
@@ -64,4 +67,3 @@ export interface DesktopRenderFrameRequest {
   frameIndex: number
   elapsedMs: number
 }
-import type { SceneCue } from '../../src/narration/narrationTypes'

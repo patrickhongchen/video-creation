@@ -73,6 +73,53 @@ describe('narration cue validation', () => {
       unknownCue,
     ]), section)).toBe('The selected take contains an unknown cue type.')
   })
+
+  it('keeps pointerless takes valid and accepts a valid pointer track', () => {
+    const pointerless = take([{ sceneId: slide.id, timeMs: 0 }])
+    expect(getTakeUsabilityIssue(pointerless, section)).toBeNull()
+    expect(getTakeUsabilityIssue({
+      ...pointerless,
+      pointerTrack: [
+        { timeMs: 100, sceneId: slide.id, x: 0, y: 1, visible: true },
+        { timeMs: 200, sceneId: slide.id, x: 0.5, y: 0.5, visible: false },
+      ],
+    }, section)).toBeNull()
+  })
+
+  it('rejects invalid pointer coordinates', () => {
+    const selected = take([{ sceneId: slide.id, timeMs: 0 }])
+    expect(getTakeUsabilityIssue({
+      ...selected,
+      pointerTrack: [{ timeMs: 100, sceneId: slide.id, x: 1.01, y: 0.5, visible: true }],
+    }, section)).toBe('The selected take contains invalid pointer coordinates.')
+  })
+
+  it('rejects pointer samples outside the narration duration', () => {
+    const selected = take([{ sceneId: slide.id, timeMs: 0 }])
+    expect(getTakeUsabilityIssue({
+      ...selected,
+      pointerTrack: [{ timeMs: 2101, sceneId: slide.id, x: 0.5, y: 0.5, visible: true }],
+    }, section)).toBe('The selected take contains a pointer sample outside its audio duration.')
+  })
+
+  it('rejects pointer samples for slides outside the section', () => {
+    const selected = take([{ sceneId: slide.id, timeMs: 0 }])
+    expect(getTakeUsabilityIssue({
+      ...selected,
+      pointerTrack: [{ timeMs: 100, sceneId: 'other-slide', x: 0.5, y: 0.5, visible: true }],
+    }, section)).toBe('The selected take contains a pointer sample for a slide outside this section.')
+  })
+
+  it('rejects pointer samples that are out of order', () => {
+    const selected = take([{ sceneId: slide.id, timeMs: 0 }])
+    expect(getTakeUsabilityIssue({
+      ...selected,
+      pointerTrack: [
+        { timeMs: 200, sceneId: slide.id, x: 0.5, y: 0.5, visible: true },
+        { timeMs: 100, sceneId: slide.id, x: 0.4, y: 0.4, visible: true },
+      ],
+    }, section)).toBe('The selected take contains pointer samples out of order.')
+  })
 })
 
 describe('typed take reveal coverage', () => {

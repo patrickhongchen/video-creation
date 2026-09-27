@@ -8,6 +8,10 @@ import {
 } from '../entranceAnimation'
 import { resolveNarrationVisualAtTime } from '../narration/resolveNarrationVisual'
 import { isSlideCue } from '../narration/narrationTypes'
+import {
+  resolveNarrationPointerAtTime,
+  type NarrationPointerDisplayState,
+} from '../narration/resolveNarrationPointer'
 
 function firstSceneId(segment: DesktopExportSegment | undefined) {
   if (!segment) return undefined
@@ -22,6 +26,7 @@ export interface ResolvedPlaybackVisual {
   revealState: RevealVisualState
   segmentIndex: number
   segment: DesktopExportSegment | undefined
+  pointerState: NarrationPointerDisplayState | null
 }
 
 export function resolvePlaybackVisual(job: Pick<DesktopExportJob, 'presentation' | 'segments'>, elapsedMs: number): ResolvedPlaybackVisual {
@@ -56,11 +61,15 @@ export function resolvePlaybackVisual(job: Pick<DesktopExportJob, 'presentation'
       slideRevealOrders(slide, previousSlideFor(presentation.slides, slide)),
       localTimeMs,
     )
+  const pointerState = activeSegment?.type === 'narration'
+    ? resolveNarrationPointerAtTime(activeSegment.pointerTrack, localTimeMs, slide.id)
+    : null
   return {
     slide,
     slideIndex,
     revealState,
     segmentIndex,
     segment: activeSegment,
+    pointerState,
   }
 }

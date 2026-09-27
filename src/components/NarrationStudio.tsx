@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { NarrationSection, Presentation } from '../model'
 import {
   deleteNarrationTake,
@@ -26,6 +26,7 @@ import {
   type RevealVisualState,
 } from '../entranceAnimation'
 import { resolveNarrationVisualAtTime } from '../narration/resolveNarrationVisual'
+import { NARRATION_POINTER_FADE_END_MS, narrationPointerOpacityAtTime, resolveNarrationPointerAtTime } from '../narration/resolveNarrationPointer'
 import { coverSlidesWithSections, mergeSectionIntoPrevious, sectionsWithChangedSlideRanges, splitSectionAtSlide } from '../narration/sectionBoundaries'
 
 interface NarrationStudioProps {
@@ -109,6 +110,10 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   const pendingRecordingSlideIdRef = useRef<string | null>(null)
   const [draftTitle, setDraftTitle] = useState('')
   const recordingSectionIdRef = useRef<string | null>(null)
+  const stageRef = useRef<HTMLDivElement | null>(null)
+  const [pointerMode, setPointerMode] = useState(false)
+  const pointerModeRef = useRef(false)
+  const livePointerRef = useRef<{ sceneId: string; x: number; y: number; timeMs: number; activatedAtMs: number } | null>(null)
 
   const refreshAudioInputs = useCallback(async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return
@@ -196,6 +201,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
       durationMs: recording.durationMs,
       mimeType: recording.mimeType,
       cues: recording.cues,
+      pointerTrack: recording.pointerTrack,
       selected: !hasSelectedTake,
       blob: recording.blob,
     }
@@ -212,6 +218,9 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
 
   const recorder = useNarrationRecorder({
     onRecordingStarted: () => {
+      pointerModeRef.current = false
+      setPointerMode(false)
+      livePointerRef.current = null
       setAdvanceHint(true)
       setDirection(-1)
       activeRelativeIndexRef.current = 0
@@ -226,6 +235,53 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   })
 
   const recorderBusy = ['requesting', 'countdown', 'recording', 'stopping'].includes(recorder.status)
+
+  const hideLivePointer = useCallback(() => {
+    const pointer = livePointerRef.current
+    if (!pointer) return
+    recorder.addPointerSample({ sceneId: pointer.sceneId, x: pointer.x, y: pointer.y, visible: false })
+    livePointerRef.current = null
+  }, [recorder.addPointerSample])
+
+  const resetPointerMode = useCallback(() => {
+    hideLivePointer()
+    pointerModeRef.current = false
+    setPointerMode(false)
+  }, [hideLivePointer])
+
+  const togglePointerMode = useCallback(() => {
+    if (recorder.status !== 'recording') return
+    if (pointerModeRef.current) hideLivePointer()
+    pointerModeRef.current = !pointerModeRef.current
+    setPointerMode(pointerModeRef.current)
+  }, [hideLivePointer, recorder.status])
+
+  const moveLivePointer = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (recorder.status !== 'recording' || !pointerModeRef.current || event.pointerType !== 'mouse') return
+    const stage = stageRef.current
+    const sceneId = selectedResolved?.slides[activeRelativeIndexRef.current]?.id
+    if (!stage || !sceneId) return
+    const bounds = stage.getBoundingClientRect()
+    if (!bounds.width || !bounds.height) return
+    const x = (event.clientX - bounds.left) / bounds.width
+    const y = (event.clientY - bounds.top) / bounds.height
+    if (x < 0 || x > 1 || y < 0 || y > 1) return
+    const timeMs = recorder.getElapsedMs()
+    const previous = livePointerRef.current
+    const activatedAtMs = previous?.sceneId === sceneId && timeMs - previous.timeMs < NARRATION_POINTER_FADE_END_MS
+      ? previous.activatedAtMs
+      : timeMs
+    const pointer = { sceneId, x, y, timeMs, activatedAtMs }
+    livePointerRef.current = pointer
+    recorder.addPointerSample({ sceneId, x, y, visible: true })
+  }, [recorder.addPointerSample, recorder.getElapsedMs, recorder.status, selectedResolved])
+
+  useEffect(() => {
+    if (recorder.status === 'recording') return
+    pointerModeRef.current = false
+    setPointerMode(false)
+    livePointerRef.current = null
+  }, [recorder.status])
 
   useEffect(() => {
     if (recorder.status !== 'ready' || !pendingRecordingSlideIdRef.current) return
@@ -394,6 +450,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
 
     const next = Math.max(0, Math.min(current + offset, selectedResolved.slides.length - 1))
     if (next === current) return
+    hideLivePointer()
     setDirection(offset)
     recorder.addCue({ type: 'slide', sceneId: selectedResolved.slides[next].id })
     activeRelativeIndexRef.current = next
@@ -401,12 +458,17 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     recordingRevealedThroughOrderRef.current = 0
     setRecordingRevealedThroughOrder(0)
     setRecordingActiveReveal(null)
-  }, [presentation.slides, recorder.addCue, selectedResolved])
+  }, [hideLivePointer, presentation.slides, recorder.addCue, selectedResolved])
 
   useEffect(() => {
     if (recorder.status !== 'recording') return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === ' ' || event.key === 'ArrowRight') {
+      if (event.key.toLowerCase() === 'p' && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        const target = event.target
+        if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select, [contenteditable="true"]'))) return
+        event.preventDefault()
+        togglePointerMode()
+      } else if (event.key === ' ' || event.key === 'ArrowRight') {
         event.preventDefault()
         moveRecordingVisual(1)
       } else if (event.key === 'ArrowLeft') {
@@ -416,11 +478,12 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [moveRecordingVisual, recorder.status])
+  }, [moveRecordingVisual, recorder.status, togglePointerMode])
 
   const beginTake = () => {
     if (!selectedSection || !selectedResolved?.valid || !selectedResolved.slides[0]) return
     playback.stop()
+    resetPointerMode()
     setAudioOpen(false)
     setLatestTakeId(null)
     recordingSectionIdRef.current = selectedSection.id
@@ -438,7 +501,13 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     pendingRecordingSlideIdRef.current = null
     recordingSectionIdRef.current = null
     setAdvanceHint(false)
+    resetPointerMode()
     recorder.cancel()
+  }
+
+  const finishTake = () => {
+    resetPointerMode()
+    recorder.stopRecording()
   }
 
   const changeMicrophone = (deviceId: string) => {
@@ -547,6 +616,15 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     : playbackTake
       ? playbackVisual?.revealState ?? INITIAL_REVEAL_STATE
       : null
+  const livePointer = livePointerRef.current
+  const stagePointerState = !currentSlide ? null
+    : recorder.status === 'recording'
+      ? livePointer && pointerMode && livePointer.sceneId === currentSlide.id
+        ? { x: livePointer.x, y: livePointer.y, opacity: narrationPointerOpacityAtTime(livePointer.timeMs, livePointer.activatedAtMs, Math.max(recorder.elapsedMs, livePointer.timeMs)) }
+        : null
+      : playbackTake
+        ? resolveNarrationPointerAtTime(playbackTake.pointerTrack, playback.currentTimeMs, currentSlide.id)
+        : null
   const revealedCount = currentRevealOrders.filter((order) => order <= (stageRevealState?.revealedThroughOrder ?? 0)).length
   const readyCount = sections.filter((section) => {
     const resolved = resolveSection(section, presentation)
@@ -635,16 +713,17 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
 
         <section className="narration-stage-panel">
           {currentSlide ? <div className="narration-stage-hit-area" onClick={recorder.status === 'recording' ? () => moveRecordingVisual(1) : undefined}>
-            <Stage slide={currentSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={currentOverallIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={renderInstanceKey} revealState={stageRevealState} className="narration-stage" />
+            <Stage ref={stageRef} slide={currentSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={currentOverallIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={renderInstanceKey} revealState={stageRevealState} pointerState={stagePointerState} onPointerMove={moveLivePointer} onPointerLeave={hideLivePointer} className={`narration-stage${recorder.status === 'recording' && pointerMode ? ' pointer-enabled' : ''}`} />
           </div> : <div className="narration-empty-stage">Add a slide before recording narration.</div>}
           <div className="narration-progress">{selectedResolved && <span>{uiMode === 'recording' ? recordingProgress : `Slide ${Math.min(activeRelativeIndex + 1, selectedResolved.slides.length)} of ${selectedResolved.slides.length} in section`}</span>}{uiMode !== 'recording' && currentOverallIndex >= 0 && <span>Presentation slide {currentOverallIndex + 1} of {presentation.slides.length}</span>}{advanceHint && recorder.status === 'recording' && <span className="narration-advance-hint">Click the slide or press Space to advance</span>}</div>
           <div className="narration-stage-toolbar">
             <div className="narration-toolbar-context"><strong>{selectedSection?.title ?? 'Preparing sections…'}</strong><span>{recorder.status === 'recording' ? `● Recording ${formatTimer(recorder.elapsedMs)}` : recorder.status === 'countdown' ? `Recording in ${recorder.countdown}` : recorder.status === 'requesting' ? 'Preparing microphone…' : recorder.status === 'stopping' ? 'Saving take…' : microphoneName}</span></div>
             <div className="narration-toolbar-actions">
               {recorder.status === 'recording' ? <>
+                <button type="button" className="pointer-toggle" aria-pressed={pointerMode} onClick={togglePointerMode} title="Toggle laser pointer (P)">Pointer <kbd>P</kbd></button>
                 <button onClick={() => moveRecordingVisual(-1)} disabled={activeRelativeIndex <= 0}><ArrowLeftIcon /> Previous</button>
                 <button onClick={() => moveRecordingVisual(1)} disabled={!selectedResolved || (upcomingRevealOrder === null && activeRelativeIndex >= selectedResolved.slides.length - 1)}>{upcomingRevealOrder === null ? 'Next slide' : 'Next reveal'} <ArrowRightIcon /></button>
-                <button className="stop-recording" onClick={recorder.stopRecording}>Finish take</button>
+                <button className="stop-recording" onClick={finishTake}>Finish take</button>
                 <button className="discard-recording" onClick={cancelTake}>Discard recording</button>
               </> : recorderBusy ? <>
                 <span className="narration-record-status">{recorder.status === 'countdown' ? recorder.countdown : recorder.status === 'stopping' ? 'Saving take…' : 'Preparing microphone…'}</span>

@@ -133,6 +133,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .canvas-workspace .stage { height: min(790px, calc(100vh - 224px)); max-height: 100%; }
 .preview-stage-advance, .present-stage-advance { cursor: pointer; }
 .stage { height: min(820px, calc(100vh - 168px)); aspect-ratio: 9 / 16; position: relative; overflow: hidden; flex: none; background: #fcfbfa; box-shadow: 0 7px 25px rgba(29,43,55,.16), 0 0 0 1px rgba(44,59,69,.07); border-radius: 3px; }
+.narration-pointer-overlay { position: absolute; z-index: 50; width: 2.8%; aspect-ratio: 1; transform: translate(-50%, -50%); display: grid; place-items: center; pointer-events: none; }
+.narration-pointer-dot { width: 60%; aspect-ratio: 1; border-radius: 50%; background: #f5222d; box-shadow: 0 0 0 2px rgba(255,255,255,.95), 0 0 8px 2px rgba(255,255,255,.8), 0 0 12px 3px rgba(245,34,45,.48); }
 .scene-frame { position: absolute; inset: 0; overflow: hidden; }
 .scene-canvas { width: 100%; height: 100%; position: relative; overflow: hidden; background: linear-gradient(150deg, #fff 0%, #fbfaf8 100%); padding: 9% 7.7% 7%; }
 .chart-layout { display: flex; flex-direction: column; min-height: 0; }
@@ -455,6 +457,7 @@ kbd { min-width: 21px; height: 21px; display: inline-grid; place-items: center; 
 .narration-stage-panel { background: #e9eef2; }
 .narration-stage-hit-area { width: 100%; height: 100%; min-height: 0; display: grid; place-items: center; cursor: default; }
 .mode-recording .narration-stage-hit-area { cursor: pointer; }
+.narration-stage.pointer-enabled, .narration-stage.pointer-enabled * { cursor: none !important; }
 .narration-stage { max-height: 100%; }
 .narration-progress { align-self: end; }
 .narration-advance-hint { color: #647e9c; }
@@ -554,6 +557,7 @@ button.narration-rail-slide:hover { background: #f4f7f9; }
 .narration-toolbar-actions button:disabled { opacity: .45; cursor: not-allowed; }
 .narration-toolbar-actions .record-button, .narration-toolbar-actions .stop-recording { min-width: 136px; border-color: #b73b32; background: #bd4037; color: #fff; }
 .narration-toolbar-actions .discard-recording { border-color: transparent; color: #9b3b35; }
+.narration-toolbar-actions .pointer-toggle[aria-pressed="true"] { border-color: #c84846; background: #fff0ee; color: #b52c2c; }
 .narration-record-status { color: #8b3c35; font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }
 .narration-toolbar-meter { width: 92px; display: grid; gap: 6px; flex: 0 0 92px; color: #758394; font-size: 9px; }
 .narration-toolbar-meter .microphone-meter { width: 100%; }

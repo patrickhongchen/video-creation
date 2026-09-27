@@ -33,6 +33,14 @@ export function cuesAreLegacy(cues: readonly SceneCue[]) {
   return cues.length > 0 && cues.every((cue) => !('type' in cue))
 }
 
+export interface NarrationPointerSample {
+  timeMs: number
+  sceneId: string
+  x: number
+  y: number
+  visible: boolean
+}
+
 export interface NarrationTake {
   id: string
   presentationId: string
@@ -41,6 +49,7 @@ export interface NarrationTake {
   durationMs: number
   mimeType: string
   cues: SceneCue[]
+  pointerTrack?: NarrationPointerSample[]
   selected: boolean
   /** The section's slide range changed after this take was recorded. */
   invalidated?: boolean
@@ -51,6 +60,7 @@ export interface NarrationRecording {
   durationMs: number
   mimeType: string
   cues: SceneCue[]
+  pointerTrack?: NarrationPointerSample[]
   blob: Blob
 }
 

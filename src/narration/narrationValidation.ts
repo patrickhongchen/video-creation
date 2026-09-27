@@ -96,6 +96,38 @@ export function getTakeUsabilityIssue(
       && cue.timeMs <= take.durationMs + NARRATION_CUE_DURATION_TOLERANCE_MS))) {
     return 'The selected take contains a cue outside its audio duration.'
   }
+
+  if (take.pointerTrack !== undefined) {
+    if (!Array.isArray(take.pointerTrack)) {
+      return 'The selected take contains invalid pointer data.'
+    }
+    let previousTimeMs = -Infinity
+    for (const sample of take.pointerTrack) {
+      if (!sample || typeof sample !== 'object') {
+        return 'The selected take contains invalid pointer data.'
+      }
+      if (!Number.isFinite(sample.timeMs) || sample.timeMs < 0) {
+        return 'The selected take contains an invalid pointer timestamp.'
+      }
+      if (sample.timeMs < previousTimeMs) {
+        return 'The selected take contains pointer samples out of order.'
+      }
+      previousTimeMs = sample.timeMs
+      if (sample.timeMs > take.durationMs + NARRATION_CUE_DURATION_TOLERANCE_MS) {
+        return 'The selected take contains a pointer sample outside its audio duration.'
+      }
+      if (typeof sample.sceneId !== 'string' || !slideIds.has(sample.sceneId)) {
+        return 'The selected take contains a pointer sample for a slide outside this section.'
+      }
+      if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)
+        || sample.x < 0 || sample.x > 1 || sample.y < 0 || sample.y > 1) {
+        return 'The selected take contains invalid pointer coordinates.'
+      }
+      if (typeof sample.visible !== 'boolean') {
+        return 'The selected take contains invalid pointer visibility data.'
+      }
+    }
+  }
   return null
 }
 

@@ -19,6 +19,11 @@ const job: Pick<DesktopExportJob, 'presentation' | 'segments'> = {
         { sceneId: secondSlide.id, timeMs: 1200 },
         { sceneId: firstSlide.id, timeMs: 1800 },
       ],
+      pointerTrack: [
+        { sceneId: firstSlide.id, timeMs: 200, x: 0.1, y: 0.2, visible: true },
+        { sceneId: firstSlide.id, timeMs: 250, x: 0.3, y: 0.4, visible: true },
+        { sceneId: secondSlide.id, timeMs: 1250, x: 0.7, y: 0.8, visible: true },
+      ],
       audio: { takeId: 'take-a', mimeType: 'audio/webm', bytes: new ArrayBuffer(1) },
     },
     { type: 'silent-scene', sceneId: thirdSlide.id, durationMs: 1000 },
@@ -30,6 +35,17 @@ describe('resolvePlaybackVisual', () => {
     expect(resolvePlaybackVisual(job, 300)).toMatchObject({ slideIndex: 0 })
     expect(resolvePlaybackVisual(job, 900)).toMatchObject({ slideIndex: 0 })
     expect(resolvePlaybackVisual(job, 1500)).toMatchObject({ slideIndex: 1 })
+  })
+
+  it('resolves narration pointer state from segment-local time and the active slide', () => {
+    const interpolated = resolvePlaybackVisual(job, 225).pointerState
+    expect(interpolated?.x).toBeCloseTo(0.2)
+    expect(interpolated?.y).toBeCloseTo(0.3)
+    expect(interpolated?.opacity).toBeCloseTo(25 / 180)
+    expect(resolvePlaybackVisual(job, 1000).pointerState?.opacity).toBeCloseTo(1 / 6)
+    expect(resolvePlaybackVisual(job, 1210).pointerState).toBeNull()
+    expect(resolvePlaybackVisual(job, 1275).pointerState).toMatchObject({ x: 0.7, y: 0.8, opacity: 25 / 180 })
+    expect(resolvePlaybackVisual(job, 3000).pointerState).toBeNull()
   })
 
   it('returns deterministic reveal state for narration and silent segments', () => {

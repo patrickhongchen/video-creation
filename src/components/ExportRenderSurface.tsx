@@ -91,6 +91,7 @@ export function ExportRenderSurface() {
         renderInstanceKey={`desktop-export-${job.jobId}`}
         className="export-stage"
         revealState={visual.revealState}
+        pointerState={visual.pointerState}
         deterministicMotion
       />
     </main>

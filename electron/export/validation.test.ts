@@ -55,4 +55,35 @@ describe('desktop export schema v2 boundary', () => {
     job.segments[0].cues[1].order = 0
     expect(() => validateExportJob(job)).toThrow(/invalid narration cues/)
   })
+
+  it('accepts pointerless jobs and validates optional narration pointer samples', () => {
+    const slideId = demoPresentation.slides[0].id
+    const job = {
+      ...silentJob(),
+      segments: [{
+        type: 'narration', sectionId: 'section', title: 'Section', sceneIds: [slideId],
+        durationMs: 3_000,
+        cues: [{ type: 'slide', sceneId: slideId, timeMs: 0 }],
+        pointerTrack: [{ timeMs: 100, sceneId: slideId, x: 0.2, y: 0.8, visible: true }],
+        audio: { takeId: 'take', mimeType: 'audio/webm', bytes: new ArrayBuffer(1) },
+      }],
+    }
+    expect(() => validateExportJob(job)).not.toThrow()
+    job.segments[0].pointerTrack = [{ timeMs: 3_050, sceneId: slideId, x: 0.2, y: 0.8, visible: true }]
+    expect(() => validateExportJob(job)).not.toThrow()
+
+    for (const sample of [
+      { timeMs: 3_101, sceneId: slideId, x: 0.2, y: 0.8, visible: true },
+      { timeMs: 100, sceneId: 'missing-slide', x: 0.2, y: 0.8, visible: true },
+      { timeMs: 100, sceneId: slideId, x: -0.1, y: 0.8, visible: true },
+      { timeMs: 100, sceneId: slideId, x: 0.2, y: 1.1, visible: true },
+      { timeMs: 100, sceneId: slideId, x: 0.2, y: 0.8, visible: 'yes' },
+    ]) {
+      ;(job.segments[0] as { pointerTrack?: unknown[] }).pointerTrack = [sample]
+      expect(() => validateExportJob(job)).toThrow(/invalid pointer samples/)
+    }
+
+    delete (job.segments[0] as { pointerTrack?: unknown }).pointerTrack
+    expect(() => validateExportJob(job)).not.toThrow()
+  })
 })

@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { NarrationRecorderStatus, NarrationRecording, SceneCue, TypedSceneCue, TypedSceneCueInput } from './narrationTypes'
+import type { NarrationPointerSample, NarrationRecorderStatus, NarrationRecording, SceneCue, TypedSceneCue, TypedSceneCueInput } from './narrationTypes'
+
+const POINTER_SAMPLE_INTERVAL_MS = 1000 / 30
+const POINTER_POSITION_EPSILON = 0.001
 
 const MIME_TYPE_PREFERENCES = [
   'audio/webm;codecs=opus',
@@ -42,6 +45,7 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
   const countdownDeadlineRef = useRef(0)
   const chunksRef = useRef<Blob[]>([])
   const cuesRef = useRef<SceneCue[]>([])
+  const pointerTrackRef = useRef<NarrationPointerSample[]>([])
   const startedAtRef = useRef(0)
   const stoppedAtRef = useRef(0)
   const stopRequestedRef = useRef(false)
@@ -209,12 +213,14 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
       const mimeType = recorder.mimeType || chunksRef.current[0]?.type || 'application/octet-stream'
       const blob = new Blob(chunksRef.current, { type: mimeType })
       const cues = [...cuesRef.current]
+      const pointerTrack = [...pointerTrackRef.current]
 
       if (wasCancelled) {
         if (timerFrameRef.current !== null) cancelAnimationFrame(timerFrameRef.current)
         timerFrameRef.current = null
         chunksRef.current = []
         cuesRef.current = []
+        pointerTrackRef.current = []
         setElapsedMs(0)
         updateStatus('ready')
         return
@@ -231,7 +237,7 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
 
       setElapsedMs(durationMs)
       updateStatus('stopping')
-      void Promise.resolve(callbacksRef.current.onFinished({ blob, durationMs, mimeType, cues }))
+      void Promise.resolve(callbacksRef.current.onFinished({ blob, durationMs, mimeType, cues, pointerTrack }))
         .then(() => updateStatus('idle'))
         .catch((problem: unknown) => {
           reportError(problem instanceof Error ? problem.message : 'The narration take could not be saved.')
@@ -250,6 +256,7 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
     try {
       chunksRef.current = []
       cuesRef.current = [{ type: 'slide', sceneId: firstSceneId, timeMs: 0 }]
+      pointerTrackRef.current = []
       cancelledRef.current = false
       stopRequestedRef.current = false
       recorder.start(250)
@@ -289,6 +296,22 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
     return timeMs
   }, [])
 
+  const addPointerSample = useCallback((sample: Omit<NarrationPointerSample, 'timeMs'>) => {
+    if (statusRef.current !== 'recording' || !sample.sceneId) return
+    if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)
+      || sample.x < 0 || sample.x > 1 || sample.y < 0 || sample.y > 1) return
+    const timeMs = Math.max(0, performance.now() - startedAtRef.current)
+    const previous = pointerTrackRef.current.at(-1)
+    if (!sample.visible && (!previous || !previous.visible)) return
+    if (sample.visible && previous?.visible && previous.sceneId === sample.sceneId) {
+      if (Math.abs(sample.x - previous.x) < POINTER_POSITION_EPSILON
+        && Math.abs(sample.y - previous.y) < POINTER_POSITION_EPSILON) return
+      if (timeMs - previous.timeMs < POINTER_SAMPLE_INTERVAL_MS) return
+    }
+    pointerTrackRef.current.push({ ...sample, timeMs })
+    return timeMs
+  }, [])
+
   const stopRecording = useCallback(() => {
     const recorder = recorderRef.current
     if (statusRef.current !== 'recording' || !recorder || recorder.state !== 'recording') return
@@ -321,6 +344,7 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
     cleanUpMedia()
     chunksRef.current = []
     cuesRef.current = []
+    pointerTrackRef.current = []
     setElapsedMs(0)
     updateStatus('idle')
   }, [cleanUpMedia, updateStatus])
@@ -353,6 +377,7 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
     prepare,
     startRecording,
     addCue,
+    addPointerSample,
     stopRecording,
     cancel,
     resetError,

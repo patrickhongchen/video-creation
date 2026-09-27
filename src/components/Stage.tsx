@@ -1,10 +1,11 @@
-import { forwardRef, useMemo } from 'react'
+import { forwardRef, useMemo, type PointerEventHandler } from 'react'
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import type { Variants } from 'motion/react'
 import type { PresentationImageAsset, PresentationTheme, Slide, SlideChartElement, TransitionType } from '../model'
 import { renderSlide } from '../scenes/SceneRenderers'
 import type { SlideEditorController } from '../scenes/CompositionSceneRenderer'
-import { previousSlideFor, type RevealVisualState } from '../entranceAnimation'
+import { DEFAULT_ENTRANCE_DURATION_MS, previousSlideFor, type RevealVisualState } from '../entranceAnimation'
+import type { NarrationPointerDisplayState } from '../narration/resolveNarrationPointer'
 
 interface StageProps {
   slide: Slide
@@ -21,6 +22,9 @@ interface StageProps {
   deterministicMotion?: boolean
   /** Null leaves all elements visible for editing. */
   revealState?: RevealVisualState | null
+  pointerState?: NarrationPointerDisplayState | null
+  onPointerMove?: PointerEventHandler<HTMLDivElement>
+  onPointerLeave?: PointerEventHandler<HTMLDivElement>
 }
 
 const transitionVariants: Record<TransitionType, Variants> = {
@@ -49,34 +53,43 @@ export function slideFrameKey(slide: Slide, presentationId: string, renderInstan
     : JSON.stringify([presentationId, renderInstanceKey, 'slide', slide.id])
 }
 
-export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ slide, theme, presentationId, slideNumber, slideCount, direction, className = '', renderInstanceKey = 'default', imageAssets, slideEditor, revealState = null, slides, deterministicMotion = false }, ref) {
+export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ slide, theme, presentationId, slideNumber, slideCount, direction, className = '', renderInstanceKey = 'default', imageAssets, slideEditor, revealState = null, pointerState = null, onPointerMove, onPointerLeave, slides, deterministicMotion = false }, ref) {
   const reduceMotion = useReducedMotion()
   const variants = transitionVariants[reduceMotion ? 'fade' : slide.transition.type]
   const duration = reduceMotion ? 0.01 : slide.transition.duration
   const namespace = `presentation-${presentationId}-${renderInstanceKey}`
   const previousSlide = useMemo(() => previousSlideFor(slides ?? [slide], slide), [slides, slide])
+  const revealElapsedMs = Math.min(revealState?.activeRevealElapsedMs ?? 0, DEFAULT_ENTRANCE_DURATION_MS)
+  const stableRevealState = useMemo(() => revealState
+    ? { ...revealState, activeRevealElapsedMs: revealElapsedMs }
+    : null, [revealState?.revealedThroughOrder, revealState?.activeRevealOrder, revealElapsedMs])
+  // Pointer updates and the recording timer must not rebuild the slide or restart its transition.
+  const slideContent = useMemo(() => (
+    <LayoutGroup id={namespace}>
+      <AnimatePresence initial={false} custom={direction} mode="sync">
+        <motion.div
+          className="scene-frame slide-frame"
+          key={slideFrameKey(slide, presentationId, renderInstanceKey)}
+          custom={direction}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          variants={variants}
+          transition={{ duration, ease: [0.22, 1, 0.36, 1] }}
+          onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
+        >
+          <div className="scene-canvas slide-canvas" style={{ background: theme.background, color: theme.foreground, fontFamily: theme.fontFamily }}>
+            {renderSlide(slide, theme, namespace, { imageAssets, editor: slideEditor, revealState: stableRevealState, previousSlide, deterministicMotion })}
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    </LayoutGroup>
+  ), [namespace, direction, slide, presentationId, renderInstanceKey, variants, duration, deterministicMotion, theme, imageAssets, slideEditor, stableRevealState, previousSlide])
 
   return (
-    <div ref={ref} className={`stage ${className}`} aria-live="polite" aria-label={`Slide ${slideNumber} of ${slideCount}: ${slide.title}`}>
-      <LayoutGroup id={namespace}>
-        <AnimatePresence initial={false} custom={direction} mode="sync">
-          <motion.div
-            className="scene-frame slide-frame"
-            key={slideFrameKey(slide, presentationId, renderInstanceKey)}
-            custom={direction}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            variants={variants}
-            transition={{ duration, ease: [0.22, 1, 0.36, 1] }}
-            onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
-          >
-            <div className="scene-canvas slide-canvas" style={{ background: theme.background, color: theme.foreground, fontFamily: theme.fontFamily }}>
-              {renderSlide(slide, theme, namespace, { imageAssets, editor: slideEditor, revealState, previousSlide, deterministicMotion })}
-            </div>
-          </motion.div>
-        </AnimatePresence>
-      </LayoutGroup>
+    <div ref={ref} className={`stage ${className}`} aria-live="polite" aria-label={`Slide ${slideNumber} of ${slideCount}: ${slide.title}`} onPointerMove={onPointerMove} onPointerLeave={onPointerLeave}>
+      {slideContent}
+      {pointerState && <div className="narration-pointer-overlay" aria-hidden="true" style={{ left: `${pointerState.x * 100}%`, top: `${pointerState.y * 100}%`, opacity: pointerState.opacity }}><span className="narration-pointer-dot" /></div>}
     </div>
   )
 })

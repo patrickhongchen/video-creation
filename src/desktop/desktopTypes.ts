@@ -1,5 +1,5 @@
 import type { Presentation, PresentationImageAsset, PresentationImageMimeType } from '../model'
-import type { NarrationTake, SceneCue } from '../narration/narrationTypes'
+import type { NarrationCaptionTrack, NarrationTake, SceneCue } from '../narration/narrationTypes'
 import type { NarrationPointerSample } from '../narration/resolveNarrationPointer'
 
 export const DESKTOP_VIDEO_WIDTH = 1080
@@ -207,6 +207,7 @@ export interface VideoEssayDesktopApi {
   narrationGet: (projectId: string, presentationId: string, takeId: string) => Promise<DesktopNarrationTakeData | undefined>
   narrationStore: (projectId: string, take: DesktopNarrationTakeWrite) => Promise<void>
   narrationTranscribe: (projectId: string, presentationId: string, takeId: string) => Promise<DesktopNarrationTakeData>
+  narrationUpdateCaptions: (projectId: string, presentationId: string, takeId: string, track: NarrationCaptionTrack) => Promise<DesktopNarrationTakeData>
   narrationDelete: (projectId: string, presentationId: string, takeId: string) => Promise<void>
   narrationSelect: (projectId: string, presentationId: string, sectionId: string, takeId: string | null) => Promise<void>
   narrationInvalidate: (projectId: string, presentationId: string, sectionId: string) => Promise<void>

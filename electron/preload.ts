@@ -17,6 +17,7 @@ import type {
 } from '../src/desktop/desktopTypes'
 import type { Presentation } from '../src/model'
 import type { DesktopNarrationPreviewRequest, DesktopNarrationPreviewResult } from '../src/desktop/desktopTypes'
+import type { NarrationCaptionTrack } from '../src/narration/narrationTypes'
 
 // Keep the sandboxed preload self-contained. Sandboxed preloads cannot require
 // arbitrary local chunks, so these narrow channel names intentionally mirror
@@ -39,6 +40,7 @@ const CHANNELS = {
   narrationGet: 'video-essay:narration:get',
   narrationStore: 'video-essay:narration:store',
   narrationTranscribe: 'video-essay:narration:transcribe',
+  narrationUpdateCaptions: 'video-essay:narration:update-captions',
   narrationDelete: 'video-essay:narration:delete',
   narrationSelect: 'video-essay:narration:select',
   narrationInvalidate: 'video-essay:narration:invalidate',
@@ -95,6 +97,8 @@ const videoEssayDesktop = Object.freeze({
   narrationStore: (projectId: string, take: DesktopNarrationTakeWrite) => ipcRenderer.invoke(CHANNELS.narrationStore, projectId, take),
   narrationTranscribe: (projectId: string, presentationId: string, takeId: string): Promise<DesktopNarrationTakeData> =>
     ipcRenderer.invoke(CHANNELS.narrationTranscribe, projectId, presentationId, takeId),
+  narrationUpdateCaptions: (projectId: string, presentationId: string, takeId: string, track: NarrationCaptionTrack): Promise<DesktopNarrationTakeData> =>
+    ipcRenderer.invoke(CHANNELS.narrationUpdateCaptions, projectId, presentationId, takeId, track),
   narrationDelete: (projectId: string, presentationId: string, takeId: string) => ipcRenderer.invoke(CHANNELS.narrationDelete, projectId, presentationId, takeId),
   narrationSelect: (projectId: string, presentationId: string, sectionId: string, takeId: string | null) => ipcRenderer.invoke(CHANNELS.narrationSelect, projectId, presentationId, sectionId, takeId),
   narrationInvalidate: (projectId: string, presentationId: string, sectionId: string) => ipcRenderer.invoke(CHANNELS.narrationInvalidate, projectId, presentationId, sectionId),

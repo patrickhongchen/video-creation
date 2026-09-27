@@ -71,7 +71,7 @@ The element array is the authoritative back-to-front order. Hidden elements are 
 
 Narration Studio keeps contiguous slide ranges, multiple takes, selected takes, microphone recording, cue capture, replay, and readiness. The user advances reveal groups and slides while speaking; typed slide and reveal cue times drive final playback and export. Legacy takes with untyped slide cues remain playable and use deterministic fallback reveal timing, so schema migration does not require re-recording.
 
-On desktop Projects, **Generate captions** transcribes an individual take locally with `whisper.cpp` and the English `medium.en` model. FFmpeg prepares a temporary 16 kHz mono WAV; the original audio stays unchanged. Transcription audio never needs to leave the machine. Captions are optional take metadata, with timestamped segments and separate original/generated and editable text fields. Narration Studio shows generation status and segment count; caption rendering and editing are not part of this phase. Browser/local mode cannot run local Whisper transcription.
+On desktop Projects, **Generate captions** transcribes an individual take locally with `whisper.cpp` and the English `medium.en` model. FFmpeg prepares a temporary 16 kHz mono WAV; the original audio stays unchanged. Transcription audio never needs to leave the machine. Captions are optional, portable take metadata with timestamped segments. **Review captions** in Narration Studio lets you listen, correct text, and save edits per take; the original Whisper text remains preserved separately. Whisper supplies the timing, which is not manually editable. Caption rendering and export remain for a later phase. Browser/local mode cannot run local Whisper transcription, but existing caption metadata can be edited there.
 
 Final Playback orders sections by slide order, follows saved cues, supports silent slides, preserves Morph identities across section boundaries, and includes the final hold. The desktop exporter uses a hidden Chromium surface with the same `Stage`, captures exactly 1080×1920 at 30 fps, and uses FFmpeg for H.264 video, AAC audio, `yuv420p`, fast-start MP4 output, progress, cancellation, destination selection, and duration verification.
 
@@ -106,7 +106,7 @@ The seeded **Small Screens, Bigger Questions** and **Chart Story Lab** presentat
 
 ## Intentional boundaries
 
-There is no built-in LLM/chat UI, Codex/OpenAI API integration, arbitrary JSON merging, stock search, video element, music, caption rendering or editing, timeline, keyframes, grouping, nested components, symbol system, theme editor, plugin system, cloud backend, or collaboration. Slides and their reveal steps define the visual sequence, while narration cues provide narrated timing.
+There is no built-in LLM/chat UI, Codex/OpenAI API integration, arbitrary JSON merging, stock search, video element, music, caption rendering, timeline, keyframes, grouping, nested components, symbol system, theme editor, plugin system, cloud backend, or collaboration. Slides and their reveal steps define the visual sequence, while narration cues provide narrated timing.
 
 See [docs/PRESENTATION_FORMAT.md](docs/PRESENTATION_FORMAT.md) for the schema, complete example, migration mapping, and validation rules. See [docs/CODEX_AUTHORING.md](docs/CODEX_AUTHORING.md) for the practical Codex workflow, design recipes, prompt patterns, theme guidance, anti-patterns, and completion checklist.
 

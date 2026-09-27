@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NarrationTake } from './narrationTypes'
+import type { NarrationCaptionTrack } from './narrationTypes'
 
 const local = vi.hoisted(() => ({
   list: vi.fn(), listPresentation: vi.fn(), get: vi.fn(), store: vi.fn(), delete: vi.fn(),
@@ -39,6 +40,7 @@ function desktopMock(exists: boolean) {
     narrationList: vi.fn().mockResolvedValue([]),
     narrationGet: vi.fn().mockResolvedValue(undefined),
     narrationStore: vi.fn().mockResolvedValue(undefined),
+    narrationUpdateCaptions: vi.fn(),
     narrationDelete: vi.fn().mockResolvedValue(undefined),
     narrationSelect: vi.fn().mockResolvedValue(undefined),
     narrationInvalidate: vi.fn().mockResolvedValue(undefined),
@@ -120,5 +122,34 @@ describe('narration storage selection and migration', () => {
     expect(takes[0].blob.type).toBe('audio/webm')
     expect(takes[1].blob.size).toBe(0)
     expect(takes[1].storageError).toMatch(/missing/)
+  })
+
+  it('updates desktop captions through the dedicated bridge and returns the persisted take', async () => {
+    const desktop = desktopMock(true)
+    bridge.current = desktop
+    const track: NarrationCaptionTrack = {
+      version: 1, provider: 'whisper.cpp', model: 'medium.en', generatedAt: '2026-09-27T00:00:00Z',
+      segments: [{ id: 'one', startMs: 0, endMs: 900, generatedText: 'Disney plus.', text: 'Disney+.' }],
+    }
+    const { blob: _blob, ...metadata } = legacyTake
+    desktop.narrationUpdateCaptions.mockResolvedValue({ ...metadata, captions: track, bytes: Uint8Array.from([1, 2, 3]).buffer })
+    const updated = await createNarrationStorage('project-caption').updateCaptions(legacyTake.presentationId, legacyTake.id, track)
+    expect(desktop.narrationUpdateCaptions).toHaveBeenCalledWith('project-caption', legacyTake.presentationId, legacyTake.id, track)
+    expect(desktop.narrationStore).not.toHaveBeenCalled()
+    expect(updated.captions).toEqual(track)
+    expect([...new Uint8Array(await updated.blob.arrayBuffer())]).toEqual([1, 2, 3])
+  })
+
+  it('updates local caption metadata without changing the audio blob', async () => {
+    const track: NarrationCaptionTrack = {
+      version: 1, provider: 'whisper.cpp', model: 'medium.en', generatedAt: '2026-09-27T00:00:00Z',
+      segments: [{ id: 'one', startMs: 0, endMs: 900, generatedText: 'Disney plus.', text: 'Disney plus.' }],
+    }
+    local.get.mockResolvedValue({ ...legacyTake, captions: track })
+    const draft = { ...track, segments: [{ ...track.segments[0], text: '  Disney+.  ' }] }
+    const updated = await createNarrationStorage(null).updateCaptions(legacyTake.presentationId, legacyTake.id, draft)
+    expect(updated.captions?.segments[0]).toEqual({ ...track.segments[0], text: 'Disney+.' })
+    expect(updated.blob).toBe(legacyTake.blob)
+    expect(local.store).toHaveBeenCalledWith(updated)
   })
 })

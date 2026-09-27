@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import type { NarrationSection, Presentation } from '../model'
 import { createNarrationStorage } from '../narration/narrationStorage'
-import type { NarrationRecording, NarrationTake } from '../narration/narrationTypes'
+import type { NarrationCaptionTrack, NarrationRecording, NarrationTake } from '../narration/narrationTypes'
 import { getTakeRevealCoverageIssue, resolveSection, takeIsUsable } from '../narration/narrationValidation'
 import { useNarrationPlayback } from '../narration/useNarrationPlayback'
 import { useNarrationRecorder } from '../narration/useNarrationRecorder'
@@ -21,6 +21,15 @@ import {
 import { resolveNarrationVisualAtTime } from '../narration/resolveNarrationVisual'
 import { NARRATION_POINTER_FADE_END_MS, narrationPointerOpacityAtTime, resolveNarrationPointerAtTime } from '../narration/resolveNarrationPointer'
 import { coverSlidesWithSections, mergeSectionIntoPrevious, sectionsWithChangedSlideRanges, splitSectionAtSlide } from '../narration/sectionBoundaries'
+import {
+  captionTextsChanged,
+  countCaptionEdits,
+  isCaptionEdited,
+  prepareCaptionUpdate,
+  resetAllCaptionTexts,
+  resetCaptionText,
+  updateCaptionText,
+} from '../narration/captionReview'
 
 interface NarrationStudioProps {
   presentation: Presentation
@@ -49,6 +58,26 @@ function formatTimer(durationMs: number) {
   const minutes = Math.floor(totalTenths / 600)
   const seconds = Math.floor(totalTenths / 10) % 60
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${totalTenths % 10}`
+}
+
+function formatCaptionTime(durationMs: number) {
+  const totalTenths = Math.max(0, Math.floor(durationMs / 100))
+  const minutes = Math.floor(totalTenths / 600)
+  const seconds = Math.floor(totalTenths / 10) % 60
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${totalTenths % 10}`
+}
+
+function copyCaptionTrack(track: NarrationCaptionTrack): NarrationCaptionTrack {
+  return { ...track, segments: track.segments.map((segment) => ({ ...segment })) }
+}
+
+interface CaptionReviewDraft {
+  take: NarrationTake
+  takeNumber: number
+  original: NarrationCaptionTrack
+  draft: NarrationCaptionTrack
+  saving: boolean
+  error: string
 }
 
 function MicrophoneMeter({ level }: { level: number }) {
@@ -101,6 +130,7 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
   const [previewStates, setPreviewStates] = useState<Record<string, { key: string; status: 'preparing' | 'ready' | 'failed'; warning?: string }>>({})
   const [captionJobTakeId, setCaptionJobTakeId] = useState<string | null>(null)
   const [captionErrors, setCaptionErrors] = useState<Record<string, string>>({})
+  const [captionReview, setCaptionReview] = useState<CaptionReviewDraft | null>(null)
   const latestTakeRef = useRef<HTMLLIElement | null>(null)
   const [workspaceView, setWorkspaceView] = useState<'narration' | 'preview'>('narration')
   const [advanceHint, setAdvanceHint] = useState(false)
@@ -515,16 +545,68 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
     void recorder.prepare(deviceId)
   }
 
-  const playTake = async (take: NarrationTake) => {
+  const playTake = async (take: NarrationTake, forcePlay = false, startAtMs?: number) => {
     if (recorderBusy) return
-    if (playback.takeId === take.id && playback.isPlaying) {
+    if (!forcePlay && playback.takeId === take.id && playback.isPlaying) {
       playback.pause()
       return
     }
     if (playback.takeId !== take.id) setRenderInstanceKey(`play-${take.id}-${Date.now()}`)
     const key = takePreviewKey(take)
     const source = selectTakePlaybackSource(take, presentation.voiceEnhance, comparisonMode, previewBlobsRef.current.get(key))
-    await playback.play(take, source.blob, source.key)
+    await playback.play(take, source.blob, source.key, startAtMs)
+  }
+
+  const openCaptionReview = (take: NarrationTake, takeNumber: number) => {
+    if (!take.captions || recorderBusy) return
+    playback.stop()
+    const original = copyCaptionTrack(take.captions)
+    setCaptionReview({ take, takeNumber, original, draft: copyCaptionTrack(original), saving: false, error: '' })
+  }
+
+  const closeCaptionReview = () => {
+    if (!captionReview || captionReview.saving) return
+    if (captionTextsChanged(captionReview.original, captionReview.draft)
+      && !window.confirm('Discard caption changes?\n\nYour unsaved edits will be lost.')) return
+    playback.stop()
+    setCaptionReview(null)
+  }
+
+  const saveCaptionReview = async () => {
+    if (!captionReview || captionReview.saving) return
+    let prepared: NarrationCaptionTrack
+    try {
+      prepared = prepareCaptionUpdate(captionReview.original, captionReview.draft)
+    } catch (problem) {
+      setCaptionReview((current) => current ? { ...current, error: problem instanceof Error ? problem.message : 'Caption changes are invalid.' } : current)
+      return
+    }
+    setCaptionReview((current) => current ? { ...current, saving: true, error: '' } : current)
+    try {
+      const updatedTake = await narrationStorage.updateCaptions(presentation.id, captionReview.take.id, prepared)
+      setTakeMap((current) => ({
+        ...current,
+        [updatedTake.sectionId]: (current[updatedTake.sectionId] ?? []).map((item) =>
+          item.id === updatedTake.id ? updatedTake : item),
+      }))
+      playback.stop()
+      setCaptionReview(null)
+    } catch (problem) {
+      setCaptionReview((current) => current ? { ...current, saving: false, error: problem instanceof Error ? problem.message : 'Caption changes could not be saved.' } : current)
+    }
+  }
+
+  const playCaptionSegment = async (take: NarrationTake, startMs: number) => {
+    await playTake(take, true, startMs)
+  }
+
+  const scrubCaptionReview = async (take: NarrationTake, timeMs: number) => {
+    if (playback.takeId !== take.id) {
+      await playTake(take, true, timeMs)
+      playback.pause()
+      return
+    }
+    playback.seek(timeMs / 1000)
   }
 
   const chooseComparisonMode = (mode: 'enhanced' | 'original') => {
@@ -561,7 +643,13 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
 
   const generateCaptions = async (take: NarrationTake) => {
     if (captionJobTakeId || recorderBusy) return
-    if (take.captions && !window.confirm('Regenerate captions and replace the existing caption track? This cannot be undone.')) return
+    if (take.captions) {
+      const editCount = countCaptionEdits(take.captions)
+      const warning = editCount > 0
+        ? `Regenerate captions?\n\nThis take has ${editCount} manual caption edit${editCount === 1 ? '' : 's'}. Regenerating will replace ${editCount === 1 ? 'that edit' : 'those edits'} with a new Whisper transcription.`
+        : 'Regenerate captions and replace the existing caption track? This cannot be undone.'
+      if (!window.confirm(warning)) return
+    }
     setCaptionErrors((current) => {
       const next = { ...current }
       delete next[take.id]
@@ -653,6 +741,16 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
     const resolved = resolveSection(section, presentation)
     return (takeMap[section.id] ?? []).some((take) => take.selected && takeIsUsable(take, resolved))
   }).length
+  const captionReviewTake = captionReview
+    ? Object.values(takeMap).flat().find((take) => take.id === captionReview.take.id) ?? captionReview.take
+    : null
+  const captionReviewChanged = captionReview ? captionTextsChanged(captionReview.original, captionReview.draft) : false
+  const captionReviewHasEmptyText = captionReview?.draft.segments.some((segment) => !segment.text.trim()) ?? false
+  const captionReviewEditCount = captionReview ? countCaptionEdits(captionReview.draft) : 0
+  const captionReviewCanSave = Boolean(captionReviewChanged && !captionReviewHasEmptyText && !captionReview?.saving)
+  const activeCaptionSegmentId = captionReview && captionReviewTake && playback.takeId === captionReviewTake.id
+    ? captionReview.draft.segments.find((segment) => playback.currentTimeMs >= segment.startMs && playback.currentTimeMs < segment.endMs)?.id ?? null
+    : null
 
   const uiMode = recorderBusy ? 'recording' : 'setup'
   const selectedDevice = audioInputs.find((device) => device.deviceId === selectedDeviceId)
@@ -781,6 +879,7 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
               const previewKey = takePreviewKey(take)
               const previewState = previewStates[take.id]?.key === previewKey ? previewStates[take.id] : undefined
               const captionJobActive = captionJobTakeId === take.id
+              const captionEditCount = take.captions ? countCaptionEdits(take.captions) : 0
               return <li key={take.id} ref={take.id === latestTakeId ? latestTakeRef : undefined} className={`narration-take${take.selected && usable ? ' is-selected' : ''}${take.id === latestTakeId ? ' is-new' : ''}`}>
                 <div className="take-summary"><div><strong>Take {index + 1}</strong><small className={!usable ? 'is-invalid' : ''}>{!usable ? 'Re-record needed' : take.selected ? 'Selected for final video' : take.id === latestTakeId ? 'Just recorded' : 'Ready to use'}</small></div><time>{formatDuration(take.durationMs)}</time></div>
                 <div className="take-actions">
@@ -789,8 +888,11 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
                   <button className="delete-take" onClick={() => void removeTake(take)} disabled={recorderBusy || Boolean(captionJobTakeId)} aria-label={`Delete Take ${index + 1}`}>Delete</button>
                 </div>
                 <div className="take-captions">
-                  <div><strong>Captions</strong><small role={captionJobActive ? 'status' : undefined}>{captionJobActive ? 'Generating captions…' : take.captions ? `Generated · ${take.captions.segments.length} segment${take.captions.segments.length === 1 ? '' : 's'}` : 'Not generated'}</small></div>
-                  <button type="button" onClick={() => void generateCaptions(take)} disabled={!usable || recorderBusy || Boolean(captionJobTakeId)}>{take.captions ? 'Regenerate' : 'Generate captions'}</button>
+                  <div><strong>Captions</strong><small role={captionJobActive ? 'status' : undefined}>{captionJobActive ? 'Generating captions…' : take.captions ? `Generated · ${take.captions.segments.length} segment${take.captions.segments.length === 1 ? '' : 's'}${captionEditCount ? ` · ${captionEditCount} edited` : ''}` : 'Not generated'}</small></div>
+                  <div className="take-caption-actions">
+                    {take.captions && <button type="button" onClick={() => openCaptionReview(take, index + 1)} disabled={recorderBusy || Boolean(captionJobTakeId)}>Review captions</button>}
+                    <button type="button" onClick={() => void generateCaptions(take)} disabled={!usable || recorderBusy || Boolean(captionJobTakeId)}>{take.captions ? 'Regenerate' : 'Generate captions'}</button>
+                  </div>
                 </div>
                 {captionErrors[take.id] && <small className="caption-error" role="alert">{captionErrors[take.id]}</small>}
                 {playback.takeId === take.id && <div className="narration-scrubber"><input type="range" min="0" max={Math.max(1, take.durationMs)} step="100" value={Math.min(playback.currentTimeMs, take.durationMs)} onChange={(event) => playback.seek(Number(event.target.value) / 1000)} aria-label={`Seek Take ${index + 1}`} /><span>{formatDuration(playback.currentTimeMs)} / {formatDuration(take.durationMs)}</span></div>}
@@ -803,6 +905,112 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
           </section>
         </aside>
       </div>
+      {captionReview && captionReviewTake && <div className="caption-review-backdrop">
+        <section
+          className="caption-review-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="caption-review-title"
+          onKeyDown={(event) => {
+            if (event.key === 'Tab') {
+              const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button, input, textarea, select, [tabindex]:not([tabindex="-1"])'))
+                .filter((element) => !element.hasAttribute('disabled'))
+              const first = focusable[0]
+              const last = focusable[focusable.length - 1]
+              if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault()
+                last?.focus()
+              } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault()
+                first?.focus()
+              }
+            } else if (event.key === 'Escape') {
+              event.preventDefault()
+              closeCaptionReview()
+            } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
+              event.preventDefault()
+              if (captionReviewCanSave) void saveCaptionReview()
+            }
+          }}
+        >
+          <header className="caption-review-header">
+            <div>
+              <span>Caption review</span>
+              <h2 id="caption-review-title">Review Captions</h2>
+              <div className="caption-review-meta">
+                <strong>Take {captionReview.takeNumber}</strong>
+                <span>{captionReview.draft.model} · {captionReview.draft.segments.length} segment{captionReview.draft.segments.length === 1 ? '' : 's'}</span>
+                {captionReviewEditCount > 0 && <span className="caption-review-edit-count">{captionReviewEditCount} edit{captionReviewEditCount === 1 ? '' : 's'}</span>}
+              </div>
+            </div>
+            <button type="button" className="caption-review-close" onClick={closeCaptionReview} disabled={captionReview.saving} autoFocus><CloseIcon /> Close</button>
+          </header>
+
+          <div className="caption-review-playback">
+            <button
+              type="button"
+              onClick={() => void playTake(captionReviewTake)}
+              disabled={Boolean(captionReviewTake.storageError) || captionReviewTake.blob.size === 0}
+              aria-label={`${playback.takeId === captionReviewTake.id && playback.isPlaying ? 'Pause' : 'Play'} Take ${captionReview.takeNumber}`}
+            >
+              {playback.takeId === captionReviewTake.id && playback.isPlaying ? 'Pause' : <><PlayIcon /> Play</>}
+            </button>
+            <span>{formatDuration(playback.takeId === captionReviewTake.id ? playback.currentTimeMs : 0)} / {formatDuration(captionReviewTake.durationMs)}</span>
+            <input
+              type="range"
+              min="0"
+              max={Math.max(1, captionReviewTake.durationMs)}
+              step="100"
+              value={playback.takeId === captionReviewTake.id ? Math.min(playback.currentTimeMs, captionReviewTake.durationMs) : 0}
+              onChange={(event) => void scrubCaptionReview(captionReviewTake, Number(event.target.value))}
+              disabled={Boolean(captionReviewTake.storageError) || captionReviewTake.blob.size === 0}
+              aria-label={`Seek Take ${captionReview.takeNumber}`}
+            />
+            <small>Playback follows the current Original / Enhanced preview setting.</small>
+          </div>
+
+          <div className="caption-review-toolbar">
+            <div><strong>Transcript</strong><span>Listen, then correct the text. Caption timing stays fixed.</span></div>
+            {captionReviewEditCount > 0 && <button type="button" onClick={() => setCaptionReview((current) => current ? { ...current, draft: resetAllCaptionTexts(current.draft), error: '' } : current)} disabled={captionReview.saving}>Reset all edits</button>}
+          </div>
+
+          <ol className="caption-segment-list">
+            {captionReview.draft.segments.map((segment, segmentIndex) => {
+              const edited = isCaptionEdited(segment)
+              const invalid = !segment.text.trim()
+              const active = activeCaptionSegmentId === segment.id
+              return <li key={segment.id} className={`caption-segment${active ? ' is-active' : ''}${edited ? ' is-edited' : ''}${invalid ? ' is-invalid' : ''}`} aria-current={active ? 'true' : undefined}>
+                <div className="caption-segment-heading">
+                  <button type="button" onClick={() => void playCaptionSegment(captionReviewTake, segment.startMs)} disabled={Boolean(captionReviewTake.storageError) || captionReviewTake.blob.size === 0} aria-label={`Play caption ${segmentIndex + 1} from ${formatCaptionTime(segment.startMs)}`}><PlayIcon /><span>{formatCaptionTime(segment.startMs)} – {formatCaptionTime(segment.endMs)}</span></button>
+                  {edited && <button type="button" className="caption-reset-button" onClick={() => setCaptionReview((current) => current ? { ...current, draft: resetCaptionText(current.draft, segment.id), error: '' } : current)} disabled={captionReview.saving}>Reset</button>}
+                </div>
+                <textarea
+                  rows={3}
+                  value={segment.text}
+                  onChange={(event) => {
+                    const text = event.target.value
+                    setCaptionReview((current) => current ? { ...current, draft: updateCaptionText(current.draft, segment.id, text), error: '' } : current)
+                  }}
+                  disabled={captionReview.saving}
+                  aria-label={`Caption ${segmentIndex + 1} text`}
+                  aria-invalid={invalid}
+                  aria-describedby={invalid ? `caption-error-${segment.id}` : undefined}
+                />
+                <div className="caption-segment-status">
+                  {edited && <span>Edited from Whisper</span>}
+                  {invalid && <span id={`caption-error-${segment.id}`} role="alert">Caption text cannot be empty.</span>}
+                </div>
+              </li>
+            })}
+          </ol>
+
+          <footer className="caption-review-footer">
+            <div>{captionReview.error && <span role="alert">{captionReview.error}</span>}{!captionReview.error && captionReviewChanged && !captionReviewHasEmptyText && <span>Unsaved caption changes</span>}</div>
+            <button type="button" onClick={closeCaptionReview} disabled={captionReview.saving}>Cancel</button>
+            <button type="button" className="caption-review-save" onClick={() => void saveCaptionReview()} disabled={!captionReviewCanSave}>{captionReview.saving ? 'Saving…' : 'Save changes'}</button>
+          </footer>
+        </section>
+      </div>}
     </main>
   )
 }

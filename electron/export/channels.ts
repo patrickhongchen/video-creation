@@ -16,6 +16,7 @@ export const CHANNELS = {
   narrationGet: 'video-essay:narration:get',
   narrationStore: 'video-essay:narration:store',
   narrationTranscribe: 'video-essay:narration:transcribe',
+  narrationUpdateCaptions: 'video-essay:narration:update-captions',
   narrationDelete: 'video-essay:narration:delete',
   narrationSelect: 'video-essay:narration:select',
   narrationInvalidate: 'video-essay:narration:invalidate',

@@ -481,6 +481,7 @@ export class PortableNarrationStore {
     presentationId: string,
     takeId: string,
     track: NarrationCaptionTrack | null,
+    textOnly = false,
   ): Promise<void> {
     assertIdentifier(takeId, 'Take id')
     return this.serialize(projectId, async () => {
@@ -488,7 +489,27 @@ export class PortableNarrationStore {
       const manifest = await this.readManifest(root, presentationId) ?? emptyManifest(presentationId)
       const target = manifest.takes.find((take) => take.id === takeId)
       if (!target) throw new Error('The narration take no longer exists.')
+      if (textOnly) {
+        const previous = target.captions
+        if (!previous || !track || track.version !== previous.version
+          || track.provider !== previous.provider || track.model !== previous.model
+          || track.generatedAt !== previous.generatedAt
+          || !Array.isArray(track.segments) || track.segments.length !== previous.segments.length) {
+          throw new Error('Caption edits must preserve the existing caption track.')
+        }
+        for (let index = 0; index < previous.segments.length; index += 1) {
+          const oldSegment = previous.segments[index]
+          const segment = track.segments[index]
+          if (!segment || segment.id !== oldSegment.id || segment.startMs !== oldSegment.startMs
+            || segment.endMs !== oldSegment.endMs || segment.generatedText !== oldSegment.generatedText) {
+            throw new Error('Caption edits may only change text.')
+          }
+        }
+      }
       const captions = track === null ? undefined : validateCaptionTrack(track, target.durationMs)
+      if (textOnly && captions) {
+        captions.segments = captions.segments.map((segment) => ({ ...segment, text: segment.text.trim() }))
+      }
       await atomicWriteManifest(root, {
         ...manifest,
         takes: manifest.takes.map((take) => {

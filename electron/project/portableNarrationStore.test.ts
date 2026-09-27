@@ -1,4 +1,4 @@
-import { link, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises'
+import { link, mkdtemp, mkdir, readFile, readdir, rename, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -162,6 +162,59 @@ describe('PortableNarrationStore', () => {
     expect(withoutCaptions.takes[0]).toEqual(before.takes[0])
     expect(await readFile(path.join(value.root, 'narration', withoutCaptions.takes[0].audioPath)))
       .toEqual(audioBefore)
+  })
+
+  it('persists text-only corrections without rewriting audio or changing original caption data', async () => {
+    const value = await fixture()
+    await value.store.store(value.projectId, take(value.presentationId))
+    await value.store.setCaptions(value.projectId, value.presentationId, 'take-one', captions())
+    const manifestPath = path.join(value.root, 'narration', 'manifest.json')
+    const before = JSON.parse(await readFile(manifestPath, 'utf8'))
+    const audioPath = path.join(value.root, 'narration', before.takes[0].audioPath)
+    const audioBefore = await stat(audioPath)
+    const originalTrack = before.takes[0].captions as NarrationCaptionTrack
+    const edited = {
+      ...originalTrack,
+      segments: originalTrack.segments.map((segment) => segment.id === 'caption-two'
+        ? { ...segment, text: '  Disney+ grew faster.  ' }
+        : segment),
+    }
+    await value.store.setCaptions(value.projectId, value.presentationId, 'take-one', edited, true)
+    const after = JSON.parse(await readFile(manifestPath, 'utf8'))
+    expect(after.takes[0]).toEqual({
+      ...before.takes[0],
+      captions: {
+        ...originalTrack,
+        segments: originalTrack.segments.map((segment) => segment.id === 'caption-two'
+          ? { ...segment, text: 'Disney+ grew faster.' }
+          : segment),
+      },
+    })
+    expect((await value.store.get(value.projectId, value.presentationId, 'take-one'))?.captions)
+      .toEqual(after.takes[0].captions)
+    const audioAfter = await stat(audioPath)
+    expect([audioAfter.ino, audioAfter.mtimeMs, audioAfter.size])
+      .toEqual([audioBefore.ino, audioBefore.mtimeMs, audioBefore.size])
+  })
+
+  it('rejects attempted changes beyond caption text during manual correction', async () => {
+    const value = await fixture()
+    await value.store.store(value.projectId, take(value.presentationId))
+    await value.store.setCaptions(value.projectId, value.presentationId, 'take-one', captions())
+    const current = (await value.store.get(value.projectId, value.presentationId, 'take-one'))!.captions!
+    const first = current.segments[0]
+    const invalid = [
+      { ...current, generatedAt: '2026-09-28T00:00:00Z' },
+      { ...current, segments: [{ ...first, generatedText: 'changed' }, current.segments[1]] },
+      { ...current, segments: [{ ...first, startMs: 1 }, current.segments[1]] },
+      { ...current, segments: [{ ...first, text: ' ' }, current.segments[1]] },
+      { ...current, segments: [...current.segments].reverse() },
+    ]
+    for (const track of invalid) {
+      await expect(value.store.setCaptions(value.projectId, value.presentationId, 'take-one', track, true))
+        .rejects.toThrow(/caption/i)
+    }
+    expect((await value.store.get(value.projectId, value.presentationId, 'take-one'))?.captions).toEqual(current)
   })
 
   it('rejects captions for missing takes and invalid caption metadata', async () => {

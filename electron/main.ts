@@ -12,6 +12,7 @@ import { narrationPreviewCache } from './narrationPreviewProcessor'
 import { finalPreviewAudioCache } from './finalPreviewAudioProcessor'
 import { CaptionTranscriber } from './captions/captionTranscriber'
 import { resolveWhisperExecutable, resolveWhisperModel } from './captions/captionResources'
+import type { NarrationCaptionTrack } from '../src/narration/narrationTypes'
 import { resolveFfmpegPath } from './export/ffmpeg'
 
 protocol.registerSchemesAsPrivileged([{
@@ -374,6 +375,17 @@ function installIpcHandlers() {
     assertNarrationIdentity(projectId, presentationId)
     if (typeof takeId !== 'string' || !takeId.trim()) throw new Error('Invalid narration take ID.')
     await captionTranscriber.transcribe(projectId as string, presentationId as string, takeId)
+    const take = await narration.get(projectId as string, presentationId as string, takeId)
+    if (!take) throw new Error('The narration take no longer exists.')
+    return take
+  })
+  ipcMain.handle(CHANNELS.narrationUpdateCaptions, async (event, projectId: unknown, presentationId: unknown, takeId: unknown, track: unknown) => {
+    assertMainSender(event.sender)
+    assertNarrationIdentity(projectId, presentationId)
+    if (typeof takeId !== 'string' || !takeId.trim() || !track || typeof track !== 'object' || Array.isArray(track)) {
+      throw new Error('Invalid caption update request.')
+    }
+    await narration.setCaptions(projectId as string, presentationId as string, takeId, track as NarrationCaptionTrack, true)
     const take = await narration.get(projectId as string, presentationId as string, takeId)
     if (!take) throw new Error('The narration take no longer exists.')
     return take

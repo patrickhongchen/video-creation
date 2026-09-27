@@ -12,6 +12,8 @@ import {
   storeNarrationTake as storeLocalTake,
 } from './narrationDb'
 import type { NarrationTake } from './narrationTypes'
+import type { NarrationCaptionTrack } from './narrationTypes'
+import { prepareCaptionUpdate } from './captionReview'
 
 const migrationChecks = new Map<string, Promise<void>>()
 
@@ -40,6 +42,15 @@ export function createNarrationStorage(projectId: string | null) {
       store: storeLocalTake,
       transcribe: async (_presentationId: string, _takeId: string): Promise<NarrationTake> => {
         throw new Error('Local Whisper caption generation requires the desktop app.')
+      },
+      updateCaptions: async (presentationId: string, takeId: string, draft: NarrationCaptionTrack): Promise<NarrationTake> => {
+        const take = await getLocalTake(takeId)
+        if (!take || take.presentationId !== presentationId || !take.captions) {
+          throw new Error('The narration take has no captions to edit.')
+        }
+        const updated = { ...take, captions: prepareCaptionUpdate(take.captions, draft) }
+        await storeLocalTake(updated)
+        return updated
       },
       delete: async (_presentationId: string, takeId: string) => deleteLocalTake(takeId),
       select: selectLocalTake,
@@ -87,6 +98,10 @@ export function createNarrationStorage(projectId: string | null) {
     transcribe: async (presentationId: string, takeId: string) => {
       await prepare(presentationId)
       return fromPortable(await activeDesktop.narrationTranscribe(activeProjectId, presentationId, takeId))
+    },
+    updateCaptions: async (presentationId: string, takeId: string, draft: NarrationCaptionTrack) => {
+      await prepare(presentationId)
+      return fromPortable(await activeDesktop.narrationUpdateCaptions(activeProjectId, presentationId, takeId, draft))
     },
     delete: async (presentationId: string, takeId: string) => {
       await prepare(presentationId)

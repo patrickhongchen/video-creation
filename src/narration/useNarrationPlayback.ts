@@ -76,10 +76,12 @@ export function useNarrationPlayback({ onSceneCue, onError }: UseNarrationPlayba
     audio.onerror = () => callbacksRef.current.onError('This narration audio could not be played.')
   }, [runFrame, stopFrame])
 
-  const play = useCallback(async (take: NarrationTake, sourceBlob: Blob = take.blob, sourceKey = 'original') => {
+  const play = useCallback(async (take: NarrationTake, sourceBlob: Blob = take.blob, sourceKey = 'original', startAtMs?: number) => {
     let audio = audioRef.current
+    const requestedSeconds = startAtMs === undefined ? undefined
+      : Math.min(take.durationMs / 1000, Math.max(0, Number.isFinite(startAtMs) ? startAtMs / 1000 : 0))
     if (takeId !== take.id || sourceKeyRef.current !== sourceKey || !audio) {
-      const resumeAtSeconds = takeId === take.id && audio ? Math.min(take.durationMs / 1000, audio.currentTime) : 0
+      const resumeAtSeconds = requestedSeconds ?? (takeId === take.id && audio ? Math.min(take.durationMs / 1000, audio.currentTime) : 0)
       releaseAudio()
       if (!sourceBlob || sourceBlob.size === 0) {
         callbacksRef.current.onError('The audio Blob for this take is missing.')
@@ -103,6 +105,11 @@ export function useNarrationPlayback({ onSceneCue, onError }: UseNarrationPlayba
         nextAudio.currentTime = resumeAtSeconds
         nextAudio.addEventListener('loadedmetadata', () => { if (audioRef.current === nextAudio) nextAudio.currentTime = resumeAtSeconds }, { once: true })
       }
+    } else if (requestedSeconds !== undefined) {
+      audio.currentTime = requestedSeconds
+      setCurrentTimeMs(requestedSeconds * 1000)
+      nextCueIndexRef.current = 0
+      syncCues(requestedSeconds * 1000, true)
     }
     try {
       await audio.play()

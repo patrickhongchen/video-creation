@@ -41,6 +41,22 @@ export interface NarrationPointerSample {
   visible: boolean
 }
 
+export interface NarrationCaptionSegment {
+  id: string
+  startMs: number
+  endMs: number
+  generatedText: string
+  text: string
+}
+
+export interface NarrationCaptionTrack {
+  version: 1
+  provider: 'whisper.cpp'
+  model: 'medium.en'
+  generatedAt: string
+  segments: NarrationCaptionSegment[]
+}
+
 export interface NarrationTake {
   id: string
   presentationId: string
@@ -50,6 +66,7 @@ export interface NarrationTake {
   mimeType: string
   cues: SceneCue[]
   pointerTrack?: NarrationPointerSample[]
+  captions?: NarrationCaptionTrack
   selected: boolean
   /** The section's slide range changed after this take was recorded. */
   invalidated?: boolean

@@ -206,6 +206,7 @@ export interface VideoEssayDesktopApi {
   narrationList: (projectId: string, presentationId: string, sectionId: string) => Promise<DesktopNarrationTakeData[]>
   narrationGet: (projectId: string, presentationId: string, takeId: string) => Promise<DesktopNarrationTakeData | undefined>
   narrationStore: (projectId: string, take: DesktopNarrationTakeWrite) => Promise<void>
+  narrationTranscribe: (projectId: string, presentationId: string, takeId: string) => Promise<DesktopNarrationTakeData>
   narrationDelete: (projectId: string, presentationId: string, takeId: string) => Promise<void>
   narrationSelect: (projectId: string, presentationId: string, sectionId: string, takeId: string | null) => Promise<void>
   narrationInvalidate: (projectId: string, presentationId: string, sectionId: string) => Promise<void>

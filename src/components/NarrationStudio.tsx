@@ -99,6 +99,8 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
   const [comparisonMode, setComparisonMode] = useState<'enhanced' | 'original'>('enhanced')
   const previewBlobsRef = useRef(new Map<string, Blob>())
   const [previewStates, setPreviewStates] = useState<Record<string, { key: string; status: 'preparing' | 'ready' | 'failed'; warning?: string }>>({})
+  const [captionJobTakeId, setCaptionJobTakeId] = useState<string | null>(null)
+  const [captionErrors, setCaptionErrors] = useState<Record<string, string>>({})
   const latestTakeRef = useRef<HTMLLIElement | null>(null)
   const [workspaceView, setWorkspaceView] = useState<'narration' | 'preview'>('narration')
   const [advanceHint, setAdvanceHint] = useState(false)
@@ -545,7 +547,7 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
   }
 
   const removeTake = async (take: NarrationTake) => {
-    if (recorderBusy) return
+    if (recorderBusy || captionJobTakeId) return
     if (!window.confirm('Delete this take and its audio recording? This cannot be undone.')) return
     if (playback.takeId === take.id) playback.stop()
     try {
@@ -554,6 +556,31 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
       if (latestTakeId === take.id) setLatestTakeId(null)
     } catch (problem) {
       showError(problem instanceof Error ? `Take could not be deleted: ${problem.message}` : 'Take could not be deleted.')
+    }
+  }
+
+  const generateCaptions = async (take: NarrationTake) => {
+    if (captionJobTakeId || recorderBusy) return
+    if (take.captions && !window.confirm('Regenerate captions and replace the existing caption track? This cannot be undone.')) return
+    setCaptionErrors((current) => {
+      const next = { ...current }
+      delete next[take.id]
+      return next
+    })
+    setCaptionJobTakeId(take.id)
+    try {
+      const updatedTake = await narrationStorage.transcribe(presentation.id, take.id)
+      setTakeMap((current) => ({
+        ...current,
+        [updatedTake.sectionId]: (current[updatedTake.sectionId] ?? []).map((item) =>
+          item.id === updatedTake.id ? updatedTake : item),
+      }))
+      await loadTakes()
+    } catch (problem) {
+      const message = problem instanceof Error ? problem.message : 'Captions could not be generated.'
+      setCaptionErrors((current) => ({ ...current, [take.id]: message }))
+    } finally {
+      setCaptionJobTakeId(null)
     }
   }
 
@@ -753,13 +780,19 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
               const isPlaying = playback.takeId === take.id && playback.isPlaying
               const previewKey = takePreviewKey(take)
               const previewState = previewStates[take.id]?.key === previewKey ? previewStates[take.id] : undefined
+              const captionJobActive = captionJobTakeId === take.id
               return <li key={take.id} ref={take.id === latestTakeId ? latestTakeRef : undefined} className={`narration-take${take.selected && usable ? ' is-selected' : ''}${take.id === latestTakeId ? ' is-new' : ''}`}>
                 <div className="take-summary"><div><strong>Take {index + 1}</strong><small className={!usable ? 'is-invalid' : ''}>{!usable ? 'Re-record needed' : take.selected ? 'Selected for final video' : take.id === latestTakeId ? 'Just recorded' : 'Ready to use'}</small></div><time>{formatDuration(take.durationMs)}</time></div>
                 <div className="take-actions">
                   <button onClick={() => void playTake(take)} disabled={recorderBusy || Boolean(take.storageError) || take.blob.size === 0} aria-label={`${isPlaying ? 'Pause' : 'Play'} Take ${index + 1}`}>{isPlaying ? 'Pause' : <><PlayIcon /> Play</>}</button>
                   {take.selected && usable ? <span className="take-selected"><CheckIcon /> Selected</span> : <button className="use-take" onClick={() => void chooseTake(take.id)} disabled={!usable || recorderBusy}>Use take</button>}
-                  <button className="delete-take" onClick={() => void removeTake(take)} disabled={recorderBusy} aria-label={`Delete Take ${index + 1}`}>Delete</button>
+                  <button className="delete-take" onClick={() => void removeTake(take)} disabled={recorderBusy || Boolean(captionJobTakeId)} aria-label={`Delete Take ${index + 1}`}>Delete</button>
                 </div>
+                <div className="take-captions">
+                  <div><strong>Captions</strong><small role={captionJobActive ? 'status' : undefined}>{captionJobActive ? 'Generating captions…' : take.captions ? `Generated · ${take.captions.segments.length} segment${take.captions.segments.length === 1 ? '' : 's'}` : 'Not generated'}</small></div>
+                  <button type="button" onClick={() => void generateCaptions(take)} disabled={!usable || recorderBusy || Boolean(captionJobTakeId)}>{take.captions ? 'Regenerate' : 'Generate captions'}</button>
+                </div>
+                {captionErrors[take.id] && <small className="caption-error" role="alert">{captionErrors[take.id]}</small>}
                 {playback.takeId === take.id && <div className="narration-scrubber"><input type="range" min="0" max={Math.max(1, take.durationMs)} step="100" value={Math.min(playback.currentTimeMs, take.durationMs)} onChange={(event) => playback.seek(Number(event.target.value) / 1000)} aria-label={`Seek Take ${index + 1}`} /><span>{formatDuration(playback.currentTimeMs)} / {formatDuration(take.durationMs)}</span></div>}
                 {presentation.voiceEnhance === 'standard' && previewState?.status === 'preparing' && <small className="narration-processing-status" role="status">Preparing enhanced preview… {comparisonMode === 'enhanced' ? 'Play uses original audio for now.' : ''}</small>}
                 {presentation.voiceEnhance === 'standard' && previewState?.warning && <small className="narration-processing-status" role="status">{previewState.warning}</small>}

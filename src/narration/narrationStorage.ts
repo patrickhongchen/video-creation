@@ -38,6 +38,9 @@ export function createNarrationStorage(projectId: string | null) {
       list: listLocalTakes,
       get: async (_presentationId: string, takeId: string) => getLocalTake(takeId),
       store: storeLocalTake,
+      transcribe: async (_presentationId: string, _takeId: string): Promise<NarrationTake> => {
+        throw new Error('Local Whisper caption generation requires the desktop app.')
+      },
       delete: async (_presentationId: string, takeId: string) => deleteLocalTake(takeId),
       select: selectLocalTake,
       invalidate: invalidateLocalSection,
@@ -80,6 +83,10 @@ export function createNarrationStorage(projectId: string | null) {
       await prepare(take.presentationId)
       await activeDesktop.narrationStore(activeProjectId, await toPortableWrite(take))
       return take
+    },
+    transcribe: async (presentationId: string, takeId: string) => {
+      await prepare(presentationId)
+      return fromPortable(await activeDesktop.narrationTranscribe(activeProjectId, presentationId, takeId))
     },
     delete: async (presentationId: string, takeId: string) => {
       await prepare(presentationId)

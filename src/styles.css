@@ -588,6 +588,12 @@ button.narration-rail-slide:hover { background: #f4f7f9; }
 .narration-script-panel .take-actions .delete-take { margin-left: auto; border-color: transparent; background: transparent; color: #a13e36; }
 .take-selected { display: inline-flex; align-items: center; gap: 4px; color: #247348; font-size: 10px; font-weight: 750; }
 .take-selected svg { width: 13px; }
+.take-captions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; border-top: 1px solid #e4e9ed; padding-top: 9px; }
+.take-captions > div { min-width: 0; display: grid; gap: 3px; }
+.take-captions strong { color: #34485a; font-size: 10px; }
+.take-captions small { color: #718092; font-size: 9px; }
+.narration-script-panel .take-captions button { flex: 0 0 auto; min-height: 28px; border-color: #b5c8d9; background: #f5f9fc; color: #274a67; }
+.caption-error { display: block; margin-top: 7px; color: #a13e36; font-size: 10px; line-height: 1.35; }
 .narration-script-panel .narration-scrubber { margin-top: 9px; border-top: 1px solid #e5ece9; padding: 9px 0 0; }
 .narration-preview-choice { display: flex; align-items: center; gap: 4px; margin-top: 12px; color: #667789; font-size: 11px; }
 .narration-preview-choice span { margin-right: 5px; }

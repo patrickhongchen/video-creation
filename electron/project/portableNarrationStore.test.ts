@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { DesktopNarrationTakeWrite } from '../../src/desktop/desktopTypes'
+import type { NarrationCaptionTrack } from '../../src/narration/narrationTypes'
 import { createBlankPresentation } from '../../src/presentationFactories'
 import { PortableNarrationStore, validateNarrationAudioPath } from './portableNarrationStore'
 import { ProjectStore } from './projectStore'
@@ -58,6 +59,19 @@ function take(
   }
 }
 
+function captions(): NarrationCaptionTrack {
+  return {
+    version: 1,
+    provider: 'whisper.cpp',
+    model: 'medium.en',
+    generatedAt: '2026-09-27T12:05:00.000Z',
+    segments: [
+      { id: 'caption-two', startMs: 700, endMs: 1_400, generatedText: 'Disney plus grew.', text: 'Disney+ grew.' },
+      { id: 'caption-one', startMs: 0, endMs: 650, generatedText: 'First sentence.', text: 'First sentence.' },
+    ],
+  }
+}
+
 afterEach(async () => {
   for (const store of projectStores.splice(0)) store.close()
   await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
@@ -100,6 +114,7 @@ describe('PortableNarrationStore', () => {
   it('loads the same recording after moving and reopening the Project folder', async () => {
     const value = await fixture()
     await value.store.store(value.projectId, take(value.presentationId))
+    await value.store.setCaptions(value.projectId, value.presentationId, 'take-one', captions())
     const destination = path.join(await temporaryDirectory(), 'moved-project')
     await rename(value.root, destination)
 
@@ -112,8 +127,80 @@ describe('PortableNarrationStore', () => {
     expect(listed[0]).toMatchObject({
       id: 'take-one', selected: true, cues: take(value.presentationId).cues,
       pointerTrack: take(value.presentationId).pointerTrack,
+      captions: {
+        ...captions(),
+        segments: [captions().segments[1], captions().segments[0]],
+      },
     })
     expect([...new Uint8Array(listed[0].bytes!)]).toEqual([0, 1, 2, 254, 255])
+  })
+
+  it('updates and removes captions without changing take metadata or audio', async () => {
+    const value = await fixture()
+    await value.store.store(value.projectId, take(value.presentationId))
+    const manifestPath = path.join(value.root, 'narration', 'manifest.json')
+    const before = JSON.parse(await readFile(manifestPath, 'utf8'))
+    const audioBefore = await readFile(path.join(value.root, 'narration', before.takes[0].audioPath))
+
+    await value.store.setCaptions(value.projectId, value.presentationId, 'take-one', captions())
+
+    const withCaptions = JSON.parse(await readFile(manifestPath, 'utf8'))
+    expect(withCaptions.takes[0]).toEqual({
+      ...before.takes[0],
+      captions: {
+        ...captions(),
+        segments: [captions().segments[1], captions().segments[0]],
+      },
+    })
+    expect([...await readFile(path.join(value.root, 'narration', withCaptions.takes[0].audioPath))])
+      .toEqual([...audioBefore])
+    expect((await value.store.get(value.projectId, value.presentationId, 'take-one'))?.captions)
+      .toEqual(withCaptions.takes[0].captions)
+
+    await value.store.setCaptions(value.projectId, value.presentationId, 'take-one', null)
+    const withoutCaptions = JSON.parse(await readFile(manifestPath, 'utf8'))
+    expect(withoutCaptions.takes[0]).toEqual(before.takes[0])
+    expect(await readFile(path.join(value.root, 'narration', withoutCaptions.takes[0].audioPath)))
+      .toEqual(audioBefore)
+  })
+
+  it('rejects captions for missing takes and invalid caption metadata', async () => {
+    const value = await fixture()
+    await value.store.store(value.projectId, take(value.presentationId))
+    await expect(value.store.setCaptions(value.projectId, value.presentationId, 'missing-take', captions()))
+      .rejects.toThrow(/no longer exists/)
+
+    const invalidTracks = [
+      { ...captions(), provider: 'remote-service' },
+      { ...captions(), generatedAt: 'not-a-date' },
+      { ...captions(), segments: [{ ...captions().segments[0], endMs: 0 }] },
+      { ...captions(), segments: [{ ...captions().segments[0], text: '   ' }] },
+      { ...captions(), segments: [captions().segments[0], { ...captions().segments[0] }] },
+      { ...captions(), segments: [{ ...captions().segments[0], endMs: 3_000 }] },
+    ]
+    for (const track of invalidTracks) {
+      await expect(value.store.setCaptions(
+        value.projectId,
+        value.presentationId,
+        'take-one',
+        track as NarrationCaptionTrack,
+      )).rejects.toThrow(/caption/i)
+    }
+    expect((await value.store.get(value.projectId, value.presentationId, 'take-one'))?.captions).toBeUndefined()
+  })
+
+  it('removes persisted caption metadata when its take is deleted', async () => {
+    const value = await fixture()
+    await value.store.store(value.projectId, take(value.presentationId))
+    await value.store.setCaptions(value.projectId, value.presentationId, 'take-one', captions())
+    const manifestPath = path.join(value.root, 'narration', 'manifest.json')
+    const before = JSON.parse(await readFile(manifestPath, 'utf8'))
+    const audioPath = path.join(value.root, 'narration', before.takes[0].audioPath)
+
+    await value.store.delete(value.projectId, value.presentationId, 'take-one')
+
+    expect(JSON.parse(await readFile(manifestPath, 'utf8')).takes).toEqual([])
+    await expect(readFile(audioPath)).rejects.toMatchObject({ code: 'ENOENT' })
   })
 
   it('serializes concurrent mutations, enforces one selection, and persists invalidation', async () => {
@@ -127,10 +214,17 @@ describe('PortableNarrationStore', () => {
     expect(listed.map(({ id }) => id).sort()).toEqual(['take-one', 'take-two'])
     expect(listed.filter(({ selected }) => selected).map(({ id }) => id)).toEqual(['take-two'])
 
-    await value.store.select(value.projectId, value.presentationId, 'section-one', 'take-one')
+    await Promise.all([
+      value.store.setCaptions(value.projectId, value.presentationId, 'take-one', captions()),
+      value.store.select(value.projectId, value.presentationId, 'section-one', 'take-one'),
+    ])
     await value.store.invalidate(value.projectId, value.presentationId, 'section-one')
     listed = await value.store.list(value.projectId, value.presentationId, 'section-one')
-    expect(listed.find(({ id }) => id === 'take-one')).toMatchObject({ selected: true, invalidated: true })
+    expect(listed.find(({ id }) => id === 'take-one')).toMatchObject({
+      selected: true,
+      invalidated: true,
+      captions: { segments: expect.any(Array) },
+    })
     expect(listed.find(({ id }) => id === 'take-two')).toMatchObject({ selected: false, invalidated: true })
 
     await value.store.delete(value.projectId, value.presentationId, 'take-one')
@@ -190,6 +284,14 @@ describe('PortableNarrationStore', () => {
 
     await writeFile(path.join(narrationRoot, 'manifest.json'), JSON.stringify({ ...duplicate, presentationId: 'other-presentation', takes: [] }))
     await expect(value.store.status(value.projectId, value.presentationId)).rejects.toThrow(/different presentation/)
+  })
+
+  it('accepts version 1 manifests created before caption tracks existed', async () => {
+    const value = await fixture()
+    await value.store.store(value.projectId, take(value.presentationId))
+    const loaded = await value.store.get(value.projectId, value.presentationId, 'take-one')
+    expect(loaded).toBeDefined()
+    expect(loaded).not.toHaveProperty('captions')
   })
 
   it('returns missing or replaced audio as an unusable take without preventing manifest reads', async () => {

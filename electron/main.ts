@@ -10,6 +10,9 @@ import { PortableNarrationStore } from './project/portableNarrationStore'
 import type { DesktopNarrationTakeWrite } from '../src/desktop/desktopTypes'
 import { narrationPreviewCache } from './narrationPreviewProcessor'
 import { finalPreviewAudioCache } from './finalPreviewAudioProcessor'
+import { CaptionTranscriber } from './captions/captionTranscriber'
+import { resolveWhisperExecutable, resolveWhisperModel } from './captions/captionResources'
+import { resolveFfmpegPath } from './export/ffmpeg'
 
 protocol.registerSchemesAsPrivileged([{
   scheme: PROJECT_ASSET_PROTOCOL,
@@ -31,6 +34,13 @@ let closePromptOpen = false
 let pendingCloseAfterSave = false
 const projects = new ProjectStore()
 const narration = new PortableNarrationStore(projects)
+const captionTranscriber = new CaptionTranscriber({
+  resolveExecutable: resolveWhisperExecutable,
+  resolveModel: resolveWhisperModel,
+  resolveFfmpeg: resolveFfmpegPath,
+  getTake: (projectId, presentationId, takeId) => narration.get(projectId, presentationId, takeId),
+  saveCaptions: (projectId, presentationId, takeId, track) => narration.setCaptions(projectId, presentationId, takeId, track),
+})
 projects.onExternalChange((change) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(CHANNELS.projectExternalChange, change)
 })
@@ -358,6 +368,15 @@ function installIpcHandlers() {
     assertNarrationIdentity(projectId, presentationId)
     if (!Array.isArray(takes)) throw new Error('Invalid legacy narration takes.')
     return narration.migrate(projectId as string, presentationId as string, takes as DesktopNarrationTakeWrite[])
+  })
+  ipcMain.handle(CHANNELS.narrationTranscribe, async (event, projectId: unknown, presentationId: unknown, takeId: unknown) => {
+    assertMainSender(event.sender)
+    assertNarrationIdentity(projectId, presentationId)
+    if (typeof takeId !== 'string' || !takeId.trim()) throw new Error('Invalid narration take ID.')
+    await captionTranscriber.transcribe(projectId as string, presentationId as string, takeId)
+    const take = await narration.get(projectId as string, presentationId as string, takeId)
+    if (!take) throw new Error('The narration take no longer exists.')
+    return take
   })
   ipcMain.handle(CHANNELS.exportStart, async (event, value: unknown) => {
     assertMainSender(event.sender)

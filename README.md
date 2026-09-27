@@ -71,6 +71,8 @@ The element array is the authoritative back-to-front order. Hidden elements are 
 
 Narration Studio keeps contiguous slide ranges, multiple takes, selected takes, microphone recording, cue capture, replay, and readiness. The user advances reveal groups and slides while speaking; typed slide and reveal cue times drive final playback and export. Legacy takes with untyped slide cues remain playable and use deterministic fallback reveal timing, so schema migration does not require re-recording.
 
+On desktop Projects, **Generate captions** transcribes an individual take locally with `whisper.cpp` and the English `medium.en` model. FFmpeg prepares a temporary 16 kHz mono WAV; the original audio stays unchanged. Transcription audio never needs to leave the machine. Captions are optional take metadata, with timestamped segments and separate original/generated and editable text fields. Narration Studio shows generation status and segment count; caption rendering and editing are not part of this phase. Browser/local mode cannot run local Whisper transcription.
+
 Final Playback orders sections by slide order, follows saved cues, supports silent slides, preserves Morph identities across section boundaries, and includes the final hold. The desktop exporter uses a hidden Chromium surface with the same `Stage`, captures exactly 1080×1920 at 30 fps, and uses FFmpeg for H.264 video, AAC audio, `yuv420p`, fast-start MP4 output, progress, cancellation, destination selection, and duration verification.
 
 ## Persistence, portability, and schema migration
@@ -81,7 +83,9 @@ Import supports current v2 JSON and schema v1 through a deterministic migration 
 
 Migration preserves slide IDs, notes, duration, transitions, narration section IDs and membership, assets, chart IDs, datum IDs, and legacy Big Stat/Stat Detail Morph identity. A migrated library is saved under the v2 localStorage key on the next normal save, so it is not repeatedly migrated at startup. JSON export always emits schema v2.
 
-For desktop Projects, `presentation.json` contains narration sections and slide membership, while `narration/manifest.json` stores take metadata, cues, pointer tracks, selected state, and invalidation state. Audio is stored separately under `narration/takes/`. Recordings are saved immediately without pressing Save. When an older desktop Project has no portable narration, Narration Studio copies matching IndexedDB takes into the Project folder once and leaves the originals untouched. Once portable narration exists, the Project folder is authoritative. Browser/local mode continues to store recordings in IndexedDB.
+For desktop Projects, `presentation.json` contains narration sections and slide membership, while `narration/manifest.json` stores take metadata, cues, pointer tracks, selected state, invalidation state, and optional caption tracks. Audio is stored separately under `narration/takes/`. Caption results travel with the Project folder and stay associated with their take. The Whisper executable and approximately 1.5 GB model are application dependencies, not Project data; neither is committed to this repository. Recordings are saved immediately without pressing Save. When an older desktop Project has no portable narration, Narration Studio copies matching IndexedDB takes into the Project folder once and leaves the originals untouched. Once portable narration exists, the Project folder is authoritative. Browser/local mode continues to store recordings in IndexedDB.
+
+The desktop runtime looks for the packaged `whisper-cli` at `Contents/Resources/whisper/whisper-cli` and the `medium.en` model at the app data path `AI Presentation Studio/models/ggml-medium.en.bin` (on macOS, under `~/Library/Application Support/`). Development builds fall back to the local `whisper.cpp` checkout paths in `electron/captions/captionResources.ts` when the app data model is absent. Production distribution still needs to place a compatible, executable native `whisper-cli` in that resource location and provision the model in app data; there is no automatic downloader yet.
 
 ## Architecture
 
@@ -95,14 +99,14 @@ For desktop Projects, `presentation.json` contains narration sections and slide 
 - `src/scenes/SceneRenderers.tsx` is now a thin compatibility import location; specialized runtime renderers were removed.
 - `src/components/Stage.tsx` owns slide transitions and the shared Motion layout namespace used by Edit, Present, Narration, Final Playback, and export.
 - `src/charts/` contains the reusable semantic chart renderers and numeric scale utilities.
-- `src/narration/` and `src/finalPlayback/` own cue-based recording and deterministic playback.
+- `src/narration/` and `src/finalPlayback/` own cue-based recording and deterministic playback. `electron/captions/` owns local FFmpeg preparation, `whisper.cpp` execution, timestamp normalization, and model/executable resolution; the main process persists results through portable narration storage.
 - `src/components/ExportRenderSurface.tsx`, `src/desktop/`, and `electron/export/` own the secure desktop rendering/export bridge.
 
 The seeded **Small Screens, Bigger Questions** and **Chart Story Lab** presentations are native schema v2 slide documents.
 
 ## Intentional boundaries
 
-There is no built-in LLM/chat UI, Codex/OpenAI API integration, arbitrary JSON merging, stock search, video element, music, captions, timeline, keyframes, grouping, nested components, symbol system, theme editor, plugin system, cloud backend, or collaboration. Slides and their reveal steps define the visual sequence, while narration cues provide narrated timing.
+There is no built-in LLM/chat UI, Codex/OpenAI API integration, arbitrary JSON merging, stock search, video element, music, caption rendering or editing, timeline, keyframes, grouping, nested components, symbol system, theme editor, plugin system, cloud backend, or collaboration. Slides and their reveal steps define the visual sequence, while narration cues provide narrated timing.
 
 See [docs/PRESENTATION_FORMAT.md](docs/PRESENTATION_FORMAT.md) for the schema, complete example, migration mapping, and validation rules. See [docs/CODEX_AUTHORING.md](docs/CODEX_AUTHORING.md) for the practical Codex workflow, design recipes, prompt patterns, theme guidance, anti-patterns, and completion checklist.
 

@@ -12,7 +12,12 @@ import {
 } from 'node:fs/promises'
 import path from 'node:path'
 import type { DesktopNarrationTakeData, DesktopNarrationTakeWrite } from '../../src/desktop/desktopTypes'
-import type { NarrationPointerSample, SceneCue } from '../../src/narration/narrationTypes'
+import type {
+  NarrationCaptionSegment,
+  NarrationCaptionTrack,
+  NarrationPointerSample,
+  SceneCue,
+} from '../../src/narration/narrationTypes'
 import type { ProjectStore } from './projectStore'
 
 const MANIFEST_VERSION = 1
@@ -29,6 +34,7 @@ interface PortableNarrationManifestTake {
   audioPath: string
   cues: SceneCue[]
   pointerTrack?: NarrationPointerSample[]
+  captions?: NarrationCaptionTrack
   selected: boolean
   invalidated?: boolean
 }
@@ -119,6 +125,65 @@ function validatePointerSample(value: unknown, index: number): NarrationPointerS
   }
 }
 
+function validateCaptionSegment(
+  value: unknown,
+  index: number,
+  durationMs: number,
+): NarrationCaptionSegment {
+  if (!isObject(value)) throw new Error(`Narration caption segment ${index} is malformed.`)
+  assertIdentifier(value.id, `Narration caption segment ${index} id`)
+  assertFiniteNonnegative(value.startMs, `Narration caption segment ${index} startMs`)
+  assertFiniteNonnegative(value.endMs, `Narration caption segment ${index} endMs`)
+  if (value.endMs <= value.startMs) {
+    throw new Error(`Narration caption segment ${index} must end after it starts.`)
+  }
+  if (value.endMs > durationMs + 1_000) {
+    throw new Error(`Narration caption segment ${index} extends beyond the narration take.`)
+  }
+  if (typeof value.generatedText !== 'string' || !value.generatedText.trim()) {
+    throw new Error(`Narration caption segment ${index} generatedText must be non-empty.`)
+  }
+  if (typeof value.text !== 'string' || !value.text.trim()) {
+    throw new Error(`Narration caption segment ${index} text must be non-empty.`)
+  }
+  return {
+    id: value.id,
+    startMs: value.startMs,
+    endMs: value.endMs,
+    generatedText: value.generatedText,
+    text: value.text,
+  }
+}
+
+function validateCaptionTrack(value: unknown, durationMs: number): NarrationCaptionTrack {
+  if (!isObject(value)) throw new Error('Narration captions are malformed.')
+  if (value.version !== 1 || value.provider !== 'whisper.cpp' || value.model !== 'medium.en') {
+    throw new Error('Narration captions version, provider, or model is unsupported.')
+  }
+  if (typeof value.generatedAt !== 'string' || value.generatedAt.length > 100
+    || !Number.isFinite(Date.parse(value.generatedAt))) {
+    throw new Error('Narration captions generatedAt is invalid.')
+  }
+  if (!Array.isArray(value.segments)) throw new Error('Narration captions segments must be an array.')
+  const segments = value.segments
+    .map((segment, index) => validateCaptionSegment(segment, index, durationMs))
+    .sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs)
+  const ids = new Set<string>()
+  for (const segment of segments) {
+    if (ids.has(segment.id)) {
+      throw new Error(`Narration captions contain duplicate segment id ${segment.id}.`)
+    }
+    ids.add(segment.id)
+  }
+  return {
+    version: 1,
+    provider: 'whisper.cpp',
+    model: 'medium.en',
+    generatedAt: value.generatedAt,
+    segments,
+  }
+}
+
 function validateTakeMetadata(
   value: unknown,
   audio: { generate: true } | { path: unknown },
@@ -153,6 +218,9 @@ function validateTakeMetadata(
     ...(value.pointerTrack === undefined
       ? {}
       : { pointerTrack: value.pointerTrack.map(validatePointerSample) }),
+    ...(value.captions === undefined
+      ? {}
+      : { captions: validateCaptionTrack(value.captions, value.durationMs) }),
     selected: value.selected,
     ...(value.invalidated === undefined ? {} : { invalidated: value.invalidated }),
   }
@@ -408,6 +476,30 @@ export class PortableNarrationStore {
     }))
   }
 
+  setCaptions(
+    projectId: string,
+    presentationId: string,
+    takeId: string,
+    track: NarrationCaptionTrack | null,
+  ): Promise<void> {
+    assertIdentifier(takeId, 'Take id')
+    return this.serialize(projectId, async () => {
+      const root = await this.requireRoot(projectId)
+      const manifest = await this.readManifest(root, presentationId) ?? emptyManifest(presentationId)
+      const target = manifest.takes.find((take) => take.id === takeId)
+      if (!target) throw new Error('The narration take no longer exists.')
+      const captions = track === null ? undefined : validateCaptionTrack(track, target.durationMs)
+      await atomicWriteManifest(root, {
+        ...manifest,
+        takes: manifest.takes.map((take) => {
+          if (take.id !== takeId) return take
+          const { captions: _previous, ...metadata } = take
+          return captions === undefined ? metadata : { ...metadata, captions }
+        }),
+      })
+    })
+  }
+
   deleteSection(projectId: string, presentationId: string, sectionId: string): Promise<void> {
     assertIdentifier(sectionId, 'Section id')
     return this.removeMatching(projectId, presentationId, (take) => take.sectionId === sectionId)
@@ -553,6 +645,7 @@ export class PortableNarrationStore {
       mimeType: take.mimeType,
       cues: take.cues,
       ...(take.pointerTrack === undefined ? {} : { pointerTrack: take.pointerTrack }),
+      ...(take.captions === undefined ? {} : { captions: take.captions }),
       selected: take.selected,
       ...(take.invalidated === undefined ? {} : { invalidated: take.invalidated }),
     }

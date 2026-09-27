@@ -10,14 +10,13 @@ import { CanvasToolbar } from './components/CompositionInspector'
 import { CheckIcon, CloseIcon, PlayIcon } from './components/Icons'
 import { NarrationStudio } from './components/NarrationStudio'
 import { deletePresentationTakes, deleteSectionTakes } from './narration/narrationDb'
-import { FinalVideoStudio } from './components/FinalVideoStudio'
 import { getDesktopBridge } from './desktop/desktopBridge'
 import type { DesktopImportedAsset, DesktopProjectExternalChange, DesktopProjectSnapshot } from './desktop/desktopTypes'
 import { presentationHistoryReducer } from './presentationHistory'
 import { canAutoApplyProjectChange, pendingChangeKind, selectionAfterProjectReload } from './projectSync'
 import { DEFAULT_ENTRANCE_DURATION_MS, INITIAL_REVEAL_STATE, nextRevealOrder, previousSlideFor, slideRevealOrders } from './entranceAnimation'
 
-type AppMode = 'edit' | 'present' | 'narrate' | 'final-video'
+type AppMode = 'edit' | 'present' | 'narrate'
 type PendingChoice = 'save' | 'discard' | 'cancel'
 
 const IMAGE_MIME_TYPES = new Set<PresentationImageMimeType>(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
@@ -887,16 +886,6 @@ export function App() {
     )
   }
 
-  if (mode === 'final-video') {
-    return (
-      <><FinalVideoStudio
-        presentation={presentation}
-        onExit={() => setMode('edit')}
-        onOpenNarration={() => setMode('narrate')}
-      />{projectSafetyDialogs}</>
-    )
-  }
-
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -933,7 +922,6 @@ export function App() {
         <div className="topbar-end">
           <span className={`save-state${dirty ? ' is-dirty' : ''}`}>{!dirty && !externalPending && !externalIssue && <CheckIcon />} {externalIssue ? 'Project sync warning' : externalPending ? 'External changes pending' : dirty ? 'Unsaved changes' : currentProject ? syncStatus === 'updated' ? 'Updated from disk' : 'Watching for changes' : `Saved${saveTime ? ` ${saveTime}` : ''}`}</span>
           <button className="narrate-button" onClick={() => setMode('narrate')}>Narrate</button>
-          <button className="final-video-button" onClick={() => setMode('final-video')}>Final Video</button>
           <button className="present-button" onClick={() => { setRevealRun(null); setMode('present') }}><PlayIcon /> Present</button>
         </div>
       </header>

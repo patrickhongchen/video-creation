@@ -536,6 +536,9 @@ button.narration-rail-slide:hover { background: #f4f7f9; }
 .narration-studio { grid-template-rows: 72px minmax(0, 1fr); }
 .narration-studio.has-error { grid-template-rows: 72px auto minmax(0, 1fr); }
 .narration-header .narration-exit:disabled, .narration-audio-button:disabled { opacity: .48; cursor: not-allowed; }
+.narration-preview-button { border: 1px solid #6a8aa7; border-radius: 5px; background: #274f72; padding: 8px 11px; color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.narration-preview-button:hover { background: #366284; }
+.narration-preview-button:disabled { opacity: .48; cursor: not-allowed; }
 .narration-studio.mode-recording .narration-layout { grid-template-columns: 230px minmax(0, 1fr) 340px; }
 .narration-stage-panel { grid-template-rows: minmax(0, 1fr) auto auto; padding: 18px 0 0; }
 .narration-stage-hit-area { padding: 0 18px; }
@@ -660,6 +663,47 @@ button.narration-rail-slide:hover { background: #f4f7f9; }
 .final-export-success p { overflow-wrap: anywhere; margin: 7px 0 2px; border-radius: 4px; background: #eef4f7; padding: 9px; color: #516276; font-size: 10px; line-height: 1.45; }
 .final-export-success .final-secondary-button { margin-top: 0; }
 
+/* The whole-video view keeps the same rail and canvas geometry as narration. */
+.final-video-studio { min-width: 980px; grid-template-rows: 72px minmax(0, 1fr); }
+.final-video-studio.has-error { grid-template-rows: 72px auto minmax(0, 1fr); }
+.final-video-header { grid-template-columns: minmax(0, 1fr) auto auto; }
+.final-video-header-summary { display: flex; align-items: baseline; gap: 9px; }
+.final-video-header-summary strong { font-size: 12px; }
+.final-video-header-summary span { font-size: 10px; }
+.final-video-exit:disabled { opacity: .48; cursor: not-allowed; }
+.final-video-layout { grid-template-columns: 230px minmax(0, 1fr) 340px; }
+.final-slide-rail { padding-top: 14px; }
+.final-stage-panel { grid-template-rows: minmax(0, 1fr) auto; padding: 18px 0 0; background: #e9eef2; }
+.final-stage-well { padding: 0 18px; }
+.final-stage { height: min(59vh, 650px); }
+.final-scrubber-panel { display: grid; gap: 9px; min-width: 0; border-top: 1px solid #cbd4dc; background: #fff; padding: 15px 18px; }
+.final-scrubber-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 12px; }
+.final-scrubber-row > span { color: #50657b; font-size: 11px; font-variant-numeric: tabular-nums; }
+.final-scrubber-row input { width: 100%; min-width: 0; accent-color: #2b79d1; cursor: pointer; }
+.final-scrubber-row input:disabled { opacity: .45; cursor: not-allowed; }
+.final-scrubber-row button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 37px; border-radius: 5px; padding: 7px 12px; font-size: 11px; white-space: nowrap; }
+.final-scrubber-row button svg { width: 12px; }
+.final-scrubber-row button:disabled { opacity: .45; cursor: not-allowed; }
+.final-scrubber-panel .final-playback-status { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 0; }
+.final-export-panel { min-width: 0; display: flex; flex-direction: column; overflow: hidden; padding: 18px 18px 0; }
+.final-export-panel > .final-panel-heading { flex: none; margin-bottom: 4px; }
+.final-export-panel > .final-panel-heading h2 { font-size: 18px; }
+.final-readiness-content { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding-bottom: 14px; }
+.final-readiness-content > .final-muted { margin-bottom: 14px; }
+.final-readiness-list li { display: block; padding: 0; }
+.final-readiness-row { width: 100%; display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; gap: 9px; border: 0; background: transparent; padding: 10px 2px; color: #27384a; text-align: left; }
+.final-readiness-row:hover { background: #f4f7fa; }
+.final-readiness-row:disabled { opacity: .55; cursor: not-allowed; }
+.final-readiness-row > span { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; background: #f0f3f5; color: #8c3740; font-size: 17px; line-height: 1; }
+.final-readiness-list li.is-ready .final-readiness-row > span { background: #eaf6ef; color: #27764d; }
+.final-readiness-row > div { min-width: 0; display: grid; gap: 4px; }
+.final-export-dock { flex: none; border-top: 1px solid #dce4ea; background: #fff; padding: 14px 0 18px; }
+.final-export-dock .final-export-spec { margin-bottom: 10px; padding: 10px 12px; }
+.final-export-dock .final-export-spec strong { font-size: 15px; }
+.final-export-dock .final-render-button { min-height: 40px; margin-top: 0; font-size: 12px; }
+.final-export-dock .final-desktop-required { margin: 0; }
+.final-export-dock .final-render-state { margin-top: 0; }
+
 @media (max-width: 1180px) {
   .workspace { grid-template-columns: 230px minmax(390px, 1fr) 320px; }
   .topbar { grid-template-columns: minmax(210px, 1fr) auto; }
@@ -673,13 +717,14 @@ button.narration-rail-slide:hover { background: #f4f7f9; }
   .field-row { grid-template-columns: 72px minmax(0,1fr); }
   .narration-layout { grid-template-columns: 210px minmax(0, 1fr) 310px; }
   .narration-studio.mode-recording .narration-layout { grid-template-columns: 210px minmax(0, 1fr) 310px; }
-  .final-video-layout { grid-template-columns: 270px minmax(400px, 1fr) 300px; }
-  .final-video-studio { min-width: 1040px; }
+  .final-video-layout { grid-template-columns: 210px minmax(0, 1fr) 310px; }
+  .final-video-studio { min-width: 980px; }
+  .final-stage { height: min(52vh, 560px); }
 }
 
 @media (max-width: 980px) {
-  .narration-studio { min-width: 0; }
-  .narration-layout, .narration-studio.mode-recording .narration-layout { grid-template-columns: 164px minmax(0, 1fr) 250px; }
+  .narration-studio, .final-video-studio { min-width: 0; }
+  .narration-layout, .narration-studio.mode-recording .narration-layout, .final-video-layout { grid-template-columns: 164px minmax(0, 1fr) 250px; }
   .narration-slide-rail { padding-left: 6px; padding-right: 6px; }
   .narration-slide-thumbnail { --thumb-scale: .29; }
   .narration-rail-slide { gap: 6px; padding: 5px 3px; }
@@ -690,6 +735,9 @@ button.narration-rail-slide:hover { background: #f4f7f9; }
   .narration-script-panel .take-actions { gap: 3px; }
   .narration-script-panel .take-actions button { padding-left: 6px; padding-right: 6px; }
   .narration-toolbar-meter { display: none; }
+  .final-export-panel { padding-left: 12px; padding-right: 12px; }
+  .final-scrubber-row { gap: 6px; }
+  .final-scrubber-row button { padding-left: 7px; padding-right: 7px; }
 }
 
 @media (max-width: 900px) {

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { sortSceneCues, synchronizeSceneCues } from '../narration/cueSynchronization'
 import { isSlideCue } from '../narration/narrationTypes'
 import type { FinalPlaybackPlan, FinalPlaybackSegment } from './finalPlaybackTypes'
+import { resolveFinalPlaybackSeek } from './resolveFinalPlaybackSeek'
 
 export type FinalPlaybackStatus = 'idle' | 'playing' | 'paused' | 'completed'
 
@@ -109,7 +110,7 @@ export function useFinalPlayback({ plan, onError, onComplete }: UseFinalPlayback
     callbacksRef.current.onError(message)
   }, [releaseCurrentAudio, stopFrame])
 
-  const startSegmentRef = useRef<(index: number, token: number) => Promise<void>>(async () => undefined)
+  const startSegmentRef = useRef<(index: number, token: number, offsetMs?: number) => Promise<void>>(async () => undefined)
 
   const finishAfterHold = useCallback((token: number) => {
     releaseCurrentAudio()
@@ -174,7 +175,7 @@ export function useFinalPlayback({ plan, onError, onComplete }: UseFinalPlayback
     frameRef.current = requestAnimationFrame(update)
   }, [stopFrame])
 
-  startSegmentRef.current = async (index: number, token: number) => {
+  startSegmentRef.current = async (index: number, token: number, offsetMs = 0) => {
     if (runTokenRef.current !== token) return
     stopFrame()
     releaseCurrentAudio()
@@ -187,13 +188,15 @@ export function useFinalPlayback({ plan, onError, onComplete }: UseFinalPlayback
 
     segmentIndexRef.current = index
     setSegmentIndex(index)
-    const initialSceneId = firstSceneId(segment)
+    inFinalHoldRef.current = false
+    const elapsedMs = Math.min(segment.durationMs, Math.max(0, offsetMs))
+    const initialSceneId = resolveFinalPlaybackSeek(planRef.current, (segmentOffsetsRef.current[index] ?? 0) + elapsedMs).sceneId
     activeSceneIdRef.current = initialSceneId
     setActiveSceneId(initialSceneId)
-    setCurrentTimeMs(segmentOffsetsRef.current[index] ?? 0)
+    setCurrentTimeMs((segmentOffsetsRef.current[index] ?? 0) + elapsedMs)
+    silentElapsedRef.current = elapsedMs
 
     if (segment.type === 'silent-scene') {
-      silentElapsedRef.current = 0
       silentStartedAtRef.current = performance.now()
       runSilentFrame(segment, index, token)
       return
@@ -209,6 +212,7 @@ export function useFinalPlayback({ plan, onError, onComplete }: UseFinalPlayback
       audioUrlRef.current = url
       const audio = new Audio(url)
       audio.preload = 'auto'
+      if (elapsedMs > 0) audio.currentTime = elapsedMs / 1000
       audioRef.current = audio
       const source = activeContext.createMediaElementSource(audio)
       audioSourceRef.current = source
@@ -278,6 +282,10 @@ export function useFinalPlayback({ plan, onError, onComplete }: UseFinalPlayback
       finishAfterHold(runTokenRef.current)
     } else if (segment?.type === 'narration') {
       try {
+        if (!audioRef.current) {
+          await startSegmentRef.current(segmentIndexRef.current, runTokenRef.current, silentElapsedRef.current)
+          return
+        }
         await audioRef.current?.play()
         runNarrationFrame(segment, segmentIndexRef.current, runTokenRef.current)
       } catch (problem) {
@@ -304,6 +312,31 @@ export function useFinalPlayback({ plan, onError, onComplete }: UseFinalPlayback
     setStatus('idle')
     statusRef.current = 'idle'
   }, [releaseCurrentAudio, stopFrame])
+
+  const seek = useCallback(async (requestedMs: number) => {
+    const target = resolveFinalPlaybackSeek(planRef.current, requestedMs)
+    if (!planRef.current.segments.length) return
+    const wasPlaying = statusRef.current === 'playing'
+    const token = runTokenRef.current + 1
+    runTokenRef.current = token
+    stopFrame()
+    releaseCurrentAudio()
+    segmentIndexRef.current = target.segmentIndex
+    setSegmentIndex(target.segmentIndex)
+    activeSceneIdRef.current = target.sceneId
+    setActiveSceneId(target.sceneId)
+    setCurrentTimeMs(target.timeMs)
+    setRenderInstanceKey(createRunKey())
+    inFinalHoldRef.current = target.inFinalHold
+    silentElapsedRef.current = target.inFinalHold
+      ? target.timeMs - planRef.current.contentDurationMs
+      : target.segmentElapsedMs
+    setStatus(wasPlaying ? 'playing' : 'paused')
+    statusRef.current = wasPlaying ? 'playing' : 'paused'
+    if (!wasPlaying) return
+    if (target.inFinalHold) finishAfterHold(token)
+    else await startSegmentRef.current(target.segmentIndex, token, target.segmentElapsedMs)
+  }, [finishAfterHold, releaseCurrentAudio, stopFrame])
 
   useEffect(() => {
     if (statusRef.current !== 'idle') stop()
@@ -335,6 +368,7 @@ export function useFinalPlayback({ plan, onError, onComplete }: UseFinalPlayback
     play,
     pause,
     restart,
+    seek,
     stop,
     ensureAudioReady,
     disposeAudio,

@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { NarrationSection, Presentation, Slide } from '../model'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { NarrationSection, Presentation } from '../model'
 import {
   deleteNarrationTake,
   deleteSectionTakes,
@@ -14,6 +14,8 @@ import { useNarrationPlayback } from '../narration/useNarrationPlayback'
 import { useNarrationRecorder } from '../narration/useNarrationRecorder'
 import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, PlayIcon } from './Icons'
 import { Stage } from './Stage'
+import { NarrationSlideThumbnail } from './NarrationSlideThumbnail'
+import { FinalVideoStudio } from './FinalVideoStudio'
 import {
   INITIAL_REVEAL_STATE,
   nextRevealOrder,
@@ -70,12 +72,6 @@ function NarrationScript({ currentNotes, nextNotes, nextTitle, textSize, onSizeC
   </>
 }
 
-const SlideThumbnail = memo(function SlideThumbnail({ presentation, slide, index }: { presentation: Presentation; slide: Slide; index: number }) {
-  return <div className="narration-slide-thumbnail" aria-hidden="true">
-    <Stage slide={slide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={index + 1} slideCount={presentation.slides.length} direction={1} renderInstanceKey={`deck-thumbnail-${slide.id}`} deterministicMotion className="narration-thumbnail-stage" />
-  </div>
-})
-
 export function NarrationStudio({ presentation, initialSlideIndex, onPresentationChange, onExit, onError }: NarrationStudioProps) {
   const sections = presentation.narration?.sections ?? EMPTY_SECTIONS
   const safeInitialSlideIndex = Math.max(0, Math.min(initialSlideIndex, Math.max(0, presentation.slides.length - 1)))
@@ -103,6 +99,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   const [scriptTextSize, setScriptTextSize] = useState(20)
   const [latestTakeId, setLatestTakeId] = useState<string | null>(null)
   const latestTakeRef = useRef<HTMLLIElement | null>(null)
+  const [workspaceView, setWorkspaceView] = useState<'narration' | 'preview'>('narration')
   const [advanceHint, setAdvanceHint] = useState(false)
   const pendingRecordingSlideIdRef = useRef<string | null>(null)
   const [draftTitle, setDraftTitle] = useState('')
@@ -527,12 +524,28 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
     if (uiMode === 'recording') activeSlideCardRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }, [uiMode, currentOverallIndex])
 
+  if (workspaceView === 'preview') {
+    return <FinalVideoStudio
+      presentation={presentation}
+      onExit={() => setWorkspaceView('narration')}
+      onOpenNarration={(sectionId) => {
+        if (sectionId) {
+          const section = sections.find((item) => item.id === sectionId)
+          pendingSetupSlideIdRef.current = section?.slideIds[0] ?? null
+          setSelectedSectionId(sectionId)
+        }
+        setWorkspaceView('narration')
+      }}
+    />
+  }
+
   return (
     <main className={`narration-studio mode-${uiMode}${localError ? ' has-error' : ''}`}>
       <header className="narration-header">
         <div><h1>Narration Studio</h1></div>
         <div className="narration-header-settings">
           <div className="narration-readiness"><strong>{readyCount} of {sections.length}</strong> sections ready</div>
+          <button className="narration-preview-button" onClick={() => { playback.stop(); setAudioOpen(false); setWorkspaceView('preview') }} disabled={recorderBusy || presentation.slides.length === 0}>Preview &amp; export</button>
           <div className="narration-audio-anchor">
             <button className="narration-audio-button" aria-expanded={audioOpen} onClick={() => {
               const opening = !audioOpen
@@ -567,7 +580,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
             const isStart = owner?.slideIds[0] === slide.id
             const sectionIndex = owner ? sections.findIndex((section) => section.id === owner.id) : -1
             const isCurrent = index === currentOverallIndex
-            const slideCard = <><SlideThumbnail presentation={presentation} slide={slide} index={index} /><span><small>Slide {index + 1}</small><strong>{slide.title || `Slide ${index + 1}`}</strong></span></>
+            const slideCard = <><NarrationSlideThumbnail presentation={presentation} slide={slide} index={index} /><span><small>Slide {index + 1}</small><strong>{slide.title || `Slide ${index + 1}`}</strong></span></>
             return <div className="narration-rail-entry" key={slide.id} ref={isCurrent ? activeSlideCardRef : undefined}>
               {isStart && <div className="narration-rail-boundary"><span>{owner.title === `Section ${sectionIndex + 1}` ? owner.title : `Section ${sectionIndex + 1} · ${owner.title}`}</span>{uiMode === 'setup' && index > 0 && <button aria-label={`Remove section start before Slide ${index + 1}`} title="Merge into previous section" onClick={() => void removeSectionStart(owner.id)}>×</button>}</div>}
               {!isStart && index > 0 && uiMode === 'setup' && <button className="narration-add-boundary" onClick={() => void addSectionStart(index)} aria-label={`Start a new section at Slide ${index + 1}`}>+ Start section here</button>}

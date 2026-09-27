@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Presentation } from '../model'
 import { slugify } from '../presentationFactories'
 import { listNarrationTakes } from '../narration/narrationDb'
-import { browserCanDecodeTake } from '../narration/audioDecoding'
 import { buildFinalPlaybackPlan } from '../finalPlayback/buildFinalPlaybackPlan'
 import type { NarrationTakesBySection } from '../finalPlayback/finalPlaybackTypes'
-import { useFinalPlayback } from '../finalPlayback/useFinalPlayback'
+import { useFinalProgramPlayback } from '../finalPlayback/useFinalProgramPlayback'
+import { buildFinalPreviewAudioRequest } from '../finalPlayback/buildFinalPreviewAudioRequest'
 import { buildDesktopExportJob, getDesktopBridge } from '../desktop/desktopBridge'
 import type { DesktopExportProgress } from '../desktop/desktopTypes'
 import { Stage } from './Stage'
@@ -46,8 +46,9 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
   const desktop = getDesktopBridge()
   const [takesBySection, setTakesBySection] = useState<NarrationTakesBySection>({})
   const [takesStatus, setTakesStatus] = useState<'loading' | 'ready' | 'error'>('loading')
-  const [decodeStatus, setDecodeStatus] = useState<'waiting' | 'checking' | 'ready'>('waiting')
-  const [decodeIssues, setDecodeIssues] = useState<Record<string, string>>({})
+  const [previewAudioStatus, setPreviewAudioStatus] = useState<'waiting' | 'preparing' | 'ready' | 'error'>('waiting')
+  const [previewAudio, setPreviewAudio] = useState<Blob | null>(null)
+  const [previewWarnings, setPreviewWarnings] = useState<string[]>([])
   const [exportState, setExportState] = useState<ExportState>('ready')
   const [exportProgress, setExportProgress] = useState<DesktopExportProgress | null>(null)
   const [outputPath, setOutputPath] = useState('')
@@ -75,8 +76,9 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
     let cancelled = false
     setTakesStatus('loading')
     setTakesBySection({})
-    setDecodeStatus('waiting')
-    setDecodeIssues({})
+    setPreviewAudioStatus('waiting')
+    setPreviewAudio(null)
+    setPreviewWarnings([])
     Promise.all((presentation.narration?.sections ?? []).map(async (section) => [
       section.id,
       await listNarrationTakes(presentation.id, section.id),
@@ -95,32 +97,27 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
   }, [presentation.id, presentation.narration?.sections])
 
   useEffect(() => {
-    if (takesStatus !== 'ready') return
+    if (!desktop || takesStatus !== 'ready' || !plan.isReady) return
     let cancelled = false
-    const selected = plan.readiness.filter((entry) => entry.ready && entry.selectedTake)
-    setDecodeStatus('checking')
-    setDecodeIssues({})
-    Promise.all(selected.map(async (entry) => {
-      const decodable = await browserCanDecodeTake(entry.selectedTake!)
-      return decodable
-        ? null
-        : [entry.sectionId, `“${entry.title}” cannot be decoded for Final Playback Preview. Desktop export may still decode it with FFmpeg.`] as const
-    }))
-      .then((results) => {
+    setPreviewAudioStatus('preparing')
+    setPreviewAudio(null)
+    setPreviewWarnings([])
+    void buildFinalPreviewAudioRequest(plan, presentation.voiceEnhance)
+      .then((request) => desktop.prepareFinalPreviewAudio(request))
+      .then((result) => {
         if (cancelled) return
-        setDecodeIssues(results.reduce<Record<string, string>>((entries, result) => {
-          if (result) entries[result[0]] = result[1]
-          return entries
-        }, {}))
-        setDecodeStatus('ready')
+        if (result.durationMs !== plan.totalDurationMs) throw new Error('The mastered preview duration does not match the playback plan.')
+        setPreviewAudio(new Blob([result.bytes], { type: result.mimeType }))
+        setPreviewWarnings(result.warnings)
+        setPreviewAudioStatus('ready')
       })
-      .catch(() => {
+      .catch((problem) => {
         if (cancelled) return
-        setDecodeStatus('ready')
-        setDecodeIssues({ preview: 'Selected audio could not be checked for Final Playback Preview.' })
+        setPreviewAudioStatus('error')
+        setError(problem instanceof Error ? `Mastered preview could not be prepared: ${problem.message}` : 'Mastered preview could not be prepared.')
       })
     return () => { cancelled = true }
-  }, [plan.readiness, takesStatus])
+  }, [desktop, plan, presentation.voiceEnhance, takesStatus])
 
   useEffect(() => {
     if (!desktop) return
@@ -130,7 +127,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
     })
   }, [desktop])
 
-  const playback = useFinalPlayback({ plan, onError: setError })
+  const playback = useFinalProgramPlayback(plan, previewAudio, setError)
   useEffect(() => () => {
     playback.stop()
     void playback.disposeAudio()
@@ -165,10 +162,9 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
   useEffect(() => { previousSlideIndexRef.current = activeSlideIndex }, [activeSlideIndex])
   useEffect(() => { activeRailEntryRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }, [activeSlideIndex])
 
-  const decodeIssueCount = Object.keys(decodeIssues).length
   const readinessIssueCount = plan.readinessIssues.length
   const exportReady = takesStatus === 'ready' && plan.isReady && !presentationIssue && assetIssues.length === 0
-  const previewReady = exportReady && decodeStatus === 'ready' && decodeIssueCount === 0
+  const previewReady = exportReady && previewAudioStatus === 'ready' && previewAudio !== null
   const busy = exportState === 'preparing' || exportState === 'rendering'
   const displayedTimeMs = scrubTimeMs ?? playback.currentTimeMs
 
@@ -311,14 +307,14 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
           <div className="final-readiness-content">
           <p className="final-muted"><strong>{plan.readiness.length - readinessIssueCount} of {plan.readiness.length}</strong> sections ready · {formatTime(plan.totalDurationMs)} total</p>
           {takesStatus === 'loading' ? <p className="final-muted">Loading local takes…</p> : null}
-          {decodeStatus === 'checking' ? <p className="final-muted">Checking selected audio for preview…</p> : null}
+          {previewAudioStatus === 'preparing' ? <p className="final-muted" role="status">Preparing mastered preview audio…</p> : null}
+          {previewAudioStatus === 'error' ? <p className="final-warning">Mastered preview audio is unavailable. Export can still process the original takes.</p> : null}
           <ol className="final-readiness-list">
             {plan.readiness.map((entry) => {
-              const decodeIssue = decodeIssues[entry.sectionId]
               return <li key={entry.sectionId} className={entry.ready ? 'is-ready' : 'has-issue'}>
                 <button className="final-readiness-row" onClick={() => openSection(entry.sectionId)} disabled={busy} title={`Return to ${entry.title || 'this section'}`}>
                   <span>{entry.ready ? <CheckIcon /> : '×'}</span>
-                  <div><strong>{entry.title || 'Untitled section'}</strong><small>{entry.issue ?? decodeIssue ?? `${formatTime(entry.selectedTake?.durationMs ?? 0)} selected take`}</small></div>
+                  <div><strong>{entry.title || 'Untitled section'}</strong><small>{entry.issue ?? `${formatTime(entry.selectedTake?.durationMs ?? 0)} selected take`}</small></div>
                 </button>
               </li>
             })}
@@ -326,7 +322,7 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
           {plan.readiness.length === 0 && takesStatus === 'ready' ? <p className="final-notice">No narration sections. This will be a completely silent visual video.</p> : null}
           {presentation.slides.length > 0 ? <p className={presentationIssue || assetIssues.length ? 'final-blocked-note' : 'final-notice'}><strong>{presentationIssue || assetIssues.length ? 'Slide preflight failed.' : `${presentation.slides.length} slide${presentation.slides.length === 1 ? '' : 's'} ready.`}</strong>{presentationIssue ? ` ${presentationIssue}` : assetIssues.length ? ` ${assetIssues.join(' ')}` : ' Image assets, element frames, charts, and shared identities are valid.'}</p> : null}
           {readinessIssueCount > 0 ? <p className="final-blocked-note"><strong>{readinessIssueCount} narration section{readinessIssueCount === 1 ? '' : 's'} need{readinessIssueCount === 1 ? 's' : ''} attention.</strong> Final playback and export stay blocked until every section is ready.</p> : null}
-          {decodeIssueCount > 0 ? <p className="final-warning">Final Playback Preview is unavailable for selected audio that Chromium cannot decode. Desktop export will ask FFmpeg to decode the original take.</p> : null}
+          {previewWarnings.map((warning, index) => <p key={`${index}-${warning}`} className="final-warning">{warning}</p>)}
           {plan.unassignedSlideCount > 0 ? <p className="final-notice">{plan.unassignedSlideCount} slide{plan.unassignedSlideCount === 1 ? ' has' : 's have'} no narration and will play as silent visual beat{plan.unassignedSlideCount === 1 ? '' : 's'}.</p> : null}
           {plan.warnings.filter((warning) => warning.kind === 'incomplete-cue-coverage' || warning.kind === 'reveal-cue-coverage').map((warning) => <p key={`${warning.kind}-${warning.sectionId}`} className="final-warning">{warning.message}</p>)}
           </div>
@@ -334,10 +330,10 @@ export function FinalVideoStudio({ presentation, onExit, onOpenNarration }: Fina
           <div className="final-export-spec">
             <strong>1080 × 1920</strong>
             <span>MP4 · H.264 · AAC · 30 fps</span>
-            <small>{presentation.voiceEnhance === 'standard' ? 'Voice Enhance applies on export; preview plays original audio.' : 'Preview and export use the selected narration takes.'}</small>
+            <small>Final preview and export use the same assembled, mastered narration{presentation.voiceEnhance === 'standard' ? ' with Voice Enhance' : ''}.</small>
           </div>
 
-          {!desktop ? <div className="final-desktop-required"><strong>Desktop app required for MP4 export.</strong><span>Whole-video playback remains available in this browser.</span></div> : null}
+          {!desktop ? <div className="final-desktop-required"><strong>Desktop app required for mastered preview and MP4 export.</strong><span>Audio processing uses the bundled local FFmpeg.</span></div> : null}
 
           {desktop && exportState === 'ready' ? <>
             <button className="final-render-button" onClick={() => void startExport()} disabled={!exportReady}>Export video</button>

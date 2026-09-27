@@ -6,12 +6,15 @@ import type {
   DesktopRenderFrameRequest,
 } from './export/types'
 import type {
+  DesktopFinalPreviewAudioRequest,
+  DesktopFinalPreviewAudioResult,
   DesktopImageBytesRequest,
   DesktopProjectExternalChange,
   DesktopProjectSaveRequest,
   DesktopRemoteImageRequest,
 } from '../src/desktop/desktopTypes'
 import type { Presentation } from '../src/model'
+import type { DesktopNarrationPreviewRequest, DesktopNarrationPreviewResult } from '../src/desktop/desktopTypes'
 
 // Keep the sandboxed preload self-contained. Sandboxed preloads cannot require
 // arbitrary local chunks, so these narrow channel names intentionally mirror
@@ -38,6 +41,8 @@ const CHANNELS = {
   exportStart: 'video-essay:export:start',
   exportCancel: 'video-essay:export:cancel',
   exportProgress: 'video-essay:export:progress',
+  narrationEnhancePreview: 'video-essay:narration:enhance-preview',
+  finalPreviewAudio: 'video-essay:final-preview:audio',
   openVideo: 'video-essay:file:open-video',
   showInFinder: 'video-essay:file:show-in-finder',
   renderJob: 'video-essay:render:job',
@@ -79,6 +84,10 @@ const videoEssayDesktop = Object.freeze({
   onUndoRequested: (listener: () => void) => subscribe(CHANNELS.undoRequested, listener),
   onRedoRequested: (listener: () => void) => subscribe(CHANNELS.redoRequested, listener),
   exportVideo: (job: DesktopExportJob): Promise<DesktopExportResult> => ipcRenderer.invoke(CHANNELS.exportStart, job),
+  enhanceNarrationPreview: (request: DesktopNarrationPreviewRequest): Promise<DesktopNarrationPreviewResult> =>
+    ipcRenderer.invoke(CHANNELS.narrationEnhancePreview, request),
+  prepareFinalPreviewAudio: (request: DesktopFinalPreviewAudioRequest): Promise<DesktopFinalPreviewAudioResult> =>
+    ipcRenderer.invoke(CHANNELS.finalPreviewAudio, request),
   cancelExport: (): Promise<void> => ipcRenderer.invoke(CHANNELS.exportCancel),
   onExportProgress: (listener: (progress: DesktopExportProgress) => void) =>
     subscribe(CHANNELS.exportProgress, listener),

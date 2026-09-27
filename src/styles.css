@@ -585,6 +585,11 @@ button.narration-rail-slide:hover { background: #f4f7f9; }
 .take-selected { display: inline-flex; align-items: center; gap: 4px; color: #247348; font-size: 10px; font-weight: 750; }
 .take-selected svg { width: 13px; }
 .narration-script-panel .narration-scrubber { margin-top: 9px; border-top: 1px solid #e5ece9; padding: 9px 0 0; }
+.narration-preview-choice { display: flex; align-items: center; gap: 4px; margin-top: 12px; color: #667789; font-size: 11px; }
+.narration-preview-choice span { margin-right: 5px; }
+.narration-script-panel .narration-preview-choice button { border-radius: 4px; padding: 5px 9px; color: #344b60; }
+.narration-script-panel .narration-preview-choice button.is-active { border-color: #6d94b3; background: #e9f3fb; color: #244e70; }
+.narration-processing-status { display: block; margin-top: 8px; color: #6b7783; font-size: 10px; line-height: 1.35; }
 .narration-script-panel .narration-coverage-warning { display: block; margin-top: 8px; padding: 0; }
 @media (max-width: 1100px) {
   .narration-layout { grid-template-columns: 210px minmax(0, 1fr) 310px; }

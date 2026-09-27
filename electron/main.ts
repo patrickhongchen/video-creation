@@ -6,6 +6,8 @@ import { CHANNELS } from './export/channels'
 import { VideoExporter } from './export/videoExporter'
 import { validateCompletedVideoPath, validateExportJob, validateJobId, validateRenderFrameRequest } from './export/validation'
 import { PROJECT_ASSET_PROTOCOL, ProjectStore } from './project/projectStore'
+import { narrationPreviewCache } from './narrationPreviewProcessor'
+import { finalPreviewAudioCache } from './finalPreviewAudioProcessor'
 
 protocol.registerSchemesAsPrivileged([{
   scheme: PROJECT_ASSET_PROTOCOL,
@@ -306,6 +308,14 @@ function installIpcHandlers() {
     assertMainSender(event.sender)
     await exporter!.cancel()
   })
+  ipcMain.handle(CHANNELS.narrationEnhancePreview, async (event, request: unknown) => {
+    assertMainSender(event.sender)
+    return narrationPreviewCache.prepare(request)
+  })
+  ipcMain.handle(CHANNELS.finalPreviewAudio, async (event, request: unknown) => {
+    assertMainSender(event.sender)
+    return finalPreviewAudioCache.prepare(request)
+  })
   ipcMain.handle(CHANNELS.openVideo, async (event, value: unknown) => {
     assertMainSender(event.sender)
     const outputPath = validateCompletedVideoPath(value, exporter!.completedOutputs)
@@ -375,6 +385,8 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow.focus()
   })
   app.whenReady().then(async () => {
+    void narrationPreviewCache.prune().catch((error) => console.warn('Narration preview cache cleanup failed:', error))
+    void finalPreviewAudioCache.prune().catch((error) => console.warn('Final preview audio cache cleanup failed:', error))
     installPermissionHandlers()
     installProjectAssetProtocol()
     exporter = new VideoExporter(() => mainWindow, preloadPath)

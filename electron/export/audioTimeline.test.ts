@@ -1,10 +1,18 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { demoPresentation } from '../../src/demoPresentation'
 import { createAudioTimeline } from './audioTimeline'
 import type { DesktopExportJob } from './types'
+
+const audioMocks = vi.hoisted(() => ({ processTake: vi.fn(), runFfmpeg: vi.fn(), master: vi.fn() }))
+
+vi.mock('./narrationTakeProcessor', () => ({ processNarrationTake: audioMocks.processTake }))
+vi.mock('./narrationLoudness', () => ({
+  runAudioFfmpeg: audioMocks.runFfmpeg,
+  masterNarrationProgram: audioMocks.master,
+}))
 
 function timelineJob(mode: 'off' | 'standard', narration = true): DesktopExportJob {
   const sceneId = demoPresentation.slides[0].id
@@ -46,29 +54,40 @@ async function withTimeline(job: DesktopExportJob, check: (timeline: Awaited<Ret
 }
 
 describe('narration export timeline', () => {
-  it('keeps the raw Off path with the original take bytes, trim, pad, and silence', async () => {
+  beforeEach(() => {
+    audioMocks.processTake.mockReset().mockResolvedValue({ gainDb: 4 })
+    audioMocks.runFfmpeg.mockReset().mockResolvedValue('')
+    audioMocks.master.mockReset().mockResolvedValue({ normalized: true })
+  })
+
+  it('preserves raw bytes while leveling Off takes and assembling exact gaps', async () => {
     await withTimeline(timelineJob('off'), async (timeline) => {
-      expect(timeline.inputArgs).toHaveLength(2)
-      expect(await readFile(timeline.inputArgs[1])).toEqual(Buffer.from([1, 2, 3]))
-      expect(timeline.filterComplex).toContain('atrim=duration=1.000000,apad=pad_dur=1.000000,atrim=duration=1.000000')
-      expect(timeline.filterComplex).toContain('anullsrc=r=48000:cl=stereo:d=0.500000')
-      expect(timeline.filterComplex).toContain('anullsrc=r=48000:cl=stereo:d=0.250000')
-      expect(timeline.filterComplex).toContain('concat=n=3:v=0:a=1[aout]')
-      expect(timeline.filterComplex).not.toContain('loudnorm=')
+      expect(await readFile(timeline.rawInputPaths[0])).toEqual(Buffer.from([1, 2, 3]))
+      expect(audioMocks.processTake).toHaveBeenCalledWith(expect.objectContaining({ mode: 'off', durationMs: 1_000 }))
+      const assembleArgs = audioMocks.runFfmpeg.mock.calls[0][0] as string[]
+      const filter = assembleArgs[assembleArgs.indexOf('-filter_complex') + 1]
+      expect(filter).toContain('atrim=duration=1.000000,apad=pad_dur=1.000000,atrim=duration=1.000000')
+      expect(filter).toContain('anullsrc=r=48000:cl=stereo:d=0.500000')
+      expect(filter).toContain('anullsrc=r=48000:cl=stereo:d=0.250000')
+      expect(filter).toContain('concat=n=3:v=0:a=1[aout]')
+      expect(audioMocks.master).toHaveBeenCalledWith(expect.objectContaining({ durationMs: 1_750, whollySilent: false }))
+      expect(timeline.normalized).toBe(true)
     })
   })
 
-  it('applies Standard once after section and silence concatenation, preserving total duration', async () => {
-    await withTimeline(timelineJob('standard'), (timeline) => {
-      expect(timeline.filterComplex).toContain('concat=n=3:v=0:a=1,apad=pad_dur=0.050,highpass=f=80,afftdn=nr=6:nf=-50,acompressor=threshold=0.1:ratio=3:attack=20:release=250:detection=rms,loudnorm=I=-16:TP=-1.5:LRA=11,aformat=sample_rates=48000:channel_layouts=stereo,atrim=start=0.025:duration=1.750000,asetpts=PTS-STARTPTS,apad=pad_dur=1.750000,atrim=duration=1.750000[aout]')
+  it('uses the shared Standard take processor before whole-program mastering', async () => {
+    await withTimeline(timelineJob('standard'), () => {
+      expect(audioMocks.processTake).toHaveBeenCalledWith(expect.objectContaining({ mode: 'standard' }))
+      expect(audioMocks.processTake.mock.invocationCallOrder[0]).toBeLessThan(audioMocks.master.mock.invocationCallOrder[0])
     })
   })
 
-  it('leaves a wholly silent program on the original silence path', async () => {
+  it('skips loudness normalization for a known wholly silent program', async () => {
+    audioMocks.master.mockResolvedValue({ normalized: false })
     await withTimeline(timelineJob('standard', false), (timeline) => {
-      expect(timeline.inputArgs).toEqual([])
-      expect(timeline.filterComplex).toContain('concat=n=2:v=0:a=1[aout]')
-      expect(timeline.filterComplex).not.toContain('highpass=')
+      expect(audioMocks.processTake).not.toHaveBeenCalled()
+      expect(audioMocks.master).toHaveBeenCalledWith(expect.objectContaining({ whollySilent: true }))
+      expect(timeline.normalized).toBe(false)
     })
   })
 })

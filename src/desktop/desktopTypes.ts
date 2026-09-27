@@ -51,6 +51,45 @@ export type DesktopExportResult =
   | { status: 'save-cancelled' }
   | { status: 'cancelled' }
 
+export interface DesktopNarrationPreviewRequest {
+  takeId: string
+  mimeType: string
+  durationMs: number
+  bytes: ArrayBuffer
+}
+
+export interface DesktopNarrationPreviewResult {
+  bytes: ArrayBuffer
+  warning?: string
+}
+
+export type DesktopFinalPreviewAudioSegment =
+  | {
+      type: 'narration'
+      takeId: string
+      mimeType: string
+      durationMs: number
+      bytes: ArrayBuffer
+    }
+  | {
+      type: 'silent-scene'
+      durationMs: number
+    }
+
+export interface DesktopFinalPreviewAudioRequest {
+  voiceEnhance: 'off' | 'standard'
+  segments: DesktopFinalPreviewAudioSegment[]
+  finalHoldMs: number
+  totalDurationMs: number
+}
+
+export interface DesktopFinalPreviewAudioResult {
+  bytes: ArrayBuffer
+  mimeType: 'audio/mp4'
+  durationMs: number
+  warnings: string[]
+}
+
 export interface DesktopRenderFrameRequest {
   jobId: string
   frameIndex: number
@@ -162,6 +201,8 @@ export interface VideoEssayDesktopApi {
   onUndoRequested: (listener: () => void) => () => void
   onRedoRequested: (listener: () => void) => () => void
   exportVideo: (job: DesktopExportJob) => Promise<DesktopExportResult>
+  enhanceNarrationPreview: (request: DesktopNarrationPreviewRequest) => Promise<DesktopNarrationPreviewResult>
+  prepareFinalPreviewAudio: (request: DesktopFinalPreviewAudioRequest) => Promise<DesktopFinalPreviewAudioResult>
   cancelExport: () => Promise<void>
   onExportProgress: (listener: (progress: DesktopExportProgress) => void) => () => void
   openVideo: (path: string) => Promise<void>

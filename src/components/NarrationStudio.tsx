@@ -16,6 +16,8 @@ import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, PlayIcon } from '.
 import { Stage } from './Stage'
 import { NarrationSlideThumbnail } from './NarrationSlideThumbnail'
 import { FinalVideoStudio } from './FinalVideoStudio'
+import { getDesktopBridge } from '../desktop/desktopBridge'
+import { selectTakePlaybackSource, takePreviewKey } from '../narration/takePreviewSelection'
 import {
   INITIAL_REVEAL_STATE,
   nextRevealOrder,
@@ -98,6 +100,9 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   const [selectedDeviceId, setSelectedDeviceId] = useState(() => sessionStorage.getItem('narration-microphone') ?? '')
   const [scriptTextSize, setScriptTextSize] = useState(20)
   const [latestTakeId, setLatestTakeId] = useState<string | null>(null)
+  const [comparisonMode, setComparisonMode] = useState<'enhanced' | 'original'>('enhanced')
+  const previewBlobsRef = useRef(new Map<string, Blob>())
+  const [previewStates, setPreviewStates] = useState<Record<string, { key: string; status: 'preparing' | 'ready' | 'failed'; warning?: string }>>({})
   const latestTakeRef = useRef<HTMLLIElement | null>(null)
   const [workspaceView, setWorkspaceView] = useState<'narration' | 'preview'>('narration')
   const [advanceHint, setAdvanceHint] = useState(false)
@@ -451,7 +456,18 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
       return
     }
     if (playback.takeId !== take.id) setRenderInstanceKey(`play-${take.id}-${Date.now()}`)
-    await playback.play(take)
+    const key = takePreviewKey(take)
+    const source = selectTakePlaybackSource(take, presentation.voiceEnhance, comparisonMode, previewBlobsRef.current.get(key))
+    await playback.play(take, source.blob, source.key)
+  }
+
+  const chooseComparisonMode = (mode: 'enhanced' | 'original') => {
+    setComparisonMode(mode)
+    const activeTake = Object.values(takeMapRef.current).flat().find((take) => take.id === playback.takeId)
+    if (!activeTake || !playback.isPlaying) return
+    const key = takePreviewKey(activeTake)
+    const source = selectTakePlaybackSource(activeTake, presentation.voiceEnhance, mode, previewBlobsRef.current.get(key))
+    void playback.play(activeTake, source.blob, source.key)
   }
 
   const chooseTake = async (takeId: string) => {
@@ -484,6 +500,32 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
   const selectedSectionIndex = sections.findIndex((section) => section.id === selectedSectionId)
   const nextSlide = selectedResolved?.slides[activeRelativeIndex + 1]
   const selectedTakes = selectedSection ? takeMap[selectedSection.id] ?? [] : []
+  useEffect(() => {
+    if (presentation.voiceEnhance !== 'standard') return
+    const bridge = getDesktopBridge()
+    for (const take of [...selectedTakes].reverse()) {
+      const key = takePreviewKey(take)
+      if (previewBlobsRef.current.has(key) || previewStates[take.id]?.key === key) continue
+      if (!bridge) {
+        setPreviewStates((current) => ({ ...current, [take.id]: { key, status: 'failed', warning: 'Enhanced previews require the desktop app. Original audio is available.' } }))
+        continue
+      }
+      setPreviewStates((current) => ({ ...current, [take.id]: { key, status: 'preparing' } }))
+      void take.blob.arrayBuffer()
+        .then((bytes) => bridge.enhanceNarrationPreview({ takeId: take.id, mimeType: take.mimeType, durationMs: take.durationMs, bytes }))
+        .then((result) => {
+          previewBlobsRef.current.set(key, new Blob([result.bytes], { type: 'audio/wav' }))
+          setPreviewStates((current) => ({ ...current, [take.id]: { key, status: 'ready', warning: result.warning } }))
+        })
+        .catch((problem) => {
+          const detail = problem instanceof Error ? problem.message : 'Processing failed.'
+          setPreviewStates((current) => ({ ...current, [take.id]: { key, status: 'failed', warning: `Enhanced preview unavailable: ${detail} Original audio is available.` } }))
+        })
+    }
+  }, [presentation.voiceEnhance, selectedTakes, previewStates])
+  useEffect(() => {
+    if (presentation.voiceEnhance === 'standard') setComparisonMode('enhanced')
+  }, [presentation.voiceEnhance])
   const orphanSections = sections.filter((section) => !section.slideIds.some((id) => presentation.slides.some((slide) => slide.id === id)))
   const playbackTake = Object.values(takeMap).flat().find((take) => take.id === playback.takeId)
   const currentRevealOrders = currentSlide
@@ -561,8 +603,8 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
               </select>
               <small>{microphoneName}{recorder.status === 'requesting' ? ' · Requesting access…' : ''}</small>
               <label>Microphone level <MicrophoneMeter level={recorder.level} /></label>
-              <label>Voice Enhance <select value={presentation.voiceEnhance} onChange={(event) => onPresentationChange({ ...presentation, voiceEnhance: event.target.value as 'off' | 'standard' })}><option value="off">Off</option><option value="standard">Standard</option></select></label>
-              <small>Applied during export. Takes preview original audio.</small>
+              <label>Voice Enhance <select value={presentation.voiceEnhance} onChange={(event) => { playback.stop(); onPresentationChange({ ...presentation, voiceEnhance: event.target.value as 'off' | 'standard' }) }}><option value="off">Off</option><option value="standard">Standard</option></select></label>
+              <small>Standard cleans up take previews and export. Final export loudness is balanced automatically.</small>
             </div>}
           </div>
         </div>
@@ -625,6 +667,7 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
           </div>
           <section className="narration-takes" aria-label="Section takes">
             <div className="narration-panel-heading"><h2>Takes</h2><span>{selectedTakes.length} recorded</span></div>
+            {presentation.voiceEnhance === 'standard' && selectedTakes.length > 0 && <div className="narration-preview-choice" role="group" aria-label="Take preview sound"><span>Preview:</span><button type="button" className={comparisonMode === 'enhanced' ? 'is-active' : ''} aria-pressed={comparisonMode === 'enhanced'} onClick={() => chooseComparisonMode('enhanced')}>Enhanced</button><button type="button" className={comparisonMode === 'original' ? 'is-active' : ''} aria-pressed={comparisonMode === 'original'} onClick={() => chooseComparisonMode('original')}>Original</button></div>}
             {!selectedSection && <p className="narration-empty">Add a slide to begin.</p>}
             {selectedSection && selectedTakes.length === 0 && <p className="narration-empty">Record this section to create its first take.</p>}
             <ol>{[...selectedTakes].reverse().map((take) => {
@@ -632,6 +675,8 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
               const usable = selectedResolved ? takeIsUsable(take, selectedResolved) : false
               const coverageIssue = take.selected && usable && selectedResolved ? getTakeRevealCoverageIssue(take, selectedResolved, presentation) : null
               const isPlaying = playback.takeId === take.id && playback.isPlaying
+              const previewKey = takePreviewKey(take)
+              const previewState = previewStates[take.id]?.key === previewKey ? previewStates[take.id] : undefined
               return <li key={take.id} ref={take.id === latestTakeId ? latestTakeRef : undefined} className={`narration-take${take.selected && usable ? ' is-selected' : ''}${take.id === latestTakeId ? ' is-new' : ''}`}>
                 <div className="take-summary"><div><strong>Take {index + 1}</strong><small className={!usable ? 'is-invalid' : ''}>{!usable ? 'Re-record needed' : take.selected ? 'Selected for final video' : take.id === latestTakeId ? 'Just recorded' : 'Ready to use'}</small></div><time>{formatDuration(take.durationMs)}</time></div>
                 <div className="take-actions">
@@ -640,6 +685,8 @@ export function NarrationStudio({ presentation, initialSlideIndex, onPresentatio
                   <button className="delete-take" onClick={() => void removeTake(take)} disabled={recorderBusy} aria-label={`Delete Take ${index + 1}`}>Delete</button>
                 </div>
                 {playback.takeId === take.id && <div className="narration-scrubber"><input type="range" min="0" max={Math.max(1, take.durationMs)} step="100" value={Math.min(playback.currentTimeMs, take.durationMs)} onChange={(event) => playback.seek(Number(event.target.value) / 1000)} aria-label={`Seek Take ${index + 1}`} /><span>{formatDuration(playback.currentTimeMs)} / {formatDuration(take.durationMs)}</span></div>}
+                {presentation.voiceEnhance === 'standard' && previewState?.status === 'preparing' && <small className="narration-processing-status" role="status">Preparing enhanced preview… {comparisonMode === 'enhanced' ? 'Play uses original audio for now.' : ''}</small>}
+                {presentation.voiceEnhance === 'standard' && previewState?.warning && <small className="narration-processing-status" role="status">{previewState.warning}</small>}
                 {coverageIssue && <small className="narration-coverage-warning">{coverageIssue}</small>}
               </li>
             })}</ol>

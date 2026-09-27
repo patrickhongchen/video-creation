@@ -20,6 +20,8 @@ export const CHANNELS = {
   exportStart: 'video-essay:export:start',
   exportCancel: 'video-essay:export:cancel',
   exportProgress: 'video-essay:export:progress',
+  narrationEnhancePreview: 'video-essay:narration:enhance-preview',
+  finalPreviewAudio: 'video-essay:final-preview:audio',
   openVideo: 'video-essay:file:open-video',
   showInFinder: 'video-essay:file:show-in-finder',
   renderJob: 'video-essay:render:job',

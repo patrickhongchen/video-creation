@@ -13,6 +13,8 @@ export function useNarrationPlayback({ onSceneCue, onError }: UseNarrationPlayba
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
+  const sourceKeyRef = useRef<string | null>(null)
+  const durationMsRef = useRef(0)
   const cuesRef = useRef<SceneCue[]>([])
   const nextCueIndexRef = useRef(0)
   const frameRef = useRef<number | null>(null)
@@ -39,6 +41,7 @@ export function useNarrationPlayback({ onSceneCue, onError }: UseNarrationPlayba
     audioRef.current = null
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
     objectUrlRef.current = null
+    sourceKeyRef.current = null
     cuesRef.current = []
     nextCueIndexRef.current = 0
   }, [stopFrame])
@@ -57,7 +60,7 @@ export function useNarrationPlayback({ onSceneCue, onError }: UseNarrationPlayba
     const update = () => {
       const audio = audioRef.current
       if (!audio || audio.paused || audio.ended) return
-      const timeMs = audio.currentTime * 1000
+      const timeMs = Math.min(durationMsRef.current, audio.currentTime * 1000)
       setCurrentTimeMs(timeMs)
       syncCues(timeMs)
       frameRef.current = requestAnimationFrame(update)
@@ -68,30 +71,38 @@ export function useNarrationPlayback({ onSceneCue, onError }: UseNarrationPlayba
 
   const attachAudioEvents = useCallback((audio: HTMLAudioElement) => {
     audio.onplay = () => { setIsPlaying(true); runFrame() }
-    audio.onpause = () => { setIsPlaying(false); stopFrame(); setCurrentTimeMs(audio.currentTime * 1000) }
-    audio.onended = () => { setIsPlaying(false); stopFrame(); setCurrentTimeMs(audio.duration * 1000 || 0) }
+    audio.onpause = () => { setIsPlaying(false); stopFrame(); setCurrentTimeMs(Math.min(durationMsRef.current, audio.currentTime * 1000)) }
+    audio.onended = () => { setIsPlaying(false); stopFrame(); setCurrentTimeMs(durationMsRef.current) }
     audio.onerror = () => callbacksRef.current.onError('This narration audio could not be played.')
   }, [runFrame, stopFrame])
 
-  const play = useCallback(async (take: NarrationTake) => {
+  const play = useCallback(async (take: NarrationTake, sourceBlob: Blob = take.blob, sourceKey = 'original') => {
     let audio = audioRef.current
-    if (takeId !== take.id || !audio) {
+    if (takeId !== take.id || sourceKeyRef.current !== sourceKey || !audio) {
+      const resumeAtSeconds = takeId === take.id && audio ? Math.min(take.durationMs / 1000, audio.currentTime) : 0
       releaseAudio()
-      if (!take.blob || take.blob.size === 0) {
+      if (!sourceBlob || sourceBlob.size === 0) {
         callbacksRef.current.onError('The audio Blob for this take is missing.')
         return
       }
-      const url = URL.createObjectURL(take.blob)
+      const url = URL.createObjectURL(sourceBlob)
       objectUrlRef.current = url
       audio = new Audio(url)
       audio.preload = 'auto'
       audioRef.current = audio
+      sourceKeyRef.current = sourceKey
+      durationMsRef.current = take.durationMs
       cuesRef.current = sortSceneCues(take.cues)
       nextCueIndexRef.current = 0
       setTakeId(take.id)
-      setCurrentTimeMs(0)
+      setCurrentTimeMs(resumeAtSeconds * 1000)
       attachAudioEvents(audio)
-      syncCues(0, true)
+      syncCues(resumeAtSeconds * 1000, true)
+      if (resumeAtSeconds > 0) {
+        const nextAudio = audio
+        nextAudio.currentTime = resumeAtSeconds
+        nextAudio.addEventListener('loadedmetadata', () => { if (audioRef.current === nextAudio) nextAudio.currentTime = resumeAtSeconds }, { once: true })
+      }
     }
     try {
       await audio.play()
@@ -106,9 +117,7 @@ export function useNarrationPlayback({ onSceneCue, onError }: UseNarrationPlayba
     const audio = audioRef.current
     if (!audio) return
     const requestedSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0
-    const nextSeconds = Number.isFinite(audio.duration)
-      ? Math.min(requestedSeconds, Math.max(0, audio.duration))
-      : requestedSeconds
+    const nextSeconds = Math.min(requestedSeconds, durationMsRef.current / 1000)
     audio.currentTime = nextSeconds
     const timeMs = nextSeconds * 1000
     setCurrentTimeMs(timeMs)

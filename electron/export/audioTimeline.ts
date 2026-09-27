@@ -1,7 +1,9 @@
 import path from 'node:path'
 import { writeFile } from 'node:fs/promises'
 import type { DesktopExportJob, NarrationExportSegment } from './types'
-import { narrationProcessingSuffix } from './narrationAudioProcessing'
+import { durationSeconds, exactDurationFilters } from './narrationAudioProcessing'
+import { masterNarrationProgram, runAudioFfmpeg } from './narrationLoudness'
+import { processNarrationTake, type ProcessNarrationTakeResult } from './narrationTakeProcessor'
 
 function extensionForMimeType(mimeType: string) {
   const normalized = mimeType.toLowerCase().split(';', 1)[0]
@@ -19,10 +21,6 @@ function audioBuffer(segment: NarrationExportSegment) {
   return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
 }
 
-function seconds(durationMs: number) {
-  return (durationMs / 1000).toFixed(6)
-}
-
 function safeFilenamePart(value: string) {
   return value
     .normalize('NFKD')
@@ -34,53 +32,87 @@ function safeFilenamePart(value: string) {
 }
 
 export interface AudioTimeline {
-  inputArgs: string[]
-  filterComplex: string
+  /** Exact-duration, final-mastered PCM WAV consumed by the video encoder. */
+  audioPath: string
+  /** Exposed for diagnostics/tests; these files contain the original bytes verbatim. */
+  rawInputPaths: string[]
+  takeResults: ProcessNarrationTakeResult[]
+  normalized: boolean
 }
 
-export async function createAudioTimeline(job: DesktopExportJob, tempDirectory: string): Promise<AudioTimeline> {
+export async function createAudioTimeline(
+  job: DesktopExportJob,
+  tempDirectory: string,
+  signal?: AbortSignal,
+): Promise<AudioTimeline> {
   const inputArgs: string[] = []
-  const inputIndexBySegment = new Map<number, number>()
-  let nextInputIndex = 1 // raw video is input zero
+  const processedInputBySegment = new Map<number, number>()
+  const rawInputPaths: string[] = []
+  const takeResults: ProcessNarrationTakeResult[] = []
+  const mode = job.presentation.voiceEnhance ?? 'off'
 
   for (let index = 0; index < job.segments.length; index += 1) {
     const segment = job.segments[index]
     if (segment.type !== 'narration') continue
-    const filename = `take-${String(index + 1).padStart(3, '0')}-${safeFilenamePart(segment.sectionId || segment.title)}${extensionForMimeType(segment.audio.mimeType)}`
-    const inputPath = path.join(tempDirectory, filename)
-    await writeFile(inputPath, audioBuffer(segment), { mode: 0o600 })
-    inputArgs.push('-i', inputPath)
-    inputIndexBySegment.set(index, nextInputIndex)
-    nextInputIndex += 1
+    const stem = `take-${String(index + 1).padStart(3, '0')}-${safeFilenamePart(segment.sectionId || segment.title)}`
+    const rawInputPath = path.join(tempDirectory, `${stem}-raw${extensionForMimeType(segment.audio.mimeType)}`)
+    const processedPath = path.join(tempDirectory, `${stem}-processed.wav`)
+    await writeFile(rawInputPath, audioBuffer(segment), { mode: 0o600 })
+    rawInputPaths.push(rawInputPath)
+    takeResults.push(await processNarrationTake({
+      inputPath: rawInputPath,
+      outputPath: processedPath,
+      durationMs: segment.durationMs,
+      mode,
+      signal,
+    }))
+    processedInputBySegment.set(index, inputArgs.length / 2)
+    inputArgs.push('-i', processedPath)
   }
 
   const filters: string[] = []
   const labels: string[] = []
   job.segments.forEach((segment, index) => {
     const output = `a${index}`
-    const duration = seconds(segment.durationMs)
     if (segment.type === 'silent-scene') {
-      filters.push(`anullsrc=r=48000:cl=stereo:d=${duration},asetpts=PTS-STARTPTS[${output}]`)
+      filters.push(`anullsrc=r=48000:cl=stereo:d=${durationSeconds(segment.durationMs)},asetpts=PTS-STARTPTS[${output}]`)
     } else {
-      const inputIndex = inputIndexBySegment.get(index)
+      const inputIndex = processedInputBySegment.get(index)
       if (inputIndex === undefined) throw new Error(`Narration audio for “${segment.title}” was not prepared.`)
-      filters.push(
-        `[${inputIndex}:a:0]aresample=48000,`
-        + `aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo,`
-        + `atrim=duration=${duration},apad=pad_dur=${duration},atrim=duration=${duration},`
-        + `asetpts=PTS-STARTPTS[${output}]`,
-      )
+      filters.push(`[${inputIndex}:a:0]${exactDurationFilters(segment.durationMs).join(',')}[${output}]`)
     }
     labels.push(`[${output}]`)
   })
 
   if (job.finalHoldMs > 0) {
     const holdLabel = `a${job.segments.length}`
-    filters.push(`anullsrc=r=48000:cl=stereo:d=${seconds(job.finalHoldMs)},asetpts=PTS-STARTPTS[${holdLabel}]`)
+    filters.push(`anullsrc=r=48000:cl=stereo:d=${durationSeconds(job.finalHoldMs)},asetpts=PTS-STARTPTS[${holdLabel}]`)
     labels.push(`[${holdLabel}]`)
   }
-  const processing = narrationProcessingSuffix(job.presentation.voiceEnhance ?? 'off', inputIndexBySegment.size > 0, seconds(job.totalDurationMs))
-  filters.push(`${labels.join('')}concat=n=${labels.length}:v=0:a=1${processing}[aout]`)
+  if (labels.length === 0) {
+    const label = 'a0'
+    filters.push(`anullsrc=r=48000:cl=stereo:d=${durationSeconds(job.totalDurationMs)},asetpts=PTS-STARTPTS[${label}]`)
+    labels.push(`[${label}]`)
+  }
+  filters.push(`${labels.join('')}concat=n=${labels.length}:v=0:a=1[aout]`)
 
-  return { inputArgs, filterComplex: filters.join(';') }
+  const assembledPath = path.join(tempDirectory, 'narration-assembled.wav')
+  await runAudioFfmpeg([
+    '-hide_banner', '-loglevel', 'warning', '-y',
+    ...inputArgs,
+    '-filter_complex', filters.join(';'),
+    '-map', '[aout]',
+    '-c:a', 'pcm_s16le', '-ar', '48000', '-ac', '2',
+    assembledPath,
+  ], signal)
+
+  const audioPath = path.join(tempDirectory, 'narration-mastered.wav')
+  const master = await masterNarrationProgram({
+    inputPath: assembledPath,
+    outputPath: audioPath,
+    durationMs: job.totalDurationMs,
+    signal,
+    whollySilent: processedInputBySegment.size === 0,
+  })
+  return { audioPath, rawInputPaths, takeResults, normalized: master.normalized }
 }

@@ -2,10 +2,11 @@ import { mkdir, mkdtemp, rename, rm } from 'node:fs/promises'
 import path from 'node:path'
 import { app, dialog, type BrowserWindow, type SaveDialogOptions, type WebContents } from 'electron'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
-import { createAudioTimeline } from './audioTimeline'
 import { CHANNELS } from './channels'
 import { OffscreenRenderSession, rendererLocation, type InputPixelFormat } from './createRenderWindow'
 import { probeDurationMs, spawnFfmpeg, waitForExit, waitForSpawn } from './ffmpeg'
+import { finalPreviewAudioCache } from '../finalPreviewAudioProcessor'
+import { finalPreviewAudioRequestFromExportJob } from '../finalPreviewAudioCache'
 import {
   VIDEO_FPS,
   VIDEO_HEIGHT,
@@ -119,8 +120,7 @@ function encodingArgs(
   job: DesktopExportJob,
   pixelFormat: InputPixelFormat,
   outputPath: string,
-  inputArgs: string[],
-  filterComplex: string,
+  audioPath: string,
 ) {
   const frameCount = Math.ceil(job.totalDurationMs * VIDEO_FPS / 1000)
   return [
@@ -132,10 +132,9 @@ function encodingArgs(
     '-video_size', `${VIDEO_WIDTH}x${VIDEO_HEIGHT}`,
     '-framerate', String(VIDEO_FPS),
     '-i', 'pipe:0',
-    ...inputArgs,
-    '-filter_complex', filterComplex,
+    '-i', audioPath,
     '-map', '0:v:0',
-    '-map', '[aout]',
+    '-map', '1:a:0',
     '-frames:v', String(frameCount),
     '-c:v', 'libx264',
     '-preset', 'veryfast',
@@ -281,14 +280,17 @@ export class VideoExporter {
       await renderSession.sendJob(active.job)
       throwIfCancelled(signal)
 
-      const timeline = await createAudioTimeline(active.job, active.tempDirectory)
+      const timeline = await finalPreviewAudioCache.prepareMastered(
+        finalPreviewAudioRequestFromExportJob(active.job),
+        signal,
+      )
+      throwIfCancelled(signal)
       const stderr = { value: '' }
       const child = spawnFfmpeg(encodingArgs(
         active.job,
         pixelFormat,
         active.encodedOutputPath,
-        timeline.inputArgs,
-        timeline.filterComplex,
+        timeline.audioPath,
       ))
       active.ffmpeg = child
       child.stderr.setEncoding('utf8')
@@ -326,6 +328,9 @@ export class VideoExporter {
       await rename(active.encodedOutputPath, active.outputPath)
       this.completedOutputs.add(active.outputPath)
       return { status: 'completed', outputPath: active.outputPath, durationMs }
+    } catch (error) {
+      if (signal.aborted) throw new ExportCancelledError()
+      throw error
     } finally {
       // The outer export cleanup removes both OS-temp inputs and the hidden
       // destination-side partial without touching a pre-existing final file.

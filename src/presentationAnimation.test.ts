@@ -42,7 +42,7 @@ describe('element entrance animation validation', () => {
     expect(() => validatePresentation(presentationWithAnimation(animation))).toThrow(error)
   })
 
-  it('migrates legacy delays into sorted reveal groups and drops authored timing', () => {
+  it('converts legacy timing metadata on a schema-v2 composition slide into sorted reveal groups', () => {
     const parsed = validatePresentation(presentationWithAnimations([
       { entrance: 'fade', delayMs: 1200, durationMs: 500 },
       { entrance: 'pop', delayMs: 500, durationMs: 100 },

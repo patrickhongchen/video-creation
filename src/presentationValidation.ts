@@ -21,6 +21,7 @@ import type {
 } from './model'
 import { migratePresentationV1ToV2 } from './presentationMigration'
 import { isSafeProjectAssetPath } from './projectAssets'
+import { deriveLegacyAnimationOrders, parseLegacyTimingAnimation } from './validation/legacyAnimationCompatibility'
 
 export class PresentationValidationError extends Error {
   constructor(message: string) {
@@ -197,39 +198,13 @@ function elementFrame(value: unknown, path: string) {
   }
 }
 
-const MAX_ELEMENT_ENTRANCE_DELAY_MS = 60_000
-const MAX_ELEMENT_ENTRANCE_DURATION_MS = 10_000
-
 function positiveInteger(value: unknown, path: string): number {
   const result = numericValue(value, path)
   if (!Number.isSafeInteger(result) || result <= 0) fail(path, 'expected a positive integer')
   return result
 }
 
-function legacyAnimationOrders(elements: unknown[], path: string): ReadonlyMap<number, number> {
-  const delays = new Set<number>()
-  const canonicalOrders = new Set<number>()
-  elements.forEach((candidate, index) => {
-    const element = object(candidate, `${path}[${index}]`)
-    if (element.animation === undefined) return
-    const animation = object(element.animation, `${path}[${index}].animation`)
-    if (animation.order !== undefined) {
-      canonicalOrders.add(positiveInteger(animation.order, `${path}[${index}].animation.order`))
-      return
-    }
-    delays.add(boundedNumber(animation.delayMs, `${path}[${index}].animation.delayMs`, 0, MAX_ELEMENT_ENTRANCE_DELAY_MS))
-    boundedNumber(animation.durationMs, `${path}[${index}].animation.durationMs`, 0, MAX_ELEMENT_ENTRANCE_DURATION_MS)
-  })
-
-  const result = new Map<number, number>()
-  let nextOrder = 1
-  Array.from(delays).sort((a, b) => a - b).forEach((delay) => {
-    while (canonicalOrders.has(nextOrder)) nextOrder += 1
-    result.set(delay, nextOrder)
-    nextOrder += 1
-  })
-  return result
-}
+const legacyAnimationValidation = { object, positiveInteger, boundedNumber, fail }
 
 function elementAnimation(value: unknown, path: string, legacyOrders: ReadonlyMap<number, number>): SlideEntranceAnimation | undefined {
   if (value === undefined) return undefined
@@ -244,11 +219,13 @@ function elementAnimation(value: unknown, path: string, legacyOrders: ReadonlyMa
       order: positiveInteger(data.order, `${path}.order`),
     }
   }
-  const delay = boundedNumber(data.delayMs, `${path}.delayMs`, 0, MAX_ELEMENT_ENTRANCE_DELAY_MS)
-  boundedNumber(data.durationMs, `${path}.durationMs`, 0, MAX_ELEMENT_ENTRANCE_DURATION_MS)
-  const order = legacyOrders.get(delay)
-  if (order === undefined) fail(`${path}.delayMs`, 'could not derive a reveal order')
-  return { entrance: data.entrance as SlideEntranceAnimation['entrance'], order }
+  return parseLegacyTimingAnimation(
+    data,
+    path,
+    data.entrance as SlideEntranceAnimation['entrance'],
+    legacyOrders,
+    legacyAnimationValidation,
+  )
 }
 
 function elementBase(data: Record<string, unknown>, path: string, legacyOrders: ReadonlyMap<number, number>) {
@@ -358,7 +335,7 @@ function parseSlide(value: unknown, index: number, assetIds: ReadonlySet<string>
   const path = `presentation.slides[${index}]`
   const data = object(value, path)
   if (!Array.isArray(data.elements)) fail(`${path}.elements`, 'expected an array')
-  const legacyOrders = legacyAnimationOrders(data.elements, `${path}.elements`)
+  const legacyOrders = deriveLegacyAnimationOrders(data.elements, `${path}.elements`, legacyAnimationValidation)
   const elements = data.elements.map((element, elementIndex) => parseElement(element, `${path}.elements[${elementIndex}]`, assetIds, legacyOrders))
   const elementIds = new Set<string>()
   const sharedIds = new Set<string>()
@@ -573,7 +550,7 @@ function parseLegacyScene(value: unknown, index: number, assetIds: ReadonlySet<s
       }
     case 'composition': {
       if (!Array.isArray(data.elements)) fail(`${path}.elements`, 'expected an array')
-      const legacyOrders = legacyAnimationOrders(data.elements, `${path}.elements`)
+      const legacyOrders = deriveLegacyAnimationOrders(data.elements, `${path}.elements`, legacyAnimationValidation)
       const elements = data.elements.map((element, elementIndex) => parseElement(element, `${path}.elements[${elementIndex}]`, assetIds, legacyOrders))
       const elementIds = new Set<string>()
       elements.forEach((element, elementIndex) => {

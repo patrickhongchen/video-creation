@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
-import type { Presentation, PresentationImageMimeType, Slide, SlideElement } from './model'
+import { useCallback, useEffect, useReducer, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
+import type { Presentation, Slide, SlideElement } from './model'
 import { createBlankPresentation, createSlideFromPreset, createSlideImageElement, duplicatePresentation, duplicateSlide, duplicateSlideElement, makePresentationIdUnique, type SlidePreset } from './presentationFactories'
 import { downloadPresentation, readPresentationFile } from './presentationFiles'
 import { loadPresentationLibrary, savePresentationLibrary, type PresentationLibrary } from './storage/presentationStorage'
@@ -14,32 +14,11 @@ import { getDesktopBridge } from './desktop/desktopBridge'
 import type { DesktopImportedAsset, DesktopProjectExternalChange, DesktopProjectSnapshot } from './desktop/desktopTypes'
 import { presentationHistoryReducer } from './presentationHistory'
 import { canAutoApplyProjectChange, pendingChangeKind, selectionAfterProjectReload } from './projectSync'
-import { DEFAULT_ENTRANCE_DURATION_MS, INITIAL_REVEAL_STATE, nextRevealOrder, previousSlideFor, slideRevealOrders } from './entranceAnimation'
+import { useRevealPreview } from './editor/useRevealPreview'
+import { imageMimeType, isSupportedImageMimeType, readImageRatio } from './imageUtils'
 
 type AppMode = 'edit' | 'present' | 'narrate'
 type PendingChoice = 'save' | 'discard' | 'cancel'
-
-const IMAGE_MIME_TYPES = new Set<PresentationImageMimeType>(['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'])
-
-function supportedImageMime(file: File): PresentationImageMimeType | null {
-  const declared = file.type === 'image/jpg' ? 'image/jpeg' : file.type
-  if (IMAGE_MIME_TYPES.has(declared as PresentationImageMimeType)) return declared as PresentationImageMimeType
-  const extension = file.name.split('.').pop()?.toLowerCase()
-  if (extension === 'png') return 'image/png'
-  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg'
-  if (extension === 'webp') return 'image/webp'
-  if (extension === 'svg') return 'image/svg+xml'
-  return null
-}
-
-function readImageRatio(source: string) {
-  return new Promise<number>((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => resolve(image.naturalWidth > 0 && image.naturalHeight > 0 ? image.naturalWidth / image.naturalHeight : 1)
-    image.onerror = () => reject(new Error('The imported image could not be decoded.'))
-    image.src = source
-  })
-}
 
 function imageFromClipboardHtml(html: string) {
   if (!html.trim()) return null
@@ -82,9 +61,6 @@ export function App() {
   const [projectDialog, setProjectDialog] = useState<'new' | 'rename' | 'delete' | null>(null)
   const [projectName, setProjectName] = useState('')
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
-  const [previewRun, setPreviewRun] = useState<{ slideId: string; presentationId: string; generation: number } | null>(null)
-  const [revealRun, setRevealRun] = useState<{ key: string; through: number; active: number; startedAt: number } | null>(null)
-  const [revealClockMs, setRevealClockMs] = useState(0)
   const [compositionGrid, setCompositionGrid] = useState(false)
   const [compositionGuides, setCompositionGuides] = useState(false)
   const [compositionSnap, setCompositionSnap] = useState(true)
@@ -101,36 +77,7 @@ export function App() {
 
   const presentation = library.presentations.find((item) => item.id === library.activePresentationId) ?? library.presentations[0]
   const selectedSlide = presentation.slides[selectedIndex] ?? presentation.slides[0]
-  const revealOrders = useMemo(() => slideRevealOrders(selectedSlide, previousSlideFor(presentation.slides, selectedSlide)), [presentation.slides, selectedSlide])
-  const isPreviewing = previewRun?.slideId === selectedSlide.id && previewRun.presentationId === presentation.id && mode === 'edit'
-  const revealKey = `${presentation.id}:${selectedSlide.id}:${mode}:${isPreviewing ? previewRun?.generation : ''}`
-  const currentReveal = revealRun?.key === revealKey ? revealRun : null
-  const revealState = currentReveal ? {
-    revealedThroughOrder: currentReveal.through,
-    activeRevealOrder: currentReveal.active,
-    activeRevealElapsedMs: Math.max(0, revealClockMs - currentReveal.startedAt),
-  } : INITIAL_REVEAL_STATE
   selectedIndexRef.current = selectedIndex
-
-  useEffect(() => {
-    if (!currentReveal || currentReveal.active === null) return
-    let frame = 0
-    const update = (now: number) => {
-      setRevealClockMs(now)
-      if (now < currentReveal.startedAt + DEFAULT_ENTRANCE_DURATION_MS) frame = requestAnimationFrame(update)
-    }
-    frame = requestAnimationFrame(update)
-    return () => cancelAnimationFrame(frame)
-  }, [currentReveal?.key, currentReveal?.startedAt])
-
-  useEffect(() => {
-    if (isPreviewing && revealOrders.length === 0) setPreviewRun(null)
-  }, [isPreviewing, revealOrders.length])
-
-  const startPreview = () => {
-    if (revealOrders.length === 0) return
-    setPreviewRun((previous) => ({ slideId: selectedSlide.id, presentationId: presentation.id, generation: (previous?.generation ?? 0) + 1 }))
-  }
 
   const updateCurrent = useCallback((update: (current: Presentation) => Presentation) => {
     dispatchHistory({ type: 'edit', update })
@@ -155,25 +102,24 @@ export function App() {
 
   const selectSlide = useCallback((next: number) => {
     const safeIndex = Math.max(0, Math.min(next, presentation.slides.length - 1))
-    setRevealRun(null)
     setDirection(safeIndex >= selectedIndex ? 1 : -1)
     setSelectedIndex(safeIndex)
   }, [presentation.slides.length, selectedIndex])
 
   const previous = useCallback(() => selectSlide(selectedIndex - 1), [selectSlide, selectedIndex])
   const next = useCallback(() => selectSlide(selectedIndex + 1), [selectSlide, selectedIndex])
-
-  const advanceReveal = useCallback(() => {
-    const order = nextRevealOrder(revealOrders, revealState.revealedThroughOrder)
-    if (order === null) {
-      if (isPreviewing) setPreviewRun(null)
-      else if (selectedIndex < presentation.slides.length - 1) next()
-      return
-    }
-    const startedAt = performance.now()
-    setRevealClockMs(startedAt)
-    setRevealRun({ key: revealKey, through: order, active: order, startedAt })
-  }, [isPreviewing, next, presentation.slides.length, revealKey, revealOrders, revealState.revealedThroughOrder, selectedIndex])
+  const onRevealSequenceEnd = useCallback(() => {
+    if (selectedIndex < presentation.slides.length - 1) next()
+  }, [next, presentation.slides.length, selectedIndex])
+  const {
+    advanceReveal,
+    isPreviewing,
+    resetReveal,
+    revealOrders,
+    revealState,
+    startPreview,
+    stopPreview,
+  } = useRevealPreview({ presentation, slide: selectedSlide, mode, onSequenceEnd: onRevealSequenceEnd })
 
   useEffect(() => {
     if (currentProject) return
@@ -201,10 +147,6 @@ export function App() {
   useEffect(() => setSelectedElementId(null), [selectedSlide.id])
 
   useEffect(() => {
-    setPreviewRun(null)
-  }, [selectedSlide.id, presentation.id, mode])
-
-  useEffect(() => {
     if (mode !== 'present') return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'ArrowRight' || event.key === ' ') { event.preventDefault(); advanceReveal() }
@@ -219,11 +161,11 @@ export function App() {
     if (!isPreviewing) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'ArrowRight' || event.key === ' ') { event.preventDefault(); advanceReveal() }
-      if (event.key === 'Escape') setPreviewRun(null)
+      if (event.key === 'Escape') stopPreview()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [advanceReveal, isPreviewing])
+  }, [advanceReveal, isPreviewing, stopPreview])
 
   useEffect(() => {
     if (mode !== 'edit' || isPreviewing || !selectedElementId) return
@@ -655,7 +597,7 @@ export function App() {
 
   const importImageBytes = useCallback(async (file: File, suggestedName: string, center?: { x: number; y: number }) => {
     if (!desktop || !currentProject) return
-    const mimeType = supportedImageMime(file)
+    const mimeType = imageMimeType(file)
     if (!mimeType) throw new Error('Supported image types are PNG, JPEG, WebP, and SVG.')
     const asset = await desktop.saveImageBytes({
       projectId: currentProject.projectId,
@@ -672,7 +614,7 @@ export function App() {
       const response = await fetch(source)
       const blob = await response.blob()
       const mimeType = blob.type === 'image/jpg' ? 'image/jpeg' : blob.type
-      if (!IMAGE_MIME_TYPES.has(mimeType as PresentationImageMimeType)) throw new Error('The copied image format is not supported.')
+      if (!isSupportedImageMimeType(mimeType)) throw new Error('The copied image format is not supported.')
       await importImageBytes(new File([blob], suggestedName, { type: mimeType }), 'pasted-image')
       return
     }
@@ -692,7 +634,7 @@ export function App() {
           if (file) clipboardFiles.push(file)
         })
       }
-      const imageFile = clipboardFiles.find((file) => supportedImageMime(file))
+      const imageFile = clipboardFiles.find((file) => imageMimeType(file))
       if (imageFile && currentProject) {
         event.preventDefault()
         internalCopyIsCurrent.current = false
@@ -770,7 +712,7 @@ export function App() {
   const dropProjectImage = async (event: ReactDragEvent<HTMLElement>) => {
     event.preventDefault()
     if (isPreviewing) return
-    const file = [...event.dataTransfer.files].find((candidate) => supportedImageMime(candidate))
+    const file = [...event.dataTransfer.files].find((candidate) => imageMimeType(candidate))
     if (!file || !currentProject || !desktop) {
       if (event.dataTransfer.files.length) setError('Only PNG, JPEG, WebP, and SVG images can be dropped on a slide.')
       return
@@ -923,7 +865,7 @@ export function App() {
         <div className="topbar-end">
           <span className={`save-state${dirty ? ' is-dirty' : ''}`}>{!dirty && !externalPending && !externalIssue && <CheckIcon />} {externalIssue ? 'Project sync warning' : externalPending ? 'External changes pending' : dirty ? 'Unsaved changes' : currentProject ? syncStatus === 'updated' ? 'Updated from disk' : 'Watching for changes' : `Saved${saveTime ? ` ${saveTime}` : ''}`}</span>
           <button className="narrate-button" onClick={() => setMode('narrate')}>Narrate</button>
-          <button className="present-button" onClick={() => { setRevealRun(null); setMode('present') }}><PlayIcon /> Present</button>
+          <button className="present-button" onClick={() => { resetReveal(); setMode('present') }}><PlayIcon /> Present</button>
         </div>
       </header>
 
@@ -1011,7 +953,7 @@ export function App() {
           revealedCount={revealOrders.filter((order) => order <= revealState.revealedThroughOrder).length}
           onNextReveal={advanceReveal}
           onPreviewSlide={startPreview}
-          onStopPreview={() => setPreviewRun(null)}
+          onStopPreview={stopPreview}
           onSelectElement={setSelectedElementId}
           onImportImage={currentProject ? chooseProjectImage : undefined}
         />

@@ -224,7 +224,9 @@ export function resolveCaptionSettings(
   return presentation.captionSettings ?? { enabled: false, style: 'social' }
 }
 
-// Compatibility names for the Phase 5B element vocabulary.
+// Deprecated source-compatibility exports for integrations that adopted the
+// historical Scene/Composition vocabulary. Runtime code uses Slide/SlideElement;
+// keep these aliases separate from the v1 document types below.
 export type SceneTransition = SlideTransition
 export type Scene = Slide
 export type CompositionElementBase = SlideElementBase

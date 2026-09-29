@@ -26,6 +26,8 @@ export interface ResolvedPlaybackVisual {
   revealState: RevealVisualState
   segmentIndex: number
   segment: DesktopExportSegment | undefined
+  segmentElapsedMs: number
+  inFinalHold: boolean
   pointerState: NarrationPointerDisplayState | null
 }
 
@@ -70,6 +72,8 @@ export function resolvePlaybackVisual(job: Pick<DesktopExportJob, 'presentation'
     revealState,
     segmentIndex,
     segment: activeSegment,
+    segmentElapsedMs: localTimeMs,
+    inFinalHold: !!activeSegment && localTimeMs >= activeSegment.durationMs,
     pointerState,
   }
 }

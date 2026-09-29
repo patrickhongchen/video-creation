@@ -234,6 +234,7 @@ export function createBlankPresentation(title = 'Untitled Presentation'): Presen
   return {
     schemaVersion: 2,
     voiceEnhance: 'standard',
+    captionSettings: { enabled: false, style: 'social' },
     id: createStableId(slugify(title)),
     title,
     tagline: 'A new presentation.',

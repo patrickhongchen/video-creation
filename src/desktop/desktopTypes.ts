@@ -14,6 +14,7 @@ export interface DesktopNarrationSegment {
   durationMs: number
   cues: SceneCue[]
   pointerTrack?: NarrationPointerSample[]
+  captions?: NarrationCaptionTrack
   audio: {
     takeId: string
     mimeType: string

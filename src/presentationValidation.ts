@@ -8,6 +8,7 @@ import type {
   LegacyScene,
   NarrationStructure,
   Presentation,
+  PresentationCaptionSettings,
   PresentationImageAsset,
   PresentationImageMimeType,
   PresentationTheme,
@@ -654,6 +655,18 @@ function parseVoiceEnhance(value: unknown): VoiceEnhanceMode {
   return fail('presentation.voiceEnhance', 'expected "off" or "standard"')
 }
 
+function parseCaptionSettings(value: unknown): PresentationCaptionSettings {
+  if (value === undefined) return { enabled: false, style: 'social' }
+  const data = object(value, 'presentation.captionSettings')
+  if (typeof data.enabled !== 'boolean') {
+    fail('presentation.captionSettings.enabled', 'expected a boolean')
+  }
+  if (data.style !== 'social' && data.style !== 'minimal') {
+    fail('presentation.captionSettings.style', 'expected "social" or "minimal"')
+  }
+  return { enabled: data.enabled, style: data.style }
+}
+
 export function validatePresentationV2(value: unknown): Presentation {
   const data = object(value, 'presentation')
   if (data.schemaVersion !== 2) fail('presentation.schemaVersion', 'unsupported or missing version (expected 2)')
@@ -672,6 +685,7 @@ export function validatePresentationV2(value: unknown): Presentation {
   return {
     schemaVersion: 2,
     voiceEnhance: parseVoiceEnhance(data.voiceEnhance),
+    captionSettings: parseCaptionSettings(data.captionSettings),
     id: id(data.id, 'presentation.id'),
     title: string(data.title, 'presentation.title'),
     tagline: string(data.tagline, 'presentation.tagline'),

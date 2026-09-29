@@ -1,5 +1,5 @@
 import type { VoiceEnhanceMode } from '../../src/model'
-import type { SceneCue } from '../../src/narration/narrationTypes'
+import type { NarrationCaptionTrack, SceneCue } from '../../src/narration/narrationTypes'
 import type { NarrationPointerSample } from '../../src/narration/resolveNarrationPointer'
 
 export const VIDEO_WIDTH = 1080
@@ -16,6 +16,7 @@ export interface NarrationExportSegment {
   durationMs: number
   cues: ExportCue[]
   pointerTrack?: NarrationPointerSample[]
+  captions?: NarrationCaptionTrack
   audio: {
     takeId: string
     mimeType: string

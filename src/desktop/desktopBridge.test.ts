@@ -6,6 +6,41 @@ import type { NarrationTake } from '../narration/narrationTypes'
 import { buildDesktopExportJob, desktopSegmentsFromFinalPlan } from './desktopBridge'
 
 describe('buildDesktopExportJob', () => {
+  it('deep-copies selected-take captions into the desktop renderer job', async () => {
+    const slide = samplePresentation.slides[0]
+    const section = { id: 'section-captions', title: 'Caption section', slideIds: [slide.id] }
+    const presentation = { ...samplePresentation, slides: [slide], narration: { sections: [section] } }
+    const take: NarrationTake = {
+      id: 'take-captions', presentationId: presentation.id, sectionId: section.id,
+      createdAt: '2026-01-01T00:00:00.000Z', durationMs: 1000,
+      mimeType: 'audio/webm', cues: [{ type: 'slide', sceneId: slide.id, timeMs: 0 }],
+      captions: {
+        version: 1, provider: 'whisper.cpp', model: 'medium.en', generatedAt: '2026-01-01T00:01:00.000Z',
+        segments: [{
+          id: 'caption-one', startMs: 100, endMs: 900,
+          generatedText: 'Disney plus added subscribers.', text: 'Disney+ added subscribers.',
+        }],
+      },
+      selected: true, blob: new Blob([Uint8Array.from([1])], { type: 'audio/webm' }),
+    }
+    const plan = buildFinalPlaybackPlan(presentation, { [section.id]: [take] })
+    const sourceSegments = desktopSegmentsFromFinalPlan(plan)
+    const source = sourceSegments[0]
+    expect(source.type === 'narration' && 'captions' in source && source.captions).toEqual(take.captions)
+    expect(source.type === 'narration' && 'captions' in source && source.captions).not.toBe(take.captions)
+    expect(source.type === 'narration' && 'captions' in source && source.captions?.segments).not.toBe(take.captions?.segments)
+
+    const job = await buildDesktopExportJob({
+      jobId: 'job-captions', presentation, editorViewportWidth: 1440,
+      finalHoldMs: plan.finalHoldMs, totalDurationMs: plan.totalDurationMs,
+      suggestedBaseName: 'captions', segments: sourceSegments,
+    })
+    expect(job.segments[0]).toMatchObject({
+      type: 'narration',
+      captions: { segments: [{ text: 'Disney+ added subscribers.' }] },
+    })
+  })
+
   it('keeps a selected take pointer track through the final plan and export frame', async () => {
     const slide = samplePresentation.slides[0]
     const section = { id: 'section-pointer', title: 'Pointer section', slideIds: [slide.id] }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { Presentation } from '../model'
+import { resolveCaptionSettings, type CaptionStyle, type Presentation } from '../model'
 import { slugify } from '../presentationFactories'
 import { createNarrationStorage } from '../narration/narrationStorage'
 import { buildFinalPlaybackPlan } from '../finalPlayback/buildFinalPlaybackPlan'
@@ -17,12 +17,16 @@ import { ArrowLeftIcon, CheckIcon, CloseIcon, PlayIcon } from './Icons'
 import { validatePresentation } from '../presentationValidation'
 import { decodePresentationAssets, findMissingPresentationAssets } from '../projectAssetReadiness'
 import { resolveFinalPlaybackSeek } from '../finalPlayback/resolveFinalPlaybackSeek'
+import { resolveFinalVideoCaption } from '../finalPlayback/resolveFinalVideoCaption'
+import { getFinalCaptionCoverage } from '../finalPlayback/getFinalCaptionCoverage'
+import { FinalVideoFrame } from './FinalVideoFrame'
 
 interface FinalVideoStudioProps {
   presentation: Presentation
   projectId: string | null
   onExit: () => void
   onOpenNarration: (sectionId: string) => void
+  onPresentationChange: (presentation: Presentation) => void
 }
 
 type ExportState = 'ready' | 'preparing' | 'rendering' | 'exported'
@@ -44,7 +48,7 @@ function createJobId() {
     : `export-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-export function FinalVideoStudio({ presentation, projectId, onExit, onOpenNarration }: FinalVideoStudioProps) {
+export function FinalVideoStudio({ presentation, projectId, onExit, onOpenNarration, onPresentationChange }: FinalVideoStudioProps) {
   const desktop = getDesktopBridge()
   const narrationStorage = useMemo(() => createNarrationStorage(projectId), [projectId])
   const [takesBySection, setTakesBySection] = useState<NarrationTakesBySection>({})
@@ -63,7 +67,7 @@ export function FinalVideoStudio({ presentation, projectId, onExit, onOpenNarrat
 
   const plan = useMemo(
     () => buildFinalPlaybackPlan(presentation, takesBySection),
-    [presentation, takesBySection],
+    [presentation.id, presentation.slides, presentation.narration, takesBySection],
   )
   const presentationIssue = useMemo(() => {
     try {
@@ -141,6 +145,15 @@ export function FinalVideoStudio({ presentation, projectId, onExit, onOpenNarrat
   const activeSegmentIndex = visualSegment ? plan.segments.indexOf(visualSegment) : -1
   const segmentStartMs = activeSegmentIndex < 0 ? 0 : plan.segments.slice(0, activeSegmentIndex).reduce((sum, segment) => sum + segment.durationMs, 0)
   const segmentElapsedMs = scrubPosition?.segmentElapsedMs ?? Math.max(0, playback.currentTimeMs - segmentStartMs)
+  const captionSettings = resolveCaptionSettings(presentation)
+  const inFinalHold = scrubPosition?.inFinalHold ?? playback.currentTimeMs >= plan.contentDurationMs
+  const captionText = resolveFinalVideoCaption(
+    visualSegment?.type === 'narration' ? visualSegment.take.captions : undefined,
+    segmentElapsedMs,
+    captionSettings.enabled,
+    inFinalHold,
+  )
+  const captionCoverage = getFinalCaptionCoverage(plan)
   const narrationVisual = visualSegment?.type === 'narration'
     ? resolveNarrationVisualAtTime(
         visualSegment.take.cues,
@@ -283,7 +296,9 @@ export function FinalVideoStudio({ presentation, projectId, onExit, onOpenNarrat
 
         <section className="final-stage-panel">
           <div className="final-stage-well">
-            {activeSlide && <Stage slide={activeSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={activeSlideIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} revealState={activeRevealState} pointerState={pointerState} className="final-stage" />}
+            {activeSlide && <FinalVideoFrame className="final-stage-frame" captionText={captionText} captionStyle={captionSettings.style}>
+              <Stage slide={activeSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={activeSlideIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} revealState={activeRevealState} pointerState={pointerState} className="final-stage" />
+            </FinalVideoFrame>}
           </div>
           <div className="final-scrubber-panel">
             <div className="final-scrubber-row">
@@ -299,6 +314,27 @@ export function FinalVideoStudio({ presentation, projectId, onExit, onOpenNarrat
         <aside className="final-export-panel">
           <div className="final-panel-heading"><div><small>Whole presentation</small><h2>Review &amp; export</h2></div></div>
           <div className="final-readiness-content">
+          <section className="final-caption-settings" aria-label="Captions">
+            <h3>Captions</h3>
+            <div className="final-caption-toggle" role="group" aria-label="Caption output">
+              <button type="button" aria-pressed={!captionSettings.enabled} onClick={() => onPresentationChange({ ...presentation, captionSettings: { ...captionSettings, enabled: false } })}>Off</button>
+              <button type="button" aria-pressed={captionSettings.enabled} onClick={() => onPresentationChange({ ...presentation, captionSettings: { ...captionSettings, enabled: true } })}>On</button>
+            </div>
+            {captionSettings.enabled && <>
+              <label className="final-caption-style">Style
+                <select value={captionSettings.style} onChange={(event) => onPresentationChange({ ...presentation, captionSettings: { ...captionSettings, style: event.target.value as CaptionStyle } })}>
+                  <option value="social">Social</option><option value="minimal">Minimal</option>
+                </select>
+              </label>
+              {takesStatus === 'ready' && <>
+                <p className="final-caption-coverage">{captionCoverage.narratedCount === 0 ? 'No narrated sections require captions.' : captionCoverage.missingSections.length === 0 ? '✓ All narrated sections captioned' : `${captionCoverage.captionedCount} of ${captionCoverage.narratedCount} narrated sections have captions`}</p>
+                {captionCoverage.missingSections.length > 0 && <div className="final-caption-missing">
+                  {captionCoverage.missingSections.length} narrated section{captionCoverage.missingSections.length === 1 ? ' has' : 's have'} no captions. {captionCoverage.missingSections.length === 1 ? 'That section' : 'Those sections'} will play without subtitles.
+                  {captionCoverage.missingSections.map((section) => <button key={section.sectionId} type="button" disabled={busy} onClick={() => openSection(section.sectionId)}>Add captions to {section.title || 'section'}</button>)}
+                </div>}
+              </>}
+            </>}
+          </section>
           <p className="final-muted"><strong>{plan.readiness.length - readinessIssueCount} of {plan.readiness.length}</strong> sections ready · {formatTime(plan.totalDurationMs)} total</p>
           {takesStatus === 'loading' ? <p className="final-muted">Loading local takes…</p> : null}
           {previewAudioStatus === 'preparing' ? <p className="final-muted" role="status">Preparing mastered preview audio…</p> : null}

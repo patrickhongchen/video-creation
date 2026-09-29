@@ -769,6 +769,7 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
     return <FinalVideoStudio
       presentation={presentation}
       projectId={projectId}
+      onPresentationChange={onPresentationChange}
       onExit={() => setWorkspaceView('narration')}
       onOpenNarration={(sectionId) => {
         if (sectionId) {

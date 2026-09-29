@@ -1,6 +1,6 @@
 import type { DesktopExportJob } from './desktopTypes'
 import type { NarrationPointerSample } from '../narration/resolveNarrationPointer'
-import type { SceneCue } from '../narration/narrationTypes'
+import type { NarrationCaptionTrack, SceneCue } from '../narration/narrationTypes'
 import type { FinalPlaybackPlan } from '../finalPlayback/finalPlaybackTypes'
 
 export function getDesktopBridge() {
@@ -24,6 +24,7 @@ export type DesktopExportSourceSegment = DesktopExportJob['segments'][number]
         durationMs: number
         cues: SceneCue[]
         pointerTrack?: NarrationPointerSample[]
+        captions?: NarrationCaptionTrack
         takeId: string
         mimeType: string
         blob: Blob
@@ -40,6 +41,12 @@ export function desktopSegmentsFromFinalPlan(plan: FinalPlaybackPlan): DesktopEx
         durationMs: segment.durationMs,
         cues: segment.take.cues.map((cue) => ({ ...cue })),
         pointerTrack: segment.take.pointerTrack?.map((sample) => ({ ...sample })),
+        captions: segment.take.captions === undefined
+          ? undefined
+          : {
+              ...segment.take.captions,
+              segments: segment.take.captions.segments.map((caption) => ({ ...caption })),
+            },
         takeId: segment.take.id,
         mimeType: segment.take.mimeType,
         blob: segment.take.blob,
@@ -59,6 +66,7 @@ export async function buildDesktopExportJob(job: Omit<DesktopExportJob, 'segment
       durationMs: segment.durationMs,
       cues: segment.cues,
       pointerTrack: segment.pointerTrack,
+      captions: segment.captions,
       audio: {
         takeId: segment.takeId,
         mimeType: segment.mimeType,

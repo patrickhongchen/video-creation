@@ -197,9 +197,17 @@ export interface NarrationStructure {
 
 export type VoiceEnhanceMode = 'off' | 'standard'
 
+export type CaptionStyle = 'social' | 'minimal'
+
+export interface PresentationCaptionSettings {
+  enabled: boolean
+  style: CaptionStyle
+}
+
 export interface Presentation {
   schemaVersion: 2
   voiceEnhance: VoiceEnhanceMode
+  captionSettings?: PresentationCaptionSettings
   id: string
   title: string
   tagline: string
@@ -208,6 +216,12 @@ export interface Presentation {
   imageAssets?: PresentationImageAsset[]
   slides: Slide[]
   narration?: NarrationStructure
+}
+
+export function resolveCaptionSettings(
+  presentation: Pick<Presentation, 'captionSettings'>,
+): PresentationCaptionSettings {
+  return presentation.captionSettings ?? { enabled: false, style: 'social' }
 }
 
 // Compatibility names for the Phase 5B element vocabulary.

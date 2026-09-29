@@ -4,6 +4,9 @@ import { resolvePlaybackVisual } from '../finalPlayback/resolvePlaybackVisual'
 import { Stage } from './Stage'
 import { decodePresentationAssets } from '../projectAssetReadiness'
 import { MotionGlobalConfig, frameData } from 'motion/react'
+import { resolveCaptionSettings } from '../model'
+import { resolveFinalVideoCaption } from '../finalPlayback/resolveFinalVideoCaption'
+import { FinalVideoFrame } from './FinalVideoFrame'
 
 export function ExportRenderSurface() {
   // Motion's JS driver uses the requested video timestamp in this isolated renderer.
@@ -62,6 +65,13 @@ export function ExportRenderSurface() {
   }, [bridge, job, requestedFrame])
 
   const visual = useMemo(() => job ? resolvePlaybackVisual(job, elapsedMs) : null, [elapsedMs, job])
+  const captionSettings = job ? resolveCaptionSettings(job.presentation) : null
+  const captionText = resolveFinalVideoCaption(
+    visual?.segment?.type === 'narration' ? visual.segment.captions : undefined,
+    visual?.segmentElapsedMs ?? 0,
+    captionSettings?.enabled ?? false,
+    visual?.inFinalHold ?? false,
+  )
   const direction: 1 | -1 = visual && visual.slideIndex < previousSlideIndexRef.current ? -1 : 1
   if (visual) previousSlideIndexRef.current = visual.slideIndex
 
@@ -79,21 +89,23 @@ export function ExportRenderSurface() {
       className="export-render-surface"
       style={{ '--stage-vw': `${job.editorViewportWidth / 100}px` } as CSSProperties}
     >
-      <Stage
-        slide={visual.slide}
-        slides={job.presentation.slides}
-        theme={job.presentation.theme}
-        imageAssets={job.presentation.imageAssets}
-        presentationId={job.presentation.id}
-        slideNumber={visual.slideIndex + 1}
-        slideCount={job.presentation.slides.length}
-        direction={direction}
-        renderInstanceKey={`desktop-export-${job.jobId}`}
-        className="export-stage"
-        revealState={visual.revealState}
-        pointerState={visual.pointerState}
-        deterministicMotion
-      />
+      <FinalVideoFrame captionText={captionText} captionStyle={captionSettings?.style ?? 'social'}>
+        <Stage
+          slide={visual.slide}
+          slides={job.presentation.slides}
+          theme={job.presentation.theme}
+          imageAssets={job.presentation.imageAssets}
+          presentationId={job.presentation.id}
+          slideNumber={visual.slideIndex + 1}
+          slideCount={job.presentation.slides.length}
+          direction={direction}
+          renderInstanceKey={`desktop-export-${job.jobId}`}
+          className="export-stage"
+          revealState={visual.revealState}
+          pointerState={visual.pointerState}
+          deterministicMotion
+        />
+      </FinalVideoFrame>
     </main>
   )
 }

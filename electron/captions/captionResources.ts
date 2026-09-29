@@ -12,15 +12,16 @@ export function resolveWhisperExecutable() {
     : DEVELOPMENT_WHISPER_BINARY
 }
 
-/** The model is user-managed application data, never a Project or Git asset. */
+/** An installed app-data model overrides the bundled model. Neither is Project data. */
 export async function resolveWhisperModel() {
   const applicationModel = applicationWhisperModelPath()
-  if (app.isPackaged) return applicationModel
   try {
     await access(applicationModel)
     return applicationModel
   } catch {
-    return DEVELOPMENT_MEDIUM_EN_MODEL
+    return app.isPackaged
+      ? path.join(process.resourcesPath, 'whisper', 'ggml-medium.en.bin')
+      : DEVELOPMENT_MEDIUM_EN_MODEL
   }
 }
 

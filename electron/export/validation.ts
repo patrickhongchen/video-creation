@@ -4,6 +4,8 @@ import type { DesktopExportJob, DesktopRenderFrameRequest, ExportCue, ExportSegm
 const MAX_JOB_DURATION_MS = 4 * 60 * 60 * 1000
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024 * 1024
 const POINTER_DURATION_TOLERANCE_MS = 100
+const CAPTION_DURATION_TOLERANCE_MS = 1_000 // Match portable narration metadata from Phase B.
+const MAX_CAPTION_TEXT_LENGTH = 10_000
 const MIME_PATTERN = /^audio\/[a-z0-9.+-]+(?:\s*;[^\r\n]*)?$/i
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -46,6 +48,37 @@ function isPointerSample(value: unknown, sceneIds: readonly string[], durationMs
     && typeof value.visible === 'boolean'
 }
 
+function isCaptionSegment(value: unknown, durationMs: number) {
+  return isRecord(value)
+    && isNonEmptyString(value.id)
+    && isDuration(value.startMs, true)
+    && isDuration(value.endMs)
+    && value.endMs > value.startMs
+    && value.endMs <= durationMs + CAPTION_DURATION_TOLERANCE_MS
+    && isNonEmptyString(value.generatedText, MAX_CAPTION_TEXT_LENGTH)
+    && isNonEmptyString(value.text, MAX_CAPTION_TEXT_LENGTH)
+}
+
+function isCaptionTrack(value: unknown, durationMs: number) {
+  if (!isRecord(value)
+    || value.version !== 1
+    || value.provider !== 'whisper.cpp'
+    || value.model !== 'medium.en'
+    || typeof value.generatedAt !== 'string'
+    || value.generatedAt.length > 100
+    || !Number.isFinite(Date.parse(value.generatedAt))
+    || !Array.isArray(value.segments)
+    || !value.segments.every((segment) => isCaptionSegment(segment, durationMs))) return false
+
+  const ids = new Set<string>()
+  for (const segment of value.segments) {
+    const id = (segment as Record<string, unknown>).id as string
+    if (ids.has(id)) return false
+    ids.add(id)
+  }
+  return true
+}
+
 function byteLength(value: unknown) {
   if (value instanceof ArrayBuffer) return value.byteLength
   if (ArrayBuffer.isView(value)) return value.byteLength
@@ -84,6 +117,9 @@ function assertSegment(value: unknown, sceneIds: Set<string>): asserts value is 
     && (!Array.isArray(pointerTrack)
       || !pointerTrack.every((sample) => isPointerSample(sample, segmentSceneIds, segmentDurationMs)))) {
     throw new Error(`Narration section “${value.title}” contains invalid pointer samples.`)
+  }
+  if (value.captions !== undefined && !isCaptionTrack(value.captions, segmentDurationMs)) {
+    throw new Error(`Narration section “${value.title}” contains invalid captions.`)
   }
   const audio = value.audio
   if (!isRecord(audio)

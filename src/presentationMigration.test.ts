@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LegacyPresentation, Presentation, Slide } from './model'
+import { resolveCaptionSettings } from './model'
 import { createBlankPresentation, createSlideFromPreset, duplicateSlide, slidePresetOptions } from './presentationFactories'
 import { serializePresentation } from './presentationFiles'
 import { validatePresentation } from './presentationValidation'
@@ -92,6 +93,7 @@ describe('schema v1 migration', () => {
 
     expect(migrated.schemaVersion).toBe(2)
     expect(migrated.voiceEnhance).toBe('off')
+    expect(resolveCaptionSettings(migrated)).toEqual({ enabled: false, style: 'social' })
     expect(migrated.slides.map((slide) => slide.id)).toEqual(legacyPresentation.scenes.map((scene) => scene.id))
     expect(migrated.narration?.sections[0]).toEqual({
       id: 'section-1',
@@ -193,16 +195,36 @@ describe('v2 serialization and validation', () => {
   it('defaults new projects to Standard and safely loads existing v2 projects without the field', () => {
     const created = createBlankPresentation()
     expect(created.voiceEnhance).toBe('standard')
+    expect(created.captionSettings).toEqual({ enabled: false, style: 'social' })
     expect(validatePresentation(created).voiceEnhance).toBe('standard')
-    const { voiceEnhance: _previouslyAbsent, ...existing } = created
+    const {
+      voiceEnhance: _previouslyAbsent,
+      captionSettings: _previousCaptionSettings,
+      ...existing
+    } = created
     expect(validatePresentation(existing).voiceEnhance).toBe('off')
+    expect(validatePresentation(existing).captionSettings).toEqual({ enabled: false, style: 'social' })
+    expect(resolveCaptionSettings(validatePresentation(existing))).toEqual({ enabled: false, style: 'social' })
   })
 
   it('preserves the selection through project serialization and rejects invalid settings', () => {
     const presentation = createBlankPresentation()
     presentation.voiceEnhance = 'off'
+    presentation.captionSettings = { enabled: true, style: 'minimal' }
     expect(validatePresentation(JSON.parse(serializePresentation(presentation))).voiceEnhance).toBe('off')
+    expect(validatePresentation(JSON.parse(serializePresentation(presentation))).captionSettings).toEqual({
+      enabled: true,
+      style: 'minimal',
+    })
     expect(() => validatePresentation({ ...presentation, voiceEnhance: 'boosted' })).toThrow(/presentation\.voiceEnhance/)
+    expect(() => validatePresentation({
+      ...presentation,
+      captionSettings: { enabled: true, style: 'cinematic' },
+    })).toThrow(/presentation\.captionSettings\.style/)
+    expect(() => validatePresentation({
+      ...presentation,
+      captionSettings: { enabled: 'yes', style: 'social' },
+    })).toThrow(/presentation\.captionSettings\.enabled/)
   })
   it('round-trips the canonical representation without legacy scenes', () => {
     const presentation = validatePresentation(legacyPresentation)

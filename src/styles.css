@@ -28,6 +28,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .export-calibration-red { left: 0; background: rgb(255, 0, 0); }
 .export-calibration-blue { left: 16px; background: rgb(0, 0, 255); }
 .export-render-surface .export-stage { width: 1080px; height: 1920px; max-width: none; border-radius: 0; box-shadow: none; }
+.export-render-surface .final-video-frame { width: 1080px; height: 1920px; }
+.final-video-frame { position: relative; aspect-ratio: 9 / 16; container-type: inline-size; isolation: isolate; }
+.final-video-frame > .stage { width: 100%; height: 100%; max-width: none; max-height: none; }
+.caption-overlay { position: absolute; z-index: 60; right: 8%; bottom: 14%; left: 8%; display: flex; justify-content: center; pointer-events: none; color: #fff; text-align: center; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.caption-overlay span { display: block; max-width: 100%; background: rgba(10, 15, 22, .82); border-radius: 2.1cqw; padding: 1.7cqw 2.7cqw; font-size: 4.2cqw; font-weight: 750; line-height: 1.25; text-shadow: 0 1px 2px rgba(0, 0, 0, .34); }
+.caption-overlay--minimal span { background: rgba(10, 15, 22, .69); border-radius: 1.35cqw; padding: 1.2cqw 2cqw; font-size: 3.7cqw; font-weight: 600; line-height: 1.3; }
 .export-stage .scene-canvas {
   width: 432px;
   height: 768px;
@@ -740,6 +746,8 @@ button.narration-rail-slide:hover { background: #f4f7f9; }
 .final-stage-panel { grid-template-rows: minmax(0, 1fr) auto; padding: 18px 0 0; background: #e9eef2; }
 .final-stage-well { padding: 0 18px; }
 .final-stage { height: min(59vh, 650px); }
+.final-stage-frame { width: min(100%, 365.625px, calc(59vh * 9 / 16)); }
+.final-stage-frame > .final-stage { box-shadow: 0 10px 35px rgba(27,40,51,.2), 0 0 0 1px rgba(37,50,61,.08); }
 .final-scrubber-panel { display: grid; gap: 9px; min-width: 0; border-top: 1px solid #cbd4dc; background: #fff; padding: 15px 18px; }
 .final-scrubber-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 12px; }
 .final-scrubber-row > span { color: #50657b; font-size: 11px; font-variant-numeric: tabular-nums; }
@@ -754,6 +762,16 @@ button.narration-rail-slide:hover { background: #f4f7f9; }
 .final-export-panel > .final-panel-heading h2 { font-size: 18px; }
 .final-readiness-content { min-height: 0; flex: 1 1 auto; overflow-y: auto; padding-bottom: 14px; }
 .final-readiness-content > .final-muted { margin-bottom: 14px; }
+.final-caption-settings { border-top: 1px solid var(--soft-line); padding: 12px 0 4px; }
+.final-caption-settings h3 { margin: 0 0 9px; color: #27384a; font-size: 12px; }
+.final-caption-toggle { display: flex; gap: 5px; }
+.final-caption-toggle button { min-width: 52px; border: 1px solid #cbd5df; border-radius: 5px; background: #fff; padding: 6px 10px; color: #405266; font-size: 10px; font-weight: 700; }
+.final-caption-toggle button[aria-pressed="true"] { border-color: #176dff; background: #eaf2ff; color: #1757a6; }
+.final-caption-style { display: grid; gap: 5px; margin-top: 10px; color: #526276; font-size: 10px; font-weight: 650; }
+.final-caption-style select { width: 100%; min-height: 31px; border: 1px solid #cbd5df; border-radius: 5px; background: #fff; padding: 5px 7px; color: #27384a; font-size: 11px; }
+.final-caption-coverage { margin: 10px 0 0; color: #576b7d; font-size: 10px; line-height: 1.45; }
+.final-caption-missing { margin: 8px 0 0; border-radius: 5px; background: #fff5dc; padding: 9px; color: #765714; font-size: 10px; line-height: 1.45; }
+.final-caption-missing button { display: block; border: 0; background: transparent; padding: 5px 0 0; color: #73500c; font-size: 10px; font-weight: 750; text-align: left; text-decoration: underline; }
 .final-readiness-list li { display: block; padding: 0; }
 .final-readiness-row { width: 100%; display: grid; grid-template-columns: 22px minmax(0, 1fr); align-items: start; gap: 9px; border: 0; background: transparent; padding: 10px 2px; color: #27384a; text-align: left; }
 .final-readiness-row:hover { background: #f4f7fa; }
@@ -784,6 +802,7 @@ button.narration-rail-slide:hover { background: #f4f7f9; }
   .final-video-layout { grid-template-columns: 210px minmax(0, 1fr) 310px; }
   .final-video-studio { min-width: 980px; }
   .final-stage { height: min(52vh, 560px); }
+  .final-stage-frame { width: min(100%, 315px, calc(52vh * 9 / 16)); }
 }
 
 @media (max-width: 980px) {

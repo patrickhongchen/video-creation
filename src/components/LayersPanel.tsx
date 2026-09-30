@@ -4,8 +4,9 @@ import { reorderLayer } from '../layerOrder'
 import { addRevealAnimation, removeRevealAnimation, revealGroups, updateRevealEntrance } from '../animationOrder'
 import { entranceSuppressionReason, previousSlideFor } from '../entranceAnimation'
 import type { CompositionEditorProps } from './CompositionInspector'
+import { DragHandleIcon, HiddenIcon, LockedIcon, UnlockedIcon, VisibleIcon } from './Icons'
 
-type LayersPanelProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 'selectedElementId' | 'onSelect' | 'onSlideChange' | 'isPreviewing' | 'onPreviewSlide' | 'onStopPreview' | 'previewAvailable' | 'revealCount' | 'revealedCount' | 'onNextReveal'>
+type LayersPanelProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 'selectedElementIds' | 'selectedElementId' | 'hoveredElementId' | 'onSelect' | 'onHover' | 'onSlideChange' | 'isPreviewing' | 'onPreviewSlide' | 'onStopPreview' | 'previewAvailable' | 'revealCount' | 'revealedCount' | 'onNextReveal'>
 
 function fallbackName(element: SlideElement) {
   if (element.type === 'text') return 'Text'
@@ -15,7 +16,7 @@ function fallbackName(element: SlideElement) {
   return element.shape === 'rectangle' ? 'Rectangle' : element.shape === 'circle' ? 'Circle' : 'Line'
 }
 
-export function LayersPanel({ slide, presentation, selectedElementId, onSelect, onSlideChange, isPreviewing, onPreviewSlide, onStopPreview, previewAvailable, revealCount, revealedCount, onNextReveal }: LayersPanelProps) {
+export function LayersPanel({ slide, presentation, selectedElementIds, selectedElementId, hoveredElementId, onSelect, onHover, onSlideChange, isPreviewing, onPreviewSlide, onStopPreview, previewAvailable, revealCount, revealedCount, onNextReveal }: LayersPanelProps) {
   const previousSlide = previousSlideFor(presentation.slides, slide)
   const groups = revealGroups(slide)
   const [draggedId, setDraggedId] = useState<string | null>(null)
@@ -75,23 +76,25 @@ export function LayersPanel({ slide, presentation, selectedElementId, onSelect, 
       {[...slide.elements].reverse().map((element) => {
         const suppression = entranceSuppressionReason(element, previousSlide)
         return <div
-        className={`composition-layer-row${element.id === selectedElementId ? ' is-selected' : ''}${element.id === draggedId ? ' is-dragging' : ''}${dropTarget?.id === element.id ? ` drop-${dropTarget.edge}` : ''}${element.hidden ? ' is-hidden' : ''}${element.locked ? ' is-locked' : ''}`}
+        className={`composition-layer-row${selectedElementIds.includes(element.id) ? ' is-selected' : ''}${element.id === selectedElementId ? ' is-primary' : ''}${element.id === hoveredElementId ? ' is-hovered' : ''}${element.id === draggedId ? ' is-dragging' : ''}${dropTarget?.id === element.id ? ` drop-${dropTarget.edge}` : ''}${element.hidden ? ' is-hidden' : ''}${element.locked ? ' is-locked' : ''}`}
         key={element.id}
         data-layer-id={element.id}
-        onClick={() => onSelect(element.id)}
+        onClick={(event) => onSelect(element.id, event.shiftKey)}
+        onMouseEnter={() => onHover(element.id)}
+        onMouseLeave={() => onHover(null)}
       >
         <button
           type="button"
           className="composition-layer-grip"
           aria-label={`Drag ${element.name} to reorder`}
           title="Drag to reorder layer"
-          onClick={(event) => { event.stopPropagation(); onSelect(element.id) }}
+          onClick={(event) => { event.stopPropagation(); if (event.detail === 0) onSelect(element.id, event.shiftKey) }}
           onPointerDown={(event) => {
             if (event.button !== 0) return
             event.stopPropagation()
             event.currentTarget.setPointerCapture(event.pointerId)
             drag.current = { id: element.id, startY: event.clientY, moved: false }
-            onSelect(element.id)
+            onSelect(element.id, event.shiftKey)
           }}
           onPointerMove={(event) => {
             if (!drag.current) return
@@ -103,10 +106,18 @@ export function LayersPanel({ slide, presentation, selectedElementId, onSelect, 
             if (target?.id !== dropTarget?.id || target?.edge !== dropTarget?.edge) setDropTarget(target)
           }}
           onPointerCancel={finishDrag}
-        >⠿</button>
-        <input className="composition-layer-select" aria-label={`Layer name for ${element.name}`} value={element.name} onFocus={() => onSelect(element.id)} onChange={(event) => updateElement({ ...element, name: event.target.value })} onBlur={() => { if (!element.name.trim()) updateElement({ ...element, name: fallbackName(element) }) }} />
-        <button type="button" aria-label={`${element.hidden ? 'Show' : 'Hide'} ${element.name}`} title={element.hidden ? 'Show layer' : 'Hide layer'} onClick={(event) => { event.stopPropagation(); updateElement({ ...element, hidden: !element.hidden }) }}>{element.hidden ? '○' : '●'}</button>
-        <button type="button" aria-label={`${element.locked ? 'Unlock' : 'Lock'} ${element.name}`} title={element.locked ? 'Unlock layer' : 'Lock layer'} onClick={(event) => { event.stopPropagation(); updateElement({ ...element, locked: !element.locked }) }}>{element.locked ? '🔒' : '◇'}</button>
+        ><DragHandleIcon /></button>
+        <div className="composition-layer-identity">
+          <input className="composition-layer-select" aria-label={`Layer name for ${element.name}`} value={element.name}
+            onMouseDown={(event) => { if (event.shiftKey) event.preventDefault() }}
+            onClick={(event) => { event.stopPropagation(); onSelect(element.id, event.shiftKey) }}
+            onFocus={() => onSelect(element.id)}
+            onChange={(event) => updateElement({ ...element, name: event.target.value })}
+            onBlur={() => { if (!element.name.trim()) updateElement({ ...element, name: fallbackName(element) }) }} />
+          <span className="composition-layer-meta">{element.type}{element.animation ? ` · ${element.animation.entrance.replace('-', ' ')} · Step ${element.animation.order}` : ' · Visible immediately'}</span>
+        </div>
+        <button type="button" aria-pressed={Boolean(element.hidden)} aria-label={`${element.hidden ? 'Show' : 'Hide'} ${element.name}`} title={element.hidden ? 'Show layer' : 'Hide layer'} onClick={(event) => { event.stopPropagation(); updateElement({ ...element, hidden: !element.hidden }) }}>{element.hidden ? <HiddenIcon /> : <VisibleIcon />}</button>
+        <button type="button" aria-pressed={Boolean(element.locked)} aria-label={`${element.locked ? 'Unlock' : 'Lock'} ${element.name}`} title={element.locked ? 'Unlock layer' : 'Lock layer'} onClick={(event) => { event.stopPropagation(); updateElement({ ...element, locked: !element.locked }) }}>{element.locked ? <LockedIcon /> : <UnlockedIcon />}</button>
         <div className="composition-layer-animation" onClick={(event) => event.stopPropagation()}>
           <label><span>Entrance</span><select
             aria-label={`Entrance for ${element.name}`}

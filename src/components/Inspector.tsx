@@ -12,8 +12,12 @@ interface InspectorProps {
   onNext: () => void
   hasPrevious: boolean
   hasNext: boolean
+  selectedElementIds: string[]
   selectedElementId: string | null
-  onSelectElement: (elementId: string | null) => void
+  hoveredElementId: string | null
+  onSelectElement: (elementId: string | null, additive?: boolean) => void
+  onSelectionChange: (elementIds: string[]) => void
+  onHover: (elementId: string | null) => void
   onImportImage?: (action: 'add' | 'replace') => void
   isPreviewing: boolean
   onPreviewSlide: () => void
@@ -59,14 +63,15 @@ function SlideInspector({ slide, onChange }: Pick<InspectorProps, 'slide' | 'onC
   </div>
 }
 
-export function Inspector({ slide, onChange, presentation, onPresentationChange, onPrevious, onNext, hasPrevious, hasNext, selectedElementId, onSelectElement, onImportImage, isPreviewing, onPreviewSlide, onStopPreview, previewAvailable, revealCount, revealedCount, onNextReveal }: InspectorProps) {
+export function Inspector({ slide, onChange, presentation, onPresentationChange, onPrevious, onNext, hasPrevious, hasNext, selectedElementIds, selectedElementId, hoveredElementId, onSelectElement, onSelectionChange, onHover, onImportImage, isPreviewing, onPreviewSlide, onStopPreview, previewAvailable, revealCount, revealedCount, onNextReveal }: InspectorProps) {
   const [activeTab, setActiveTab] = useState<InspectorTab>('slide')
   useEffect(() => {
     if (selectedElementId) setActiveTab((current) => current === 'slide' ? 'element' : current)
   }, [selectedElementId])
 
   const editorProps = {
-    slide, presentation, selectedElementId, onSelect: onSelectElement,
+    slide, presentation, selectedElementIds, selectedElementId, hoveredElementId,
+    onSelect: onSelectElement, onSelectionChange, onHover,
     onSlideChange: onChange, onPresentationChange, onImportImage,
     isPreviewing, onPreviewSlide, onStopPreview, previewAvailable,
     revealCount, revealedCount, onNextReveal,

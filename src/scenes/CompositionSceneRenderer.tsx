@@ -13,12 +13,16 @@ import type {
 } from '../model'
 
 export interface SlideEditorController {
+  selectedElementIds: string[]
   selectedElementId: string | null
+  hoveredElementId: string | null
   grid: boolean
   guides: boolean
   snap: boolean
-  onSelect: (elementId: string | null) => void
+  onSelect: (elementId: string | null, additive?: boolean) => void
+  onHover: (elementId: string | null) => void
   onElementChange: (element: SlideElement) => void
+  onElementsChange: (elements: SlideElement[]) => void
 }
 
 interface SlideRendererProps {
@@ -46,6 +50,9 @@ interface Interaction {
   centerY?: number
   startPointerAngle?: number
   startRotation?: number
+  groupFrames?: Map<string, ElementFrame>
+  moved: boolean
+  collapseOnClick: boolean
 }
 
 interface SnapResult {
@@ -79,19 +86,20 @@ function nearestSnap(value: number, targets: number[], tolerance: number) {
   return match
 }
 
-function snapTargets(scene: Slide, excludedId: string) {
+function snapTargets(scene: Slide, excludedIds: readonly string[]) {
+  const excluded = new Set(excludedIds)
   const x = [COMPOSITION_WIDTH / 2, SAFE_ZONE.left, SAFE_ZONE.right]
   const y = [COMPOSITION_HEIGHT / 2, SAFE_ZONE.top, SAFE_ZONE.bottom]
   scene.elements.forEach((element) => {
-    if (element.id === excludedId || element.hidden) return
+    if (excluded.has(element.id) || element.hidden) return
     x.push(element.frame.x, element.frame.x + element.frame.width / 2, element.frame.x + element.frame.width)
     y.push(element.frame.y, element.frame.y + element.frame.height / 2, element.frame.y + element.frame.height)
   })
   return { x, y }
 }
 
-function snapDraggedFrame(frame: ElementFrame, scene: Slide, elementId: string, tolerance: number): SnapResult {
-  const targets = snapTargets(scene, elementId)
+function snapDraggedFrame(frame: ElementFrame, scene: Slide, excludedIds: readonly string[], tolerance: number): SnapResult {
+  const targets = snapTargets(scene, excludedIds)
   const horizontalPoints = [frame.x, frame.x + frame.width / 2, frame.x + frame.width]
   const verticalPoints = [frame.y, frame.y + frame.height / 2, frame.y + frame.height]
   let xOffset = 0
@@ -118,7 +126,7 @@ function snapDraggedFrame(frame: ElementFrame, scene: Slide, elementId: string, 
 }
 
 function snapResizedFrame(frame: ElementFrame, scene: Slide, elementId: string, corner: Corner, tolerance: number): SnapResult {
-  const targets = snapTargets(scene, elementId)
+  const targets = snapTargets(scene, [elementId])
   const fromLeft = corner.endsWith('left')
   const fromTop = corner.startsWith('top')
   const edgeX = fromLeft ? frame.x : frame.x + frame.width
@@ -240,9 +248,9 @@ const noopMotionUpdate = () => undefined
 export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAssets, editor, revealState = null, previousSlide, deterministicMotion = false }: SlideRendererProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<Interaction | null>(null)
-  const previewFrameRef = useRef<ElementFrame | null>(null)
+  const previewFramesRef = useRef<Map<string, ElementFrame>>(new Map())
   const [scale, setScale] = useState(0.4)
-  const [preview, setPreview] = useState<{ elementId: string; frame: ElementFrame } | null>(null)
+  const [previewFrames, setPreviewFrames] = useState<Map<string, ElementFrame>>(new Map())
   const [snapGuides, setSnapGuides] = useState<{ x?: number; y?: number }>({})
   const assetsById = useMemo(() => new Map(imageAssets?.map((asset) => [asset.id, asset]) ?? []), [imageAssets])
 
@@ -267,6 +275,7 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
       const y = (event.clientY - rect.top) * COMPOSITION_HEIGHT / rect.height
       const deltaX = x - interaction.startX
       const deltaY = y - interaction.startY
+      if (Math.abs(deltaX) > 0.5 || Math.abs(deltaY) > 0.5) interaction.moved = true
       let frame = { ...interaction.frame }
       if (interaction.kind === 'drag') {
         frame.x += deltaX
@@ -304,7 +313,7 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
       if (interaction.kind !== 'rotate' && editor.snap && !event.altKey) {
         const tolerance = 7 * COMPOSITION_WIDTH / rect.width
         result = interaction.kind === 'drag'
-          ? snapDraggedFrame(frame, scene, interaction.element.id, tolerance)
+          ? snapDraggedFrame(frame, scene, [...(interaction.groupFrames?.keys() ?? [interaction.element.id])], tolerance)
           : interaction.element.type === 'image' && !event.shiftKey
             ? { frame }
             : snapResizedFrame(frame, scene, interaction.element.id, interaction.corner!, tolerance)
@@ -316,18 +325,36 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
           width: Math.round(result.frame.width),
           height: Math.round(result.frame.height),
         }
-      previewFrameRef.current = canonicalFrame
-      setPreview({ elementId: interaction.element.id, frame: canonicalFrame })
+      const nextFrames = new Map<string, ElementFrame>()
+      if (interaction.kind === 'drag' && interaction.groupFrames && interaction.groupFrames.size > 1) {
+        const appliedX = canonicalFrame.x - interaction.frame.x
+        const appliedY = canonicalFrame.y - interaction.frame.y
+        interaction.groupFrames.forEach((groupFrame, id) => nextFrames.set(id, {
+          ...groupFrame,
+          x: groupFrame.x + appliedX,
+          y: groupFrame.y + appliedY,
+        }))
+      } else nextFrames.set(interaction.element.id, canonicalFrame)
+      previewFramesRef.current = nextFrames
+      setPreviewFrames(nextFrames)
       setSnapGuides({ x: result.guideX, y: result.guideY })
     }
     const finish = (event: PointerEvent) => {
       const interaction = interactionRef.current
       if (!interaction || event.pointerId !== interaction.pointerId) return
-      const frame = previewFrameRef.current
-      if (frame) editor.onElementChange({ ...interaction.element, frame })
+      const frames = previewFramesRef.current
+      const frame = frames.get(interaction.element.id)
+      if (!interaction.moved && interaction.kind === 'drag') {
+        if (interaction.collapseOnClick) editor.onSelect(interaction.element.id, false)
+      } else if (interaction.kind === 'drag' && frames.size > 1) {
+        editor.onElementsChange(scene.elements.map((element) => {
+          const nextFrame = frames.get(element.id)
+          return nextFrame ? { ...element, frame: nextFrame } : element
+        }))
+      } else if (frame) editor.onElementChange({ ...interaction.element, frame })
       interactionRef.current = null
-      previewFrameRef.current = null
-      setPreview(null)
+      previewFramesRef.current = new Map()
+      setPreviewFrames(new Map())
       setSnapGuides({})
     }
     window.addEventListener('pointermove', onPointerMove)
@@ -343,11 +370,18 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
   const startInteraction = (event: ReactPointerEvent, element: SlideElement, kind: Interaction['kind'], corner?: Corner) => {
     event.preventDefault()
     event.stopPropagation()
-    editor?.onSelect(element.id)
-    if (!editor || element.locked) return
+    const alreadySelected = editor?.selectedElementIds.includes(element.id) ?? false
+    const collapseOnClick = alreadySelected && (editor?.selectedElementIds.length ?? 0) > 1
+    if (!alreadySelected || (editor?.selectedElementIds.length ?? 0) <= 1 || event.shiftKey) editor?.onSelect(element.id, event.shiftKey)
+    if (event.shiftKey) return
+    if (!editor) return
+    if (element.locked) {
+      if (collapseOnClick) editor.onSelect(element.id, false)
+      return
+    }
     const rect = hostRef.current?.getBoundingClientRect()
     if (!rect) return
-    const frame = preview && preview.elementId === element.id ? preview.frame : element.frame
+    const frame = previewFrames.get(element.id) ?? element.frame
     const startX = (event.clientX - rect.left) * COMPOSITION_WIDTH / rect.width
     const startY = (event.clientY - rect.top) * COMPOSITION_HEIGHT / rect.height
     const centerX = frame.x + frame.width / 2
@@ -364,8 +398,13 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
       centerY: kind === 'rotate' ? centerY : undefined,
       startPointerAngle: kind === 'rotate' ? Math.atan2(startY - centerY, startX - centerX) : undefined,
       startRotation: kind === 'rotate' ? frame.rotation ?? 0 : undefined,
+      moved: false,
+      collapseOnClick,
+      groupFrames: kind === 'drag' && alreadySelected
+        ? new Map(scene.elements.filter((candidate) => editor.selectedElementIds.includes(candidate.id) && !candidate.locked).map((candidate) => [candidate.id, candidate.frame]))
+        : new Map([[element.id, frame]]),
     }
-    previewFrameRef.current = frame
+    previewFramesRef.current = new Map([[element.id, frame]])
   }
 
   const logicalStyle = { width: COMPOSITION_WIDTH, height: COMPOSITION_HEIGHT, transform: `scale(${scale})` }
@@ -375,7 +414,7 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
   }
   const foreground = rootStyle.color
 
-  return <div ref={hostRef} className={`composition-host${editor ? ' is-editing' : ''}`} style={rootStyle} onPointerDown={editor ? () => editor.onSelect(null) : undefined}>
+  return <div ref={hostRef} className={`composition-host${editor ? ' is-editing' : ''}`} style={rootStyle} onPointerDown={editor ? () => editor.onSelect(null, false) : undefined} onMouseLeave={editor ? () => editor.onHover(null) : undefined}>
     <div className="composition-logical-canvas" style={logicalStyle}>
       {editor?.grid && <div className="composition-grid" />}
       {editor?.guides && <>
@@ -385,8 +424,10 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
       </>}
       {scene.elements.map((element) => {
         if (element.hidden) return null
-        const frame = preview?.elementId === element.id ? preview.frame : element.frame
-        const selected = editor?.selectedElementId === element.id
+        const frame = previewFrames.get(element.id) ?? element.frame
+        const selected = editor?.selectedElementIds.includes(element.id) ?? false
+        const primary = editor?.selectedElementId === element.id
+        const hovered = editor?.hoveredElementId === element.id
         const assetMissing = element.type === 'image' && !assetsById.has(element.assetId)
         // An incoming Morph identity stays visible; its first appearance may still enter.
         const suppressEntrance = entranceSuppressionReason(element, previousSlide) !== null
@@ -397,7 +438,7 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
           transform: `translate3d(${entrance.x}px, ${entrance.y}px, 0) scale(${entrance.scale})`,
         }
         return <motion.div
-          className={`composition-element composition-element--${element.type}${selected ? ' is-selected' : ''}${element.locked ? ' is-locked' : ''}${assetMissing ? ' has-missing-asset' : ''}${animated ? ' has-entrance' : ''}`}
+          className={`composition-element composition-element--${element.type}${selected ? ' is-selected' : ''}${primary ? ' is-primary' : ''}${hovered ? ' is-hovered' : ''}${element.locked ? ' is-locked' : ''}${assetMissing ? ' has-missing-asset' : ''}${animated ? ' has-entrance' : ''}`}
           key={elementRenderKey(element)}
           layoutId={layoutId(element, layoutNamespace)}
           layout
@@ -410,13 +451,16 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
             '--chart-muted': theme.chartStyle.muted,
           } as CSSProperties : elementStyle(frame)}
           onPointerDown={editor ? (event) => startInteraction(event, element, 'drag') : undefined}
+          onMouseEnter={editor ? () => editor.onHover(element.id) : undefined}
+          onMouseLeave={editor ? () => editor.onHover(null) : undefined}
           aria-label={element.name}
         >
           {animated
             ? <div className="composition-entrance" style={entranceStyle}><ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} deterministicMotion={deterministicMotion} /></div>
             : <ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} deterministicMotion={deterministicMotion} />}
-          {selected && editor && <div className="composition-selection" aria-hidden="true" style={{ '--composition-control-scale': 1 / Math.max(scale, 0.01) } as CSSProperties}>
-            {!element.locked && <div className="composition-rotation-control">
+          {hovered && editor && !selected && <div className="composition-hover-outline" aria-hidden="true" />}
+          {selected && editor && <div className={`composition-selection${primary ? ' is-primary' : ' is-secondary'}`} aria-hidden="true" style={{ '--composition-control-scale': 1 / Math.max(scale, 0.01) } as CSSProperties}>
+            {primary && !element.locked && <div className="composition-rotation-control">
               <button
                 type="button"
                 tabIndex={-1}
@@ -425,7 +469,7 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
               />
               <span className="composition-rotation-stem" />
             </div>}
-            {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as Corner[]).map((corner) => <button
+            {primary && !element.locked && (['top-left', 'top-right', 'bottom-left', 'bottom-right'] as Corner[]).map((corner) => <button
               type="button"
               tabIndex={-1}
               key={corner}

@@ -3,9 +3,10 @@ import { normalizedRotation } from '../elementRotation'
 import type { ElementFrame, SlideChartElement, SlideElement, SlideImageElement, SlideShape } from '../model'
 import { imageMimeType, readImageFile } from '../imageUtils'
 import { createStableId, duplicateSlideElement } from '../presentationFactories'
+import { alignSelection, deleteSelection, distributeSelection, duplicateSelection, type DistributionAxis, type SelectionAlignment } from '../editor/selectionLayout'
 import type { CompositionEditorProps } from './CompositionInspector'
 
-type ElementInspectorProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 'selectedElementId' | 'onSelect' | 'onSlideChange' | 'onPresentationChange' | 'onImportImage'>
+type ElementInspectorProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 'selectedElementIds' | 'selectedElementId' | 'onSelect' | 'onSelectionChange' | 'onSlideChange' | 'onPresentationChange' | 'onImportImage'>
 
 function Numeric({ label, displayLabel = label, value, onChange, min, max, step = 1 }: {
   label: string
@@ -65,13 +66,16 @@ function chartEditor(element: SlideChartElement, update: (next: SlideChartElemen
 export function ElementInspector({
   slide,
   presentation,
+  selectedElementIds,
   selectedElementId,
   onSelect,
+  onSelectionChange,
   onSlideChange,
   onPresentationChange,
   onImportImage,
 }: ElementInspectorProps) {
   const imageInput = useRef<HTMLInputElement>(null)
+  const selectedElements = slide.elements.filter((element) => selectedElementIds.includes(element.id))
   const selected = slide.elements.find((element) => element.id === selectedElementId) ?? null
   const updateElement = (element: SlideElement) => onSlideChange({
     ...slide,
@@ -88,7 +92,7 @@ export function ElementInspector({
     updateElement({ ...selected, frame: { ...selected.frame, [key]: next } })
   }
   const removeSelected = () => {
-    if (!selected) return
+    if (!selected || selected.locked) return
     onSlideChange({ ...slide, elements: slide.elements.filter((element) => element.id !== selected.id) })
     onSelect(null)
   }
@@ -117,6 +121,49 @@ export function ElementInspector({
     updateElement({ ...selected, assetId: asset.id })
   }
 
+  if (selectedElements.length > 1) {
+    const movableCount = selectedElements.filter((element) => !element.locked).length
+    const applyLayout = (alignment: SelectionAlignment) => onSlideChange({ ...slide, elements: alignSelection(slide.elements, selectedElementIds, alignment) })
+    const distribute = (axis: DistributionAxis) => onSlideChange({ ...slide, elements: distributeSelection(slide.elements, selectedElementIds, axis) })
+    const duplicate = () => {
+      const result = duplicateSelection(slide.elements, selectedElementIds)
+      onSlideChange({ ...slide, elements: result.elements })
+      onSelectionChange(result.selectedIds)
+    }
+    const remove = () => {
+      const elements = deleteSelection(slide.elements, selectedElementIds)
+      onSlideChange({ ...slide, elements })
+      const remainingIds = selectedElements.filter((element) => element.locked).map((element) => element.id)
+      onSelectionChange(remainingIds)
+    }
+    return <section className="selected-element-controls multi-selection-controls">
+      <div className="section-heading"><h3>{selectedElements.length} elements selected</h3><span>{movableCount} editable</span></div>
+      {movableCount < selectedElements.length && <p className="composition-help">Locked elements stay selected but are excluded from layout changes and deletion.</p>}
+      <section className="element-property-section">
+        <h4>Align</h4>
+        <div className="multi-selection-action-grid">
+          <button type="button" disabled={movableCount < 2} onClick={() => applyLayout('left')}>Left</button>
+          <button type="button" disabled={movableCount < 2} onClick={() => applyLayout('center')}>Center</button>
+          <button type="button" disabled={movableCount < 2} onClick={() => applyLayout('right')}>Right</button>
+          <button type="button" disabled={movableCount < 2} onClick={() => applyLayout('top')}>Top</button>
+          <button type="button" disabled={movableCount < 2} onClick={() => applyLayout('middle')}>Middle</button>
+          <button type="button" disabled={movableCount < 2} onClick={() => applyLayout('bottom')}>Bottom</button>
+        </div>
+      </section>
+      <section className="element-property-section">
+        <h4>Distribute</h4>
+        <div className="multi-selection-distribute-grid">
+          <button type="button" disabled={movableCount < 3} onClick={() => distribute('horizontal')}>Horizontal</button>
+          <button type="button" disabled={movableCount < 3} onClick={() => distribute('vertical')}>Vertical</button>
+        </div>
+      </section>
+      <div className="composition-inline-actions multi-selection-footer">
+        <button type="button" onClick={duplicate}>Duplicate</button>
+        <button type="button" disabled={movableCount === 0} onClick={remove}>Delete</button>
+      </div>
+    </section>
+  }
+
   if (!selected) return <section className="selected-element-controls"><div className="section-heading"><h3>Element</h3></div><p className="composition-empty">Select an element on the canvas or in Layers to edit it.</p></section>
 
   return <section className="selected-element-controls">
@@ -127,7 +174,7 @@ export function ElementInspector({
     <div className="composition-inline-actions">
       <button type="button" onClick={() => updateElement({ ...selected, locked: !selected.locked })}>{selected.locked ? 'Unlock' : 'Lock'}</button>
       <button type="button" onClick={duplicateSelected}>Duplicate</button>
-      <button type="button" onClick={removeSelected}>Delete</button>
+      <button type="button" disabled={selected.locked} title={selected.locked ? 'Unlock this element before deleting it' : undefined} onClick={removeSelected}>Delete</button>
     </div>
     <section className="element-property-section">
       <h4>{selected.type === 'text' ? 'Text' : selected.type === 'chart' ? 'Chart' : selected.type === 'image' ? 'Image' : selected.type === 'shape' ? 'Shape' : 'Arrow'}</h4>

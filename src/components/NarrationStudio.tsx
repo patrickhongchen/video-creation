@@ -2,12 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import type { NarrationSection, Presentation } from '../model'
 import { createNarrationStorage } from '../narration/narrationStorage'
 import type { NarrationCaptionTrack, NarrationRecording, NarrationTake } from '../narration/narrationTypes'
-import { getTakeRevealCoverageIssue, resolveSection, takeIsUsable } from '../narration/narrationValidation'
+import { resolveSection, takeIsUsable } from '../narration/narrationValidation'
 import { useNarrationPlayback } from '../narration/useNarrationPlayback'
 import { useNarrationRecorder } from '../narration/useNarrationRecorder'
-import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, CloseIcon, PlayIcon } from './Icons'
-import { Stage } from './Stage'
-import { NarrationSlideThumbnail } from './NarrationSlideThumbnail'
+import { CloseIcon } from './Icons'
 import { FinalVideoStudio } from './FinalVideoStudio'
 import { getDesktopBridge } from '../desktop/desktopBridge'
 import { selectTakePlaybackSource, takePreviewKey } from '../narration/takePreviewSelection'
@@ -23,7 +21,10 @@ import { NARRATION_POINTER_FADE_END_MS, narrationPointerOpacityAtTime, resolveNa
 import { coverSlidesWithSections, mergeSectionIntoPrevious, sectionsWithChangedSlideRanges, splitSectionAtSlide } from '../narration/sectionBoundaries'
 import { countCaptionEdits } from '../narration/captionReview'
 import { CaptionReviewDialog } from './CaptionReviewDialog'
-import { formatDuration, formatTimer } from './narrationTime'
+import { NarrationHeader } from './narration/NarrationHeader'
+import { NarrationSlideRail } from './narration/NarrationSlideRail'
+import { NarrationStagePanel } from './narration/NarrationStagePanel'
+import { NarrationSidebar } from './narration/NarrationSidebar'
 
 interface NarrationStudioProps {
   presentation: Presentation
@@ -45,24 +46,6 @@ function makeId(prefix: string) {
 interface CaptionReviewSelection {
   take: NarrationTake
   takeNumber: number
-}
-
-function MicrophoneMeter({ level }: { level: number }) {
-  return <div className="microphone-meter" aria-label={`Microphone level ${Math.round(level * 100)} percent`}><i style={{ transform: `scaleX(${Math.max(0.02, level)})` }} /></div>
-}
-
-function NarrationScript({ currentNotes, nextNotes, nextTitle, textSize, onSizeChange }: {
-  currentNotes: string | undefined
-  nextNotes: string | undefined
-  nextTitle: string | undefined
-  textSize: number
-  onSizeChange: (size: number) => void
-}) {
-  return <>
-    <div className="narration-script-tools"><span>Script</span><div><button aria-label="Decrease script text size" onClick={() => onSizeChange(Math.max(16, textSize - 2))}>A−</button><button aria-label="Increase script text size" onClick={() => onSizeChange(Math.min(30, textSize + 2))}>A+</button></div></div>
-    <section className="narration-notes current-notes"><span>Current</span><p style={{ fontSize: textSize }}>{currentNotes?.trim() || 'No speaker notes for this slide.'}</p></section>
-    <section className="narration-notes next-notes"><span>Next{nextTitle ? ` · ${nextTitle}` : ''}</span><p>{nextNotes?.trim() || (nextTitle ? 'No speaker notes for the next slide.' : 'End of this section.')}</p></section>
-  </>
 }
 
 export function NarrationStudio({ presentation, projectId, initialSlideIndex, onPresentationChange, onExit, onError }: NarrationStudioProps) {
@@ -724,127 +707,76 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
 
   return (
     <main className={`narration-studio mode-${uiMode}${localError ? ' has-error' : ''}`}>
-      <header className="narration-header">
-        <div><h1>Narration Studio</h1></div>
-        <div className="narration-header-settings">
-          <div className="narration-readiness"><strong>{readyCount} of {sections.length}</strong> sections ready</div>
-          <button className="narration-preview-button" onClick={() => { playback.stop(); setAudioOpen(false); setWorkspaceView('preview') }} disabled={recorderBusy || presentation.slides.length === 0}>Preview &amp; export</button>
-          <div className="narration-audio-anchor">
-            <button className="narration-audio-button" aria-expanded={audioOpen} onClick={() => {
-              const opening = !audioOpen
-              setAudioOpen(opening)
-              if (opening && (recorder.status === 'idle' || recorder.status === 'error')) void recorder.prepare(selectedDeviceId)
-              void refreshAudioInputs()
-            }} disabled={recorderBusy}>Audio ⚙</button>
-            {audioOpen && <div className="narration-audio-popover">
-              <strong>Microphone</strong>
-              <select aria-label="Microphone" value={selectedDeviceId} onChange={(event) => changeMicrophone(event.target.value)} disabled={recorder.status === 'requesting'}>
-                <option value="">System default</option>
-                {audioInputs.filter((device) => device.deviceId).map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
-              </select>
-              <small>{microphoneName}{recorder.status === 'requesting' ? ' · Requesting access…' : ''}</small>
-              <label>Microphone level <MicrophoneMeter level={recorder.level} /></label>
-              <label>Voice Enhance <select value={presentation.voiceEnhance} onChange={(event) => { playback.stop(); onPresentationChange({ ...presentation, voiceEnhance: event.target.value as 'off' | 'standard' }) }}><option value="off">Off</option><option value="standard">Standard</option></select></label>
-              <small>Standard cleans up take previews and export. Final export loudness is balanced automatically.</small>
-            </div>}
-          </div>
-        </div>
-        <button className="narration-exit" onClick={onExit} disabled={recorderBusy}><CloseIcon /> Exit</button>
-      </header>
+      <NarrationHeader
+        readyCount={readyCount} sectionCount={sections.length} slideCount={presentation.slides.length}
+        recorderBusy={recorderBusy} recorderStatus={recorder.status}
+        microphoneLevel={recorder.level} microphoneName={microphoneName}
+        audioOpen={audioOpen} audioInputs={audioInputs} selectedDeviceId={selectedDeviceId}
+        voiceEnhance={presentation.voiceEnhance}
+        onOpenPreview={() => { playback.stop(); setAudioOpen(false); setWorkspaceView('preview') }}
+        onToggleAudio={() => {
+          const opening = !audioOpen
+          setAudioOpen(opening)
+          if (opening && (recorder.status === 'idle' || recorder.status === 'error')) void recorder.prepare(selectedDeviceId)
+          void refreshAudioInputs()
+        }}
+        onChangeMicrophone={changeMicrophone}
+        onChangeVoiceEnhance={(voiceEnhance) => { playback.stop(); onPresentationChange({ ...presentation, voiceEnhance }) }}
+        onExit={onExit}
+      />
 
       {localError && <div className="narration-error" role="alert"><span>{localError}</span><button onClick={() => setLocalError('')} aria-label="Dismiss error"><CloseIcon /></button></div>}
 
       <div className="narration-layout">
-        <aside className="narration-slide-rail" aria-label="Presentation slides and section starts">
-          <div className="narration-rail-heading"><h2>Slides</h2><span>{currentOverallIndex + 1} / {presentation.slides.length}</span></div>
-          {uiMode === 'setup' && <p>Mark a slide to start the next section.</p>}
-          <div className="narration-rail-scroll">{presentation.slides.map((slide, index) => {
-            const owner = sections.find((section) => section.slideIds.includes(slide.id))
-            const isStart = owner?.slideIds[0] === slide.id
-            const sectionIndex = owner ? sections.findIndex((section) => section.id === owner.id) : -1
-            const isCurrent = index === currentOverallIndex
-            const slideCard = <><NarrationSlideThumbnail presentation={presentation} slide={slide} index={index} /><span><small>Slide {index + 1}</small><strong>{slide.title || `Slide ${index + 1}`}</strong></span></>
-            return <div className="narration-rail-entry" key={slide.id} ref={isCurrent ? activeSlideCardRef : undefined}>
-              {isStart && <div className="narration-rail-boundary"><span>{owner.title === `Section ${sectionIndex + 1}` ? owner.title : `Section ${sectionIndex + 1} · ${owner.title}`}</span>{uiMode === 'setup' && index > 0 && <button aria-label={`Remove section start before Slide ${index + 1}`} title="Merge into previous section" onClick={() => void removeSectionStart(owner.id)}>×</button>}</div>}
-              {!isStart && index > 0 && uiMode === 'setup' && <button className="narration-add-boundary" onClick={() => void addSectionStart(index)} aria-label={`Start a new section at Slide ${index + 1}`}>+ Start section here</button>}
-              {uiMode === 'setup' ? <button className={`narration-rail-slide${isCurrent ? ' is-current' : ''}`} onClick={() => selectSlide(index)} aria-current={isCurrent ? 'step' : undefined}>{slideCard}</button> : <div className={`narration-rail-slide${isCurrent ? ' is-current' : ''}`} aria-current={isCurrent ? 'step' : undefined}>{slideCard}</div>}
-            </div>
-          })}
-            {orphanSections.length > 0 && <div className="narration-rail-orphans"><strong>Sections needing repair</strong>{orphanSections.map((section) => <div key={section.id}><span>{section.title}</span>{uiMode === 'setup' && <button onClick={() => void removeOrphanSection(section.id)}>Remove</button>}</div>)}</div>}
-          </div>
-        </aside>
+        <NarrationSlideRail
+          presentation={presentation} sections={sections} orphanSections={orphanSections}
+          mode={uiMode} currentSlideIndex={currentOverallIndex}
+          activeSlideCardRef={activeSlideCardRef}
+          onSelectSlide={selectSlide}
+          onAddSectionStart={(index) => void addSectionStart(index)}
+          onRemoveSectionStart={(sectionId) => void removeSectionStart(sectionId)}
+          onRemoveOrphanSection={(sectionId) => void removeOrphanSection(sectionId)}
+        />
 
-        <section className="narration-stage-panel">
-          {currentSlide ? <div className="narration-stage-hit-area" onClick={recorder.status === 'recording' ? () => moveRecordingVisual(1) : undefined}>
-            <Stage ref={stageRef} slide={currentSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={currentOverallIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={renderInstanceKey} revealState={stageRevealState} pointerState={stagePointerState} onPointerMove={moveLivePointer} onPointerLeave={hideLivePointer} className={`narration-stage${recorder.status === 'recording' && pointerMode ? ' pointer-enabled' : ''}`} />
-          </div> : <div className="narration-empty-stage">Add a slide before recording narration.</div>}
-          <div className="narration-progress">{selectedResolved && <span>{uiMode === 'recording' ? recordingProgress : `Slide ${Math.min(activeRelativeIndex + 1, selectedResolved.slides.length)} of ${selectedResolved.slides.length} in section`}</span>}{uiMode !== 'recording' && currentOverallIndex >= 0 && <span>Presentation slide {currentOverallIndex + 1} of {presentation.slides.length}</span>}{advanceHint && recorder.status === 'recording' && <span className="narration-advance-hint">Click the slide or press Space to advance</span>}</div>
-          <div className="narration-stage-toolbar">
-            <div className="narration-toolbar-context"><strong>{selectedSection?.title ?? 'Preparing sections…'}</strong><span>{recorder.status === 'recording' ? `● Recording ${formatTimer(recorder.elapsedMs)}` : recorder.status === 'countdown' ? `Recording in ${recorder.countdown}` : recorder.status === 'requesting' ? 'Preparing microphone…' : recorder.status === 'stopping' ? 'Saving take…' : microphoneName}</span></div>
-            <div className="narration-toolbar-actions">
-              {recorder.status === 'recording' ? <>
-                <button type="button" className="pointer-toggle" aria-pressed={pointerMode} onClick={togglePointerMode} title="Toggle laser pointer (P)">Pointer <kbd>P</kbd></button>
-                <button onClick={() => moveRecordingVisual(-1)} disabled={activeRelativeIndex <= 0}><ArrowLeftIcon /> Previous</button>
-                <button onClick={() => moveRecordingVisual(1)} disabled={!selectedResolved || (upcomingRevealOrder === null && activeRelativeIndex >= selectedResolved.slides.length - 1)}>{upcomingRevealOrder === null ? 'Next slide' : 'Next reveal'} <ArrowRightIcon /></button>
-                <button className="stop-recording" onClick={finishTake}>Finish take</button>
-                <button className="discard-recording" onClick={cancelTake}>Discard recording</button>
-              </> : recorderBusy ? <>
-                <span className="narration-record-status">{recorder.status === 'countdown' ? recorder.countdown : recorder.status === 'stopping' ? 'Saving take…' : 'Preparing microphone…'}</span>
-                {recorder.status !== 'stopping' && <button className="discard-recording" onClick={cancelTake}>Cancel</button>}
-              </> : <button className="record-button" onClick={beginTake} disabled={!selectedResolved?.valid}>● Record section</button>}
-            </div>
-            <div className="narration-toolbar-meter"><span>Microphone</span><MicrophoneMeter level={recorder.level} /></div>
-          </div>
-        </section>
+        <NarrationStagePanel
+          presentation={presentation} currentSlide={currentSlide} currentSlideIndex={currentOverallIndex}
+          selectedSection={selectedSection} selectedSectionSlideCount={selectedResolved?.slides.length ?? 0}
+          selectedSectionValid={selectedResolved?.valid ?? false} activeSectionSlideIndex={activeRelativeIndex}
+          direction={direction} renderInstanceKey={renderInstanceKey}
+          revealState={stageRevealState} pointerState={stagePointerState} stageRef={stageRef}
+          mode={uiMode} recorderStatus={recorder.status} recorderBusy={recorderBusy}
+          recorderCountdown={recorder.countdown} recorderElapsedMs={recorder.elapsedMs}
+          microphoneName={microphoneName} microphoneLevel={recorder.level}
+          recordingProgress={recordingProgress} advanceHint={advanceHint} pointerMode={pointerMode}
+          hasUpcomingReveal={upcomingRevealOrder !== null}
+          onAdvanceRecording={moveRecordingVisual} onTogglePointer={togglePointerMode}
+          onFinishTake={finishTake} onCancelTake={cancelTake} onBeginTake={beginTake}
+          onPointerMove={moveLivePointer} onPointerLeave={hideLivePointer}
+        />
 
-        <aside className="narration-script-panel">
-          <div className="narration-script-content">
-            <div className="narration-section-title"><span>Current section</span><h2>{selectedSection?.title ?? 'No section selected'}</h2></div>
-            {selectedResolved && !selectedResolved.valid && <div className="narration-section-warning" role="status">{selectedResolved.issue}</div>}
-            <NarrationScript currentNotes={currentSlide?.notes} nextNotes={nextSlide?.notes} nextTitle={nextSlide?.title} textSize={scriptTextSize} onSizeChange={setScriptTextSize} />
-            {uiMode === 'setup' && selectedSection && <div className="narration-section-configuration">
-              <button className="narration-edit-toggle" onClick={() => setSectionEditorOpen(!sectionEditorOpen)} aria-expanded={sectionEditorOpen}>{sectionEditorOpen ? 'Close section settings' : 'Edit section name'}</button>
-              {sectionEditorOpen && <div className="narration-section-editor"><label><span>Section name</span><input value={draftTitle} onChange={(event) => setDraftTitle(event.target.value)} /></label><div className="narration-editor-actions">{selectedSectionIndex > 0 && <button className="danger-button" onClick={() => void removeSectionStart(selectedSection.id)}>Merge with previous</button>}<button onClick={() => { setDraftTitle(selectedSection.title); setSectionEditorOpen(false) }}>Cancel</button><button className="primary-button" onClick={saveSectionName}>Save name</button></div></div>}
-            </div>}
-          </div>
-          <section className="narration-takes" aria-label="Section takes">
-            <div className="narration-panel-heading"><h2>Takes</h2><span>{selectedTakes.length} recorded</span></div>
-            {presentation.voiceEnhance === 'standard' && selectedTakes.length > 0 && <div className="narration-preview-choice" role="group" aria-label="Take preview sound"><span>Preview:</span><button type="button" className={comparisonMode === 'enhanced' ? 'is-active' : ''} aria-pressed={comparisonMode === 'enhanced'} onClick={() => chooseComparisonMode('enhanced')}>Enhanced</button><button type="button" className={comparisonMode === 'original' ? 'is-active' : ''} aria-pressed={comparisonMode === 'original'} onClick={() => chooseComparisonMode('original')}>Original</button></div>}
-            {!selectedSection && <p className="narration-empty">Add a slide to begin.</p>}
-            {selectedSection && selectedTakes.length === 0 && <p className="narration-empty">Record this section to create its first take.</p>}
-            <ol>{[...selectedTakes].reverse().map((take) => {
-              const index = selectedTakes.findIndex((item) => item.id === take.id)
-              const usable = selectedResolved ? takeIsUsable(take, selectedResolved) : false
-              const coverageIssue = take.selected && usable && selectedResolved ? getTakeRevealCoverageIssue(take, selectedResolved, presentation) : null
-              const isPlaying = playback.takeId === take.id && playback.isPlaying
-              const previewKey = takePreviewKey(take)
-              const previewState = previewStates[take.id]?.key === previewKey ? previewStates[take.id] : undefined
-              const captionJobActive = captionJobTakeId === take.id
-              const captionEditCount = take.captions ? countCaptionEdits(take.captions) : 0
-              return <li key={take.id} ref={take.id === latestTakeId ? latestTakeRef : undefined} className={`narration-take${take.selected && usable ? ' is-selected' : ''}${take.id === latestTakeId ? ' is-new' : ''}`}>
-                <div className="take-summary"><div><strong>Take {index + 1}</strong><small className={!usable ? 'is-invalid' : ''}>{!usable ? 'Re-record needed' : take.selected ? 'Selected for final video' : take.id === latestTakeId ? 'Just recorded' : 'Ready to use'}</small></div><time>{formatDuration(take.durationMs)}</time></div>
-                <div className="take-actions">
-                  <button onClick={() => void playTake(take)} disabled={recorderBusy || Boolean(take.storageError) || take.blob.size === 0} aria-label={`${isPlaying ? 'Pause' : 'Play'} Take ${index + 1}`}>{isPlaying ? 'Pause' : <><PlayIcon /> Play</>}</button>
-                  {take.selected && usable ? <span className="take-selected"><CheckIcon /> Selected</span> : <button className="use-take" onClick={() => void chooseTake(take.id)} disabled={!usable || recorderBusy}>Use take</button>}
-                  <button className="delete-take" onClick={() => void removeTake(take)} disabled={recorderBusy || Boolean(captionJobTakeId)} aria-label={`Delete Take ${index + 1}`}>Delete</button>
-                </div>
-                <div className="take-captions">
-                  <div><strong>Captions</strong><small role={captionJobActive ? 'status' : undefined}>{captionJobActive ? 'Generating captions…' : take.captions ? `Generated · ${take.captions.segments.length} segment${take.captions.segments.length === 1 ? '' : 's'}${captionEditCount ? ` · ${captionEditCount} edited` : ''}` : 'Not generated'}</small></div>
-                  <div className="take-caption-actions">
-                    {take.captions && <button type="button" onClick={() => openCaptionReview(take, index + 1)} disabled={recorderBusy || Boolean(captionJobTakeId)}>Review captions</button>}
-                    <button type="button" onClick={() => void generateCaptions(take)} disabled={!usable || recorderBusy || Boolean(captionJobTakeId)}>{take.captions ? 'Regenerate' : 'Generate captions'}</button>
-                  </div>
-                </div>
-                {captionErrors[take.id] && <small className="caption-error" role="alert">{captionErrors[take.id]}</small>}
-                {playback.takeId === take.id && <div className="narration-scrubber"><input type="range" min="0" max={Math.max(1, take.durationMs)} step="100" value={Math.min(playback.currentTimeMs, take.durationMs)} onChange={(event) => playback.seek(Number(event.target.value) / 1000)} aria-label={`Seek Take ${index + 1}`} /><span>{formatDuration(playback.currentTimeMs)} / {formatDuration(take.durationMs)}</span></div>}
-                {presentation.voiceEnhance === 'standard' && previewState?.status === 'preparing' && <small className="narration-processing-status" role="status">Preparing enhanced preview… {comparisonMode === 'enhanced' ? 'Play uses original audio for now.' : ''}</small>}
-                {presentation.voiceEnhance === 'standard' && previewState?.warning && <small className="narration-processing-status" role="status">{previewState.warning}</small>}
-                {take.storageError && <small className="narration-coverage-warning" role="alert">{take.storageError}</small>}
-                {coverageIssue && <small className="narration-coverage-warning">{coverageIssue}</small>}
-              </li>
-            })}</ol>
-          </section>
-        </aside>
+        <NarrationSidebar
+          presentation={presentation} mode={uiMode}
+          selectedSection={selectedSection} selectedSectionIndex={selectedSectionIndex}
+          selectedResolved={selectedResolved} currentSlide={currentSlide} nextSlide={nextSlide}
+          scriptTextSize={scriptTextSize} sectionEditorOpen={sectionEditorOpen} draftTitle={draftTitle}
+          selectedTakes={selectedTakes} latestTakeId={latestTakeId} latestTakeRef={latestTakeRef}
+          recorderBusy={recorderBusy} comparisonMode={comparisonMode} previewStates={previewStates}
+          captionJobTakeId={captionJobTakeId} captionErrors={captionErrors}
+          playbackTakeId={playback.takeId} playbackIsPlaying={playback.isPlaying}
+          playbackCurrentTimeMs={playback.currentTimeMs}
+          onChangeScriptTextSize={setScriptTextSize}
+          onToggleSectionEditor={() => setSectionEditorOpen(!sectionEditorOpen)}
+          onChangeDraftTitle={setDraftTitle}
+          onMergeWithPrevious={() => selectedSection && void removeSectionStart(selectedSection.id)}
+          onCancelSectionEdit={() => { if (selectedSection) setDraftTitle(selectedSection.title); setSectionEditorOpen(false) }}
+          onSaveSectionName={saveSectionName}
+          onChooseComparisonMode={chooseComparisonMode}
+          onPlayTake={(take) => void playTake(take)} onChooseTake={(takeId) => void chooseTake(takeId)}
+          onRemoveTake={(take) => void removeTake(take)}
+          onOpenCaptionReview={openCaptionReview}
+          onGenerateCaptions={(take) => void generateCaptions(take)}
+          onSeek={playback.seek}
+        />
       </div>
       {captionReview && captionReviewTake && <CaptionReviewDialog
         key={`${captionReviewTake.id}-${captionReview.takeNumber}`}

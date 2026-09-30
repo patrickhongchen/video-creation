@@ -1,35 +1,27 @@
-import { useCallback, useEffect, useReducer, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
-import type { Presentation, Slide, SlideElement } from './model'
-import { createBlankPresentation, createSlideFromPreset, createSlideImageElement, duplicatePresentation, duplicateSlide, duplicateSlideElement, makePresentationIdUnique, type SlidePreset } from './presentationFactories'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import type { Presentation, Slide } from './model'
+import { createBlankPresentation, createSlideFromPreset, duplicatePresentation, duplicateSlide, makePresentationIdUnique, type SlidePreset } from './presentationFactories'
 import { downloadPresentation, readPresentationFile } from './presentationFiles'
-import { loadPresentationLibrary, savePresentationLibrary, type PresentationLibrary } from './storage/presentationStorage'
+import { loadPresentationLibrary, type PresentationLibrary } from './storage/presentationStorage'
 import { Stage } from './components/Stage'
-import { SlideList } from './components/SceneList'
-import { Inspector } from './components/Inspector'
-import { CanvasToolbar } from './components/CompositionInspector'
+import { PresentationDialog } from './components/PresentationDialog'
+import { ProjectSyncBanners } from './components/ProjectSyncBanners'
+import { ProjectSafetyDialogs } from './components/ProjectSafetyDialogs'
+import { EditorWorkspace } from './components/EditorWorkspace'
 import { CheckIcon, CloseIcon, PlayIcon } from './components/Icons'
 import { NarrationStudio } from './components/NarrationStudio'
 import { createNarrationStorage } from './narration/narrationStorage'
 import { getDesktopBridge } from './desktop/desktopBridge'
-import type { DesktopImportedAsset, DesktopProjectExternalChange, DesktopProjectSnapshot } from './desktop/desktopTypes'
 import { presentationHistoryReducer } from './presentationHistory'
-import { canAutoApplyProjectChange, pendingChangeKind, selectionAfterProjectReload } from './projectSync'
+import { useDesktopProject } from './project/useDesktopProject'
 import { useRevealPreview } from './editor/useRevealPreview'
-import { imageMimeType, isSupportedImageMimeType, readImageRatio } from './imageUtils'
+import { useEditorClipboardImages } from './editor/useEditorClipboardImages'
+import { reconcileSelection } from './editor/editorSelection'
+import { useEditorShortcuts } from './editor/useEditorShortcuts'
+import { EDITOR_SHORTCUT_HELP, type EditorCommand } from './editor/editorCommands'
+import { duplicateSelection, deleteSelection, nudgeSelection, moveSelectionLayer } from './editor/selectionLayout'
 
 type AppMode = 'edit' | 'present' | 'narrate'
-type PendingChoice = 'save' | 'discard' | 'cancel'
-
-function imageFromClipboardHtml(html: string) {
-  if (!html.trim()) return null
-  const image = new DOMParser().parseFromString(html, 'text/html').querySelector('img')
-  if (!image) return null
-  const candidates = ['src', 'data-src', 'data-iurl'].map((attribute) => image.getAttribute(attribute)?.trim())
-  const source = candidates.find((candidate) => candidate?.startsWith('https://'))
-    ?? candidates.find((candidate) => candidate?.startsWith('data:image/'))
-  if (!source) return null
-  return { source, name: image.getAttribute('alt')?.trim().slice(0, 80) || 'copied-image' }
-}
 
 function sectionIsContiguous(slideIds: string[], orderedSlideIds: string[]) {
   const positions = slideIds.map((id) => orderedSlideIds.indexOf(id)).sort((left, right) => left - right)
@@ -46,54 +38,49 @@ export function App() {
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [direction, setDirection] = useState<1 | -1>(1)
   const [mode, setMode] = useState<AppMode>('edit')
-  const [saveTime, setSaveTime] = useState('')
-  const [currentProject, setCurrentProject] = useState<DesktopProjectSnapshot | null>(null)
-  const [dirty, setDirty] = useState(false)
-  const [externalPending, setExternalPending] = useState<{ kind: 'presentation' | 'asset'; revision: number } | null>(null)
-  const [externalIssue, setExternalIssue] = useState('')
-  const [externalIssueDismissed, setExternalIssueDismissed] = useState(false)
-  const [externalBannerDismissed, setExternalBannerDismissed] = useState(false)
-  const [syncStatus, setSyncStatus] = useState<'watching' | 'updated'>('watching')
-  const [syncPulse, setSyncPulse] = useState(0)
-  const [unsavedPrompt, setUnsavedPrompt] = useState(false)
-  const [conflictPrompt, setConflictPrompt] = useState(false)
   const [error, setError] = useState('')
   const [projectDialog, setProjectDialog] = useState<'new' | 'rename' | 'delete' | null>(null)
   const [projectName, setProjectName] = useState('')
-  const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
+  const [selection, setSelection] = useState<string[]>([])
+  const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
+  const setSelectedElementId = useCallback((id: string | null, additive = false) => {
+    setSelection((current) => id === null ? [] : additive
+      ? current.includes(id) ? current.filter((candidate) => candidate !== id) : [...current, id]
+      : [id])
+  }, [])
   const [compositionGrid, setCompositionGrid] = useState(false)
   const [compositionGuides, setCompositionGuides] = useState(false)
   const [compositionSnap, setCompositionSnap] = useState(true)
   const fileInput = useRef<HTMLInputElement>(null)
   const importReservations = useRef(new Set<string>())
-  const copiedElement = useRef<SlideElement | null>(null)
-  const internalCopyIsCurrent = useRef(false)
-  const unsavedResolver = useRef<((choice: PendingChoice) => void) | null>(null)
-  const conflictResolver = useRef<((choice: 'reload' | 'overwrite' | 'cancel') => void) | null>(null)
-  const savedPresentation = useRef<Presentation | null>(null)
-  const selectedIndexRef = useRef(selectedIndex)
-  const externalRevision = useRef(0)
-  const externalSyncInFlight = useRef(false)
 
   const presentation = library.presentations.find((item) => item.id === library.activePresentationId) ?? library.presentations[0]
   const selectedSlide = presentation.slides[selectedIndex] ?? presentation.slides[0]
-  selectedIndexRef.current = selectedIndex
+
+  const selectedElementIds = selection.filter((id) => selectedSlide.elements.some((element) => element.id === id))
+  const selectedElementId = selectedElementIds.at(-1) ?? null
+
+  const {
+    currentProject, dirty, saveTime, externalPending, externalIssue, externalIssueDismissed,
+    externalBannerDismissed, syncStatus, unsavedPrompt, conflictPrompt, canAutoApplyExternal,
+    setExternalIssueDismissed, setExternalBannerDismissed, finishUnsavedPrompt, finishConflictPrompt,
+    createDesktopProject, openDesktopProject, saveDesktopProject, reloadDesktopProject, reloadPendingFromDisk,
+    markDirty, markRestored,
+  } = useDesktopProject({ library, presentation, selectedSlide, selectedIndex, selectedElementId, selectedElementIds, mode,
+    setLibrary, dispatchHistory, setSelectedIndex, setSelection, setError })
 
   const updateCurrent = useCallback((update: (current: Presentation) => Presentation) => {
     dispatchHistory({ type: 'edit', update })
-    if (currentProject) {
-      setDirty(true)
-      void desktop?.setProjectDirty(currentProject.projectId, true)
-    }
-  }, [currentProject, desktop])
+    markDirty()
+  }, [markDirty])
 
   const travelHistory = useCallback((direction: 'undo' | 'redo') => {
     const source = direction === 'undo' ? history.past : history.future
     const restored = source[source.length - 1]
     if (!restored) return
     dispatchHistory({ type: direction })
-    if (currentProject) setDirty(JSON.stringify(restored) !== JSON.stringify(savedPresentation.current))
-  }, [currentProject, history.future, history.past])
+    markRestored(restored)
+  }, [markRestored, history.future, history.past])
 
   const updateSlide = useCallback((slide: Slide) => updateCurrent((current) => ({
     ...current,
@@ -122,359 +109,48 @@ export function App() {
   } = useRevealPreview({ presentation, slide: selectedSlide, mode, onSequenceEnd: onRevealSequenceEnd })
 
   useEffect(() => {
-    if (currentProject) return
-    try {
-      savePresentationLibrary(library)
-      setSaveTime(new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date()))
-    } catch {
-      setError('Changes could not be saved locally. Export your presentation to keep a copy.')
-    }
-  }, [currentProject, library])
-
-  useEffect(() => {
-    if (!currentProject || !desktop) return
-    void desktop.setProjectDirty(currentProject.projectId, dirty)
-  }, [currentProject, desktop, dirty])
-
-  useEffect(() => {
-    document.title = `${dirty ? '• ' : ''}${presentation.title || 'Untitled Presentation'} — AI Presentation Studio`
-  }, [dirty, presentation.title])
-
-  useEffect(() => {
     if (selectedIndex >= presentation.slides.length) setSelectedIndex(presentation.slides.length - 1)
   }, [presentation.slides.length, selectedIndex])
 
-  useEffect(() => setSelectedElementId(null), [selectedSlide.id])
-
+  useEffect(() => { setSelection([]); setHoveredElementId(null) }, [presentation.id, selectedSlide.id])
   useEffect(() => {
-    if (mode !== 'present') return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowRight' || event.key === ' ') { event.preventDefault(); advanceReveal() }
-      if (event.key === 'ArrowLeft') { event.preventDefault(); if (selectedIndex > 0) previous() }
-      if (event.key === 'Escape') setMode('edit')
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [advanceReveal, mode, previous, selectedIndex])
-
-  useEffect(() => {
-    if (!isPreviewing) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'ArrowRight' || event.key === ' ') { event.preventDefault(); advanceReveal() }
-      if (event.key === 'Escape') stopPreview()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [advanceReveal, isPreviewing, stopPreview])
-
-  useEffect(() => {
-    if (mode !== 'edit' || isPreviewing || !selectedElementId) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      const target = event.target
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable)) return
-      const element = selectedSlide.elements.find((candidate) => candidate.id === selectedElementId)
-      if (!element) return
-      if (event.key.startsWith('Arrow') && !element.locked) {
-        event.preventDefault()
-        const step = event.shiftKey ? 10 : 1
-        const frame = { ...element.frame }
-        if (event.key === 'ArrowLeft') frame.x -= step
-        if (event.key === 'ArrowRight') frame.x += step
-        if (event.key === 'ArrowUp') frame.y -= step
-        if (event.key === 'ArrowDown') frame.y += step
-        updateSlide({ ...selectedSlide, elements: selectedSlide.elements.map((candidate) => candidate.id === element.id ? { ...candidate, frame } : candidate) })
-        return
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'd') {
-        event.preventDefault()
-        const duplicate = duplicateSlideElement(element)
-        updateSlide({ ...selectedSlide, elements: [...selectedSlide.elements, duplicate] })
-        setSelectedElementId(duplicate.id)
-        return
-      }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'c') {
-        event.preventDefault()
-        copiedElement.current = structuredClone(element)
-        internalCopyIsCurrent.current = true
-        return
-      }
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        event.preventDefault()
-        updateSlide({ ...selectedSlide, elements: selectedSlide.elements.filter((candidate) => candidate.id !== element.id) })
-        setSelectedElementId(null)
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isPreviewing, mode, selectedElementId, selectedSlide, updateSlide])
-
-  useEffect(() => {
-    const onBlur = () => { internalCopyIsCurrent.current = false }
-    window.addEventListener('blur', onBlur)
-    return () => window.removeEventListener('blur', onBlur)
-  }, [])
-
-  const applyProjectSnapshot = useCallback((project: DesktopProjectSnapshot, preferredSlideId?: string, preferredElementId?: string) => {
-    savedPresentation.current = project.presentation
-    setCurrentProject(project)
-    setLibrary((current) => {
-      const withoutSameId = current.presentations.filter((item) => item.id !== project.presentation.id)
-      return { presentations: [...withoutSameId, project.presentation], activePresentationId: project.presentation.id }
+    setSelection((current) => {
+      const reconciled = reconcileSelection(selectedSlide.elements, current)
+      return reconciled.length === current.length ? current : reconciled
     })
-    const selection = selectionAfterProjectReload(project.presentation.slides, {
-      slideId: preferredSlideId, index: selectedIndexRef.current, elementId: preferredElementId,
-    })
-    setSelectedIndex(selection.index)
-    setSelectedElementId(selection.elementId)
-    setDirty(false)
-    setError(project.missingAssets.length ? project.missingAssets.map((asset) => asset.message).join(' ') : '')
-    setExternalPending(null)
-    setExternalIssue('')
-    setExternalIssueDismissed(false)
-    setExternalBannerDismissed(false)
-    setSyncStatus('watching')
-  }, [])
+  }, [selectedSlide.elements])
 
-  const askUnsaved = useCallback(() => new Promise<PendingChoice>((resolve) => {
-    unsavedResolver.current = resolve
-    setUnsavedPrompt(true)
-  }), [])
-
-  const finishUnsavedPrompt = (choice: PendingChoice) => {
-    setUnsavedPrompt(false)
-    unsavedResolver.current?.(choice)
-    unsavedResolver.current = null
-  }
-
-  const finishConflictPrompt = (choice: 'reload' | 'overwrite' | 'cancel') => {
-    setConflictPrompt(false)
-    conflictResolver.current?.(choice)
-    conflictResolver.current = null
-  }
-
-  const saveDesktopProject = useCallback(async (overwriteExternal = false): Promise<boolean> => {
-    if (!desktop || !currentProject) return false
-    try {
-      let result = await desktop.saveProject({ projectId: currentProject.projectId, presentation, overwriteExternal })
-      if (result.status === 'conflict') {
-        const choice = await new Promise<'reload' | 'overwrite' | 'cancel'>((resolve) => {
-          conflictResolver.current = resolve
-          setConflictPrompt(true)
-        })
-        if (choice === 'cancel') return false
-        if (choice === 'reload') {
-          const reloaded = await desktop.reloadProject(currentProject.projectId)
-          applyProjectSnapshot(reloaded, selectedSlide.id, selectedElementId ?? undefined)
-          return false
-        }
-        result = await desktop.saveProject({ projectId: currentProject.projectId, presentation, overwriteExternal: true })
-      }
-      if (result.status !== 'saved') return false
-      savedPresentation.current = presentation
-      setCurrentProject(result.project)
-      setDirty(false)
-      setSyncStatus('watching')
-      setSaveTime(new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date()))
-      setError(result.project.missingAssets.length ? result.project.missingAssets.map((asset) => asset.message).join(' ') : '')
-      setExternalPending(null)
-      setExternalIssue('')
-      return true
-    } catch (problem) {
-      setError(problem instanceof Error ? `Save failed: ${problem.message}` : 'Save failed.')
-      return false
-    }
-  }, [applyProjectSnapshot, currentProject, desktop, presentation, selectedElementId, selectedSlide.id])
-
-  const protectUnsavedChanges = useCallback(async () => {
-    if (!dirty || !currentProject) return true
-    const choice = await askUnsaved()
-    if (choice === 'cancel') return false
-    if (choice === 'save') return saveDesktopProject()
-    if (desktop) {
-      try {
-        await desktop.setProjectDirty(currentProject.projectId, false)
-        const reloaded = await desktop.reloadProject(currentProject.projectId)
-        applyProjectSnapshot(reloaded, selectedSlide.id, selectedElementId ?? undefined)
-      } catch (problem) {
-        setError(problem instanceof Error ? `Could not discard changes: ${problem.message}` : 'Could not discard changes.')
-        return false
-      }
-    }
-    return true
-  }, [applyProjectSnapshot, askUnsaved, currentProject, desktop, dirty, saveDesktopProject, selectedElementId, selectedSlide.id])
-
-  const createDesktopProject = useCallback(async (source = createBlankPresentation('Untitled Presentation')) => {
-    if (!desktop || !await protectUnsavedChanges()) return
-    try {
-      const result = await desktop.createProject(source)
-      if (result.status === 'completed') applyProjectSnapshot(result.project)
-    } catch (problem) {
-      setError(problem instanceof Error ? `Project creation failed: ${problem.message}` : 'Project creation failed.')
-    }
-  }, [applyProjectSnapshot, desktop, protectUnsavedChanges])
-
-  const openDesktopProject = useCallback(async () => {
-    if (!desktop || !await protectUnsavedChanges()) return
-    try {
-      const result = await desktop.openProject()
-      if (result.status === 'completed') applyProjectSnapshot(result.project)
-    } catch (problem) {
-      setError(problem instanceof Error ? `Open Project failed: ${problem.message}` : 'Open Project failed.')
-    }
-  }, [applyProjectSnapshot, desktop, protectUnsavedChanges])
-
-  const reloadDesktopProject = useCallback(async () => {
-    if (!desktop || !currentProject || !await protectUnsavedChanges()) return
-    try {
-      const reloaded = await desktop.reloadProject(currentProject.projectId)
-      applyProjectSnapshot(reloaded, selectedSlide.id, selectedElementId ?? undefined)
-    } catch (problem) {
-      setError(problem instanceof Error ? `Reload failed: ${problem.message}` : 'Reload failed. The current presentation was kept open.')
-    }
-  }, [applyProjectSnapshot, currentProject, desktop, protectUnsavedChanges, selectedElementId, selectedSlide.id])
-
-  // Filesystem events identify possible changes; the store reads the latest disk state.
-  // Protected modes and local edits keep the event pending until Edit is safe again.
-  const canAutoApplyExternal = canAutoApplyProjectChange({
-    projectOpen: Boolean(currentProject), mode, dirty, modalOpen: unsavedPrompt || conflictPrompt,
+  const { chooseProjectImage, dropProjectImage, copySelection } = useEditorClipboardImages({
+    currentProject, selectedSlide, selectedIndex, selectedElementId, selectedElementIds, mode, isPreviewing,
+    updateCurrent, updateSlide, setSelectedElementId, setSelection, setError,
   })
-
-  useEffect(() => {
-    if (!desktop || !currentProject) return
-    const projectId = currentProject.projectId
-    return desktop.onProjectExternalChange((change: DesktopProjectExternalChange) => {
-      if (change.projectId !== projectId) return
-      if (change.kind === 'invalid' || change.kind === 'unavailable') {
-        setExternalIssue(change.message)
-        setExternalIssueDismissed(false)
-        return
-      }
-      if (change.kind === 'recovered') {
-        setExternalIssue('')
-        return
-      }
-      setExternalIssue('')
-      setExternalBannerDismissed(false)
-      const revision = ++externalRevision.current
-      setExternalPending((previous) => ({
-        kind: pendingChangeKind(previous?.kind ?? null, change.kind),
-        revision,
-      }))
-    })
-  }, [currentProject?.projectId, desktop])
-
-  useEffect(() => {
-    if (!desktop || !currentProject || !externalPending || !canAutoApplyExternal || externalSyncInFlight.current) return
-    const pendingRevision = externalPending.revision
-    let cancelled = false
-    externalSyncInFlight.current = true
-    void (async () => {
-      try {
-        if (externalPending.kind === 'presentation') {
-          const reloaded = await desktop.reloadProject(currentProject.projectId)
-          if (cancelled) return
-          applyProjectSnapshot(reloaded, selectedSlide.id, selectedElementId ?? undefined)
-        } else {
-          const refreshed = await desktop.refreshProjectAssets(currentProject.projectId, presentation)
-          if (cancelled) return
-          savedPresentation.current = refreshed.presentation
-          setCurrentProject(refreshed)
-          dispatchHistory({ type: 'refresh-assets', presentation: refreshed.presentation })
-          setError(refreshed.missingAssets.map((asset) => asset.message).join(' '))
-        }
-        setSyncStatus('updated')
-        setExternalIssue('')
-        if (externalRevision.current !== pendingRevision) {
-          setExternalPending({ kind: 'presentation', revision: externalRevision.current })
-        } else {
-          setExternalPending(null)
-        }
-      } catch (problem) {
-        if (!cancelled) setExternalIssue(problem instanceof Error ? `External update is not valid yet. ${problem.message}` : 'External update is not valid yet. The current presentation was kept.')
-      } finally {
-        externalSyncInFlight.current = false
-        if (cancelled || externalRevision.current !== pendingRevision) setSyncPulse((value) => value + 1)
-      }
-    })()
-    return () => { cancelled = true }
-  }, [applyProjectSnapshot, canAutoApplyExternal, currentProject, desktop, externalPending, presentation, selectedElementId, selectedSlide.id, syncPulse])
-
-  const reloadPendingFromDisk = useCallback(async () => {
-    if (!desktop || !currentProject) return
-    if (dirty && !window.confirm('Discard your unsaved changes and reload the latest Project from disk?')) return
-    try {
-      const reloaded = await desktop.reloadProject(currentProject.projectId)
-      applyProjectSnapshot(reloaded, selectedSlide.id, selectedElementId ?? undefined)
-      setSyncStatus('updated')
-    } catch (problem) {
-      setExternalIssue(problem instanceof Error ? `Could not reload Project: ${problem.message}` : 'Could not reload Project. The current presentation was kept.')
+  const executeCommand = (command: EditorCommand) => {
+    if (command.type === 'undo' || command.type === 'redo') travelHistory(command.type)
+    else if (command.type === 'save') {
+      if (currentProject) void saveDesktopProject()
+      else if (desktop) void createDesktopProject(presentation)
+      else downloadPresentation(presentation)
+    } else if (command.type === 'new-project' && desktop) void createDesktopProject()
+    else if (command.type === 'open-project' && desktop) void openDesktopProject()
+    else if (command.type === 'advance-reveal') advanceReveal()
+    else if (command.type === 'previous-slide' && selectedIndex > 0) previous()
+    else if (command.type === 'exit-present') setMode('edit')
+    else if (command.type === 'exit-preview') stopPreview()
+    else if (command.type === 'clear-selection') setSelection([])
+    else if (command.type === 'copy') copySelection()
+    else if (command.type === 'duplicate' && selectedElementIds.length) {
+      const result = duplicateSelection(selectedSlide.elements, selectedElementIds)
+      updateSlide({ ...selectedSlide, elements: result.elements })
+      setSelection(result.selectedIds)
+    } else {
+      const elements = command.type === 'delete' ? deleteSelection(selectedSlide.elements, selectedElementIds)
+        : command.type === 'nudge' ? nudgeSelection(selectedSlide.elements, selectedElementIds, command.dx, command.dy)
+        : command.type === 'layer' ? moveSelectionLayer(selectedSlide.elements, selectedElementIds, command.direction)
+        : selectedSlide.elements
+      if (elements !== selectedSlide.elements) updateSlide({ ...selectedSlide, elements })
     }
-  }, [applyProjectSnapshot, currentProject, desktop, dirty, selectedElementId, selectedSlide.id])
-
-  useEffect(() => {
-    if (!desktop) return
-    const unsubscribeNew = desktop.onProjectNewRequested(() => { if (mode === 'edit') void createDesktopProject() })
-    const unsubscribeOpen = desktop.onProjectOpenRequested(() => { if (mode === 'edit') void openDesktopProject() })
-    const unsubscribeSave = desktop.onProjectSaveRequested(() => {
-      if (!currentProject) {
-        void createDesktopProject(presentation)
-        return
-      }
-      void saveDesktopProject().then((saved) => {
-        if (!saved) void desktop.setProjectDirty(currentProject.projectId, true)
-      })
-    })
-    return () => {
-      unsubscribeNew()
-      unsubscribeOpen()
-      unsubscribeSave()
-    }
-  }, [createDesktopProject, currentProject, desktop, mode, openDesktopProject, presentation, saveDesktopProject])
-
-  useEffect(() => {
-    if (!desktop) return
-    const handleHistoryRequest = (direction: 'undo' | 'redo') => {
-      const target = document.activeElement
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || (target instanceof HTMLElement && target.isContentEditable)) {
-        document.execCommand(direction)
-      } else if (mode === 'edit') {
-        travelHistory(direction)
-      }
-    }
-    const unsubscribeUndo = desktop.onUndoRequested(() => handleHistoryRequest('undo'))
-    const unsubscribeRedo = desktop.onRedoRequested(() => handleHistoryRequest('redo'))
-    return () => { unsubscribeUndo(); unsubscribeRedo() }
-  }, [desktop, mode, travelHistory])
-
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) return
-      const key = event.key.toLowerCase()
-      if (mode === 'edit' && (key === 'z' || key === 'y')) {
-        const target = event.target
-        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable)) return
-        event.preventDefault()
-        travelHistory(key === 'y' || event.shiftKey ? 'redo' : 'undo')
-        return
-      }
-      if (key === 's') {
-        event.preventDefault()
-        if (currentProject) void saveDesktopProject()
-        else if (desktop) void createDesktopProject(presentation)
-        else downloadPresentation(presentation)
-      }
-      if (key === 'n' && desktop && mode === 'edit') {
-        event.preventDefault()
-        void createDesktopProject()
-      }
-      if (key === 'o' && desktop && mode === 'edit') {
-        event.preventDefault()
-        void openDesktopProject()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [createDesktopProject, currentProject, desktop, mode, openDesktopProject, presentation, saveDesktopProject, travelHistory])
+  }
+  useEditorShortcuts({ mode, preview: isPreviewing, modalOpen: unsavedPrompt || conflictPrompt || Boolean(projectDialog) }, executeCommand)
 
   const openPresentation = (id: string) => {
     setLibrary((current) => ({ ...current, activePresentationId: id }))
@@ -550,187 +226,6 @@ export function App() {
     }
   }
 
-  const placeImportedAsset = useCallback(async (
-    asset: DesktopImportedAsset,
-    action: 'add' | 'replace' = 'add',
-    center?: { x: number; y: number },
-  ) => {
-    const ratio = await readImageRatio(asset.source)
-    const width = Math.round(ratio >= 1 ? 700 : 700 * ratio)
-    const height = Math.round(ratio >= 1 ? 700 / ratio : 700)
-    const image = createSlideImageElement(asset.id)
-    const frame = {
-      ...image.frame,
-      x: Math.round((center?.x ?? 540) - width / 2),
-      y: Math.round((center?.y ?? 960) - height / 2),
-      width,
-      height,
-    }
-    const selected = selectedSlide.elements.find((element) => element.id === selectedElementId)
-    const nextElementId = action === 'replace' && selected?.type === 'image' ? selected.id : image.id
-    updateCurrent((current) => {
-      const slide = current.slides[selectedIndex] ?? current.slides[0]
-      let elements: SlideElement[]
-      if (action === 'replace' && selected?.type === 'image') {
-        elements = slide.elements.map((element) => element.id === selected.id ? { ...selected, assetId: asset.id } : element)
-      } else {
-        elements = [...slide.elements, { ...image, frame }]
-      }
-      return {
-        ...current,
-        imageAssets: [...(current.imageAssets ?? []).filter((candidate) => candidate.id !== asset.id), asset],
-        slides: current.slides.map((candidate, index) => index === selectedIndex ? { ...slide, elements } : candidate),
-      }
-    })
-    setSelectedElementId(nextElementId)
-  }, [selectedElementId, selectedIndex, selectedSlide.elements, updateCurrent])
-
-  const chooseProjectImage = useCallback(async (action: 'add' | 'replace') => {
-    if (!desktop || !currentProject) return
-    try {
-      const result = await desktop.chooseImage(currentProject.projectId)
-      if (result.status === 'imported') await placeImportedAsset(result.asset, action)
-    } catch (problem) {
-      setError(problem instanceof Error ? `Image import failed: ${problem.message}` : 'Image import failed.')
-    }
-  }, [currentProject, desktop, placeImportedAsset])
-
-  const importImageBytes = useCallback(async (file: File, suggestedName: string, center?: { x: number; y: number }) => {
-    if (!desktop || !currentProject) return
-    const mimeType = imageMimeType(file)
-    if (!mimeType) throw new Error('Supported image types are PNG, JPEG, WebP, and SVG.')
-    const asset = await desktop.saveImageBytes({
-      projectId: currentProject.projectId,
-      bytes: await file.arrayBuffer(),
-      mimeType,
-      suggestedName,
-    })
-    await placeImportedAsset(asset, 'add', center)
-  }, [currentProject, desktop, placeImportedAsset])
-
-  const importClipboardImageSource = useCallback(async (source: string, suggestedName: string) => {
-    if (!desktop || !currentProject) return
-    if (source.startsWith('data:image/')) {
-      const response = await fetch(source)
-      const blob = await response.blob()
-      const mimeType = blob.type === 'image/jpg' ? 'image/jpeg' : blob.type
-      if (!isSupportedImageMimeType(mimeType)) throw new Error('The copied image format is not supported.')
-      await importImageBytes(new File([blob], suggestedName, { type: mimeType }), 'pasted-image')
-      return
-    }
-    const asset = await desktop.importRemoteImage({ projectId: currentProject.projectId, url: source, suggestedName })
-    await placeImportedAsset(asset)
-  }, [currentProject, desktop, importImageBytes, placeImportedAsset])
-
-  useEffect(() => {
-    if (mode !== 'edit' || isPreviewing) return
-    const onPaste = (event: ClipboardEvent) => {
-      const target = event.target
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement || (target instanceof HTMLElement && target.isContentEditable)) return
-      const clipboardFiles = Array.from(event.clipboardData?.files ?? [])
-      if (clipboardFiles.length === 0) {
-        Array.from(event.clipboardData?.items ?? []).forEach((item) => {
-          const file = item.kind === 'file' ? item.getAsFile() : null
-          if (file) clipboardFiles.push(file)
-        })
-      }
-      const imageFile = clipboardFiles.find((file) => imageMimeType(file))
-      if (imageFile && currentProject) {
-        event.preventDefault()
-        internalCopyIsCurrent.current = false
-        void importImageBytes(imageFile, 'pasted-image.png').catch((problem) => {
-          setError(problem instanceof Error ? `Paste failed: ${problem.message}` : 'Paste failed.')
-        })
-        return
-      }
-      const htmlImage = imageFromClipboardHtml(event.clipboardData?.getData('text/html') ?? '')
-      const pasteCopiedElement = () => {
-        if (!copiedElement.current) return false
-        const pasted = duplicateSlideElement(copiedElement.current)
-        updateSlide({ ...selectedSlide, elements: [...selectedSlide.elements, pasted] })
-        setSelectedElementId(pasted.id)
-        return true
-      }
-      if (htmlImage && currentProject && desktop) {
-        event.preventDefault()
-        void (async () => {
-          const nativeImage = await desktop.importClipboardImage(currentProject.projectId)
-          internalCopyIsCurrent.current = false
-          if (nativeImage.status === 'imported') await placeImportedAsset(nativeImage.asset)
-          else await importClipboardImageSource(htmlImage.source, htmlImage.name)
-        })().catch((problem) => {
-          setError(problem instanceof Error ? `Paste failed: ${problem.message}` : 'Paste failed.')
-        })
-        return
-      }
-      if (internalCopyIsCurrent.current && copiedElement.current) {
-        event.preventDefault()
-        pasteCopiedElement()
-        return
-      }
-      if (currentProject && desktop) {
-        event.preventDefault()
-        void (async () => {
-          const nativeImage = await desktop.importClipboardImage(currentProject.projectId)
-          if (nativeImage.status === 'imported') {
-            internalCopyIsCurrent.current = false
-            await placeImportedAsset(nativeImage.asset)
-            return
-          }
-          if (htmlImage) {
-            internalCopyIsCurrent.current = false
-            await importClipboardImageSource(htmlImage.source, htmlImage.name)
-            return
-          }
-          pasteCopiedElement()
-        })().catch((problem) => {
-          setError(problem instanceof Error ? `Paste failed: ${problem.message}` : 'Paste failed.')
-        })
-        return
-      }
-      if (copiedElement.current) {
-        event.preventDefault()
-        pasteCopiedElement()
-      }
-    }
-    window.addEventListener('paste', onPaste)
-    return () => window.removeEventListener('paste', onPaste)
-  }, [currentProject, desktop, importClipboardImageSource, importImageBytes, isPreviewing, mode, placeImportedAsset, selectedSlide, updateSlide])
-
-  useEffect(() => {
-    const preventFileNavigation = (event: DragEvent) => {
-      if (event.dataTransfer?.types.includes('Files')) event.preventDefault()
-    }
-    window.addEventListener('dragover', preventFileNavigation)
-    window.addEventListener('drop', preventFileNavigation)
-    return () => {
-      window.removeEventListener('dragover', preventFileNavigation)
-      window.removeEventListener('drop', preventFileNavigation)
-    }
-  }, [])
-
-  const dropProjectImage = async (event: ReactDragEvent<HTMLElement>) => {
-    event.preventDefault()
-    if (isPreviewing) return
-    const file = [...event.dataTransfer.files].find((candidate) => imageMimeType(candidate))
-    if (!file || !currentProject || !desktop) {
-      if (event.dataTransfer.files.length) setError('Only PNG, JPEG, WebP, and SVG images can be dropped on a slide.')
-      return
-    }
-    const stage = event.currentTarget.querySelector<HTMLElement>('.stage')
-    const bounds = stage?.getBoundingClientRect()
-    const center = bounds ? {
-      x: Math.max(0, Math.min(1080, ((event.clientX - bounds.left) / bounds.width) * 1080)),
-      y: Math.max(0, Math.min(1920, ((event.clientY - bounds.top) / bounds.height) * 1920)),
-    } : undefined
-    try {
-      const asset = await desktop.importDroppedImage(currentProject.projectId, file)
-      await placeImportedAsset(asset, 'add', center)
-    } catch (problem) {
-      setError(problem instanceof Error ? `Drop failed: ${problem.message}` : 'Drop failed.')
-    }
-  }
-
   const addSlide = (preset: SlidePreset) => {
     const slide = createSlideFromPreset(preset, presentation.theme)
     updateCurrent((current) => ({ ...current, slides: [...current.slides, slide] }))
@@ -799,10 +294,7 @@ export function App() {
     setSelectedIndex(target)
   }
 
-  const projectSafetyDialogs = <>
-    {unsavedPrompt && <div className="dialog-backdrop" role="presentation"><section className="project-dialog" role="dialog" aria-modal="true" aria-labelledby="unsaved-title"><div className="project-dialog-heading"><h2 id="unsaved-title">Save changes?</h2></div><p>“{presentation.title}” has unsaved changes.</p><div className="project-dialog-actions"><button onClick={() => finishUnsavedPrompt('cancel')}>Cancel</button><button onClick={() => finishUnsavedPrompt('discard')}>Don’t Save</button><button className="primary-button" onClick={() => finishUnsavedPrompt('save')}>Save</button></div></section></div>}
-    {conflictPrompt && <div className="dialog-backdrop" role="presentation"><section className="project-dialog" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><div className="project-dialog-heading"><h2 id="conflict-title">presentation.json changed</h2></div><p>The file changed outside AI Presentation Studio while you also have unsaved edits.</p><div className="project-dialog-actions"><button onClick={() => finishConflictPrompt('cancel')}>Cancel</button><button onClick={() => finishConflictPrompt('reload')}>Reload from Disk</button><button className="danger-button" onClick={() => finishConflictPrompt('overwrite')}>Overwrite with My Version</button></div></section></div>}
-  </>
+  const projectSafetyDialogs = <ProjectSafetyDialogs title={presentation.title} unsavedPrompt={unsavedPrompt} conflictPrompt={conflictPrompt} finishUnsavedPrompt={finishUnsavedPrompt} finishConflictPrompt={finishConflictPrompt} />
 
   if (mode === 'present') {
     return (
@@ -871,97 +363,31 @@ export function App() {
 
       {error && <div className="error-banner" role="alert"><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><CloseIcon /></button></div>}
 
-      {currentProject && externalIssue && !externalIssueDismissed && <div className="error-banner" role="status"><span>{externalIssue} The last valid presentation remains open.</span><button onClick={() => setExternalIssueDismissed(true)} aria-label="Dismiss sync warning"><CloseIcon /></button></div>}
-      {currentProject && externalPending && !externalBannerDismissed && (dirty || !canAutoApplyExternal) && <div className="error-banner" role="status"><span>External changes detected. Your current work has been kept.</span><button onClick={() => void reloadPendingFromDisk()}>Reload from Disk</button><button onClick={() => setExternalBannerDismissed(true)}>Keep Editing</button></div>}
+      <ProjectSyncBanners projectOpen={Boolean(currentProject)} issue={externalIssue} issueDismissed={externalIssueDismissed}
+        pending={Boolean(externalPending)} pendingDismissed={externalBannerDismissed} dirty={dirty} canAutoApply={canAutoApplyExternal}
+        onDismissIssue={() => setExternalIssueDismissed(true)} onKeepEditing={() => setExternalBannerDismissed(true)} onReload={() => void reloadPendingFromDisk()} />
 
-      {projectDialog && (
-        <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setProjectDialog(null) }}>
-          <section className="project-dialog" role="dialog" aria-modal="true" aria-labelledby="project-dialog-title">
-            <div className="project-dialog-heading">
-              <h2 id="project-dialog-title">{projectDialog === 'new' ? 'New presentation' : projectDialog === 'rename' ? 'Rename presentation' : 'Delete presentation?'}</h2>
-              <button onClick={() => setProjectDialog(null)} aria-label="Close dialog"><CloseIcon /></button>
-            </div>
-            {projectDialog === 'delete' ? (
-              <>
-                <p>“{presentation.title}” will be removed from local storage. Export it first if you want to keep a copy.</p>
-                <div className="project-dialog-actions"><button onClick={() => setProjectDialog(null)}>Cancel</button><button className="danger-button" onClick={deleteCurrentPresentation}>Delete presentation</button></div>
-              </>
-            ) : (
-              <form onSubmit={(event) => { event.preventDefault(); projectDialog === 'new' ? addBlankPresentation() : renameCurrentPresentation() }}>
-                <label><span>Presentation title</span><input autoFocus value={projectName} onChange={(event) => setProjectName(event.target.value)} /></label>
-                <div className="project-dialog-actions"><button type="button" onClick={() => setProjectDialog(null)}>Cancel</button><button type="submit">{projectDialog === 'new' ? 'Create presentation' : 'Save name'}</button></div>
-              </form>
-            )}
-          </section>
-        </div>
-      )}
+      <PresentationDialog dialog={projectDialog} title={presentation.title} name={projectName} onNameChange={setProjectName}
+        onClose={() => setProjectDialog(null)} onCreate={addBlankPresentation} onRename={renameCurrentPresentation} onDelete={deleteCurrentPresentation} />
 
       {projectSafetyDialogs}
 
-      <div className="workspace">
-        <SlideList presentation={presentation} selectedIndex={selectedIndex} onSelect={selectSlide} onPrevious={previous} onNext={next} onAdd={addSlide} onDuplicate={copySlide} onDelete={deleteSlide} onMove={moveSlide} />
-        <main className="canvas-workspace" onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'copy' }} onDrop={(event) => void dropProjectImage(event)}>
-          <CanvasToolbar
-            slide={selectedSlide}
-            presentation={presentation}
-            onSelect={setSelectedElementId}
-            onSlideChange={updateSlide}
-            onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)}
-            onImportImage={currentProject ? chooseProjectImage : undefined}
-            grid={compositionGrid}
-            guides={compositionGuides}
-            snap={compositionSnap}
-            onGridChange={setCompositionGrid}
-            onGuidesChange={setCompositionGuides}
-            onSnapChange={setCompositionSnap}
-          />
-          <div className={isPreviewing ? 'preview-stage-advance' : 'edit-stage-host'} onClick={isPreviewing ? advanceReveal : undefined}>
-          <Stage
-            slide={selectedSlide}
-            slides={isPreviewing ? presentation.slides : undefined}
-            theme={presentation.theme}
-            imageAssets={presentation.imageAssets}
-            presentationId={presentation.id}
-            slideNumber={selectedIndex + 1}
-            slideCount={presentation.slides.length}
-            direction={direction}
-            revealState={isPreviewing ? revealState : null}
-            slideEditor={isPreviewing ? undefined : {
-              selectedElementId,
-              grid: compositionGrid,
-              guides: compositionGuides,
-              snap: compositionSnap,
-              onSelect: setSelectedElementId,
-              onElementChange: (element) => updateSlide({ ...selectedSlide, elements: selectedSlide.elements.map((candidate) => candidate.id === element.id ? element : candidate) }),
-            }}
-          />
-          </div>
-        </main>
-        <Inspector
-          slide={selectedSlide}
-          onChange={updateSlide}
-          presentation={presentation}
-          onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)}
-          onPrevious={previous}
-          onNext={next}
-          hasPrevious={selectedIndex > 0}
-          hasNext={selectedIndex < presentation.slides.length - 1}
-          selectedElementId={selectedElementId}
-          isPreviewing={isPreviewing}
-          previewAvailable={revealOrders.length > 0}
-          revealCount={revealOrders.length}
-          revealedCount={revealOrders.filter((order) => order <= revealState.revealedThroughOrder).length}
-          onNextReveal={advanceReveal}
-          onPreviewSlide={startPreview}
-          onStopPreview={stopPreview}
-          onSelectElement={setSelectedElementId}
-          onImportImage={currentProject ? chooseProjectImage : undefined}
-        />
-      </div>
+      <EditorWorkspace
+        presentation={presentation} selectedSlide={selectedSlide} selectedIndex={selectedIndex} direction={direction}
+        selectedElementId={selectedElementId} selectedElementIds={selectedElementIds} setSelectedElementId={setSelectedElementId}
+        hoveredElementId={hoveredElementId} setHoveredElementId={setHoveredElementId} setSelection={setSelection}
+        selectSlide={selectSlide} previous={previous} next={next} addSlide={addSlide} copySlide={copySlide} deleteSlide={deleteSlide} moveSlide={moveSlide}
+        updateSlide={updateSlide} onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)}
+        onImportImage={currentProject ? chooseProjectImage : undefined} onDrop={(event) => void dropProjectImage(event)}
+        compositionGrid={compositionGrid} compositionGuides={compositionGuides} compositionSnap={compositionSnap}
+        setCompositionGrid={setCompositionGrid} setCompositionGuides={setCompositionGuides} setCompositionSnap={setCompositionSnap}
+        isPreviewing={isPreviewing} revealState={revealState} revealOrders={revealOrders}
+        advanceReveal={advanceReveal} startPreview={startPreview} stopPreview={stopPreview}
+      />
 
       <footer className="statusbar">
         <span>Slide {selectedIndex + 1} of {presentation.slides.length}</span><i /><span>{selectedSlide.title}</span>
-        <span className="status-help">Nudge <kbd>←</kbd><kbd>→</kbd> · Shift = 10px · Alt disables snap · Undo <kbd>⌘Z</kbd> · Redo <kbd>⌘Y</kbd></span>
+        <span className="status-help" title={EDITOR_SHORTCUT_HELP}>{EDITOR_SHORTCUT_HELP}</span>
       </footer>
     </div>
   )

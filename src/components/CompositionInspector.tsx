@@ -3,14 +3,18 @@ import type { Presentation, Slide } from '../model'
 export interface CompositionEditorProps {
   slide: Slide
   presentation: Presentation
+  selectedElementIds: string[]
   selectedElementId: string | null
+  hoveredElementId: string | null
   grid: boolean
   guides: boolean
   snap: boolean
   onGridChange: (value: boolean) => void
   onGuidesChange: (value: boolean) => void
   onSnapChange: (value: boolean) => void
-  onSelect: (elementId: string | null) => void
+  onSelect: (elementId: string | null, additive?: boolean) => void
+  onSelectionChange: (elementIds: string[]) => void
+  onHover: (elementId: string | null) => void
   onSlideChange: (slide: Slide) => void
   onPresentationChange: (presentation: Presentation) => void
   onImportImage?: (action: 'add' | 'replace') => void

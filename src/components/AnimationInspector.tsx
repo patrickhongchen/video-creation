@@ -21,13 +21,13 @@ export function AnimationInspector({
   onNextReveal,
 }: AnimationInspectorProps) {
   const groups = revealGroups(slide)
-  const available = slide.elements.filter((element) => !element.animation && !element.hidden)
+  const selectedElement = slide.elements.find((element) => element.id === selectedElementId) ?? null
+  const canAddAnimation = Boolean(selectedElement && !selectedElement.animation && !selectedElement.hidden)
   const previousSlide = previousSlideFor(presentation.slides, slide)
   const [draggedOrder, setDraggedOrder] = useState<number | null>(null)
   const [dropTarget, setDropTarget] = useState<{ order: number; edge: 'above' | 'below' } | null>(null)
   const drag = useRef<{ order: number; startY: number; moved: boolean } | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const addMenuRef = useRef<HTMLDetailsElement>(null)
   const targetAt = (clientX: number, clientY: number) => {
     const row = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('.composition-reveal-group')
     if (!row || !listRef.current?.contains(row) || !row.dataset.revealOrder) return null
@@ -112,13 +112,16 @@ export function AnimationInspector({
         })}</div>
       </div>)}
     </div>
-    <details className="composition-add-animation" ref={addMenuRef}>
-      <summary>+ Add animation</summary>
-      <div className="composition-add-animation-menu">{available.length === 0 && <p>All visible elements already have animations.</p>}{available.map((element) => <button type="button" key={element.id} onClick={() => {
-        onSlideChange(addRevealAnimation(slide, element.id))
-        onSelect(element.id)
-        if (addMenuRef.current) addMenuRef.current.open = false
-      }}>{element.name}</button>)}</div>
-    </details>
+    <div className="composition-add-animation">
+      <button
+        type="button"
+        disabled={!canAddAnimation}
+        title={!selectedElement ? 'Select an object on the slide first' : selectedElement.hidden ? 'Hidden objects cannot be animated' : selectedElement.animation ? 'This object already has an animation' : `Add animation to ${selectedElement.name}`}
+        onClick={() => {
+          if (selectedElement) onSlideChange(addRevealAnimation(slide, selectedElement.id))
+        }}
+      >+ Add animation</button>
+      {!selectedElement && <small>Select an object on the slide to animate it.</small>}
+    </div>
   </section>
 }

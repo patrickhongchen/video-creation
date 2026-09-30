@@ -180,6 +180,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .composition-selection { position: absolute; z-index: 10; inset: 0; border: 4px solid #176dff; pointer-events: none; }
 .composition-element.is-locked .composition-selection { border-style: dashed; border-color: #6d7d8f; }
 .composition-resize-handle { width: 24px; height: 24px; position: absolute; border: 3px solid #176dff; border-radius: 50%; background: #fff; padding: 0; pointer-events: auto; }
+.composition-rotation-control { width: 24px; height: 52px; position: absolute; left: 50%; bottom: 100%; display: flex; flex-direction: column; align-items: center; margin-left: -12px; transform: scale(var(--composition-control-scale, 1)); transform-origin: bottom center; pointer-events: none; }
+.composition-rotation-handle { width: 24px; height: 24px; flex: none; border: 3px solid #176dff; border-radius: 50%; background: #fff; padding: 0; cursor: grab; pointer-events: auto; touch-action: none; }
+.composition-rotation-handle:active { cursor: grabbing; }
+.composition-rotation-stem { width: 3px; flex: 1; background: #176dff; pointer-events: none; }
 .composition-resize-handle--top-left { left: -12px; top: -12px; cursor: nwse-resize; }
 .composition-resize-handle--top-right { right: -12px; top: -12px; cursor: nesw-resize; }
 .composition-resize-handle--bottom-left { left: -12px; bottom: -12px; cursor: nesw-resize; }
@@ -208,7 +212,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .inspector-tabs button { min-width: 0; padding: 13px 3px 11px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: #6b798a; font-size: 12px; font-weight: 600; cursor: pointer; }
 .inspector-tabs button:hover { color: #263544; background: #f7f9fb; }
 .inspector-tabs button.is-active { border-bottom-color: var(--blue); color: var(--blue); }
-.inspector-panel { min-height: 0; overflow-y: auto; padding-bottom: 24px; scrollbar-width: thin; }
+.inspector-panel { min-height: 0; min-width: 0; overflow-y: auto; overflow-x: hidden; padding-bottom: 24px; scrollbar-width: thin; }
 .inspector section { padding: 17px 0 18px; border-bottom: 1px solid var(--line); }
 .inspector section:last-child { border-bottom: 0; }
 .inspector h3 { font-size: 14px; margin: 0 0 13px; letter-spacing: -.01em; }
@@ -279,6 +283,27 @@ textarea { resize: vertical; }
 .composition-inline-actions, .composition-z-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; margin: 8px 0; }
 .composition-z-actions { margin-top: 5px; }
 .composition-warning { border-radius: 4px; background: #fff3d7; padding: 8px; color: #78570e; font-size: 10px; line-height: 1.4; }
+.inspector .selected-element-controls { min-width: 0; margin-inline: 0; padding-inline: 4px !important; }
+.selected-element-controls .section-heading { align-items: baseline; }
+.selected-element-controls .field-row, .selected-element-controls .composition-number-field { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.35; }
+.selected-element-controls .field-row > span:first-child { padding: 0; font-size: 12px; }
+.selected-element-controls input:not([type="checkbox"]), .selected-element-controls select, .selected-element-controls textarea { min-width: 0; width: 100%; border: 1px solid #cbd5df; border-radius: 4px; background: #fff; padding: 7px 9px; color: var(--ink); font-size: 12px; line-height: 1.35; }
+.selected-element-controls input:not([type="checkbox"]), .selected-element-controls select { height: 33px; }
+.selected-element-controls input[type="color"] { padding: 4px; }
+.selected-element-controls textarea { display: block; min-height: 78px; }
+.selected-element-controls .composition-inline-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 12px 0 0; }
+.selected-element-controls button { min-height: 33px; border: 1px solid #cbd5df; border-radius: 4px; background: #fff; padding: 6px 9px; color: #405164; font-size: 12px; line-height: 1.35; }
+.selected-element-controls button:hover { background: #f3f6f8; }
+.selected-element-controls .composition-inline-actions button:last-child { color: #a33c34; }
+.inspector .element-property-section { padding: 18px 0; border-top: 1px solid var(--soft-line); border-bottom: 0; margin-top: 18px; }
+.inspector .element-property-section + .element-property-section { margin-top: 0; }
+.element-property-section h4 { margin: 0 0 12px; color: #405164; font-size: 12px; font-weight: 650; line-height: 1.35; }
+.element-property-grid, .selected-element-controls .composition-transform-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.element-property-grid > .element-wide-field, .element-property-grid > .composition-replace-image, .element-property-grid > .composition-view-options, .element-property-grid > .chart-format-row, .element-property-grid > .checkbox-field, .element-property-grid > .composition-chart-data { grid-column: 1 / -1; }
+.selected-element-controls .composition-replace-image, .selected-element-controls .composition-view-options, .selected-element-controls .composition-chart-data { margin: 0; }
+.selected-element-controls .composition-view-options, .selected-element-controls .composition-help, .selected-element-controls .composition-empty { font-size: 12px; }
+.selected-element-controls .chart-format-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.selected-element-controls .composition-chart-data h3 { font-size: 12px; color: #405164; font-weight: 650; }
 .composition-animation-controls { margin: 0 0 14px; }
 .composition-animation-controls h4 { margin: 0 0 12px; color: #263544; font-size: 12px; }
 .composition-animation-controls .duration-input { grid-template-columns: minmax(0, 1fr) 47px; }
@@ -309,14 +334,11 @@ textarea { resize: vertical; }
 .composition-reveal-remove { height: 25px; border: 0; background: transparent; color: #69788a; font-size: 17px; cursor: pointer; }
 .composition-reveal-remove:hover { color: #b9443a; }
 .composition-reveal-status { grid-column: 1 / -1; padding: 0 2px 3px; color: #7d6982; font-size: 9px; line-height: 1.3; }
-.composition-add-animation { position: relative; margin-top: 11px; }
-.composition-add-animation summary { display: inline-block; border: 1px solid #cbd5df; border-radius: 4px; background: #fff; padding: 7px 10px; color: #405164; font-size: 11px; font-weight: 650; cursor: pointer; list-style: none; }
-.composition-add-animation summary::-webkit-details-marker { display: none; }
-.composition-add-animation summary:hover { background: #f3f6f8; }
-.composition-add-animation-menu { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; right: 0; display: grid; max-height: 200px; overflow-y: auto; border: 1px solid #cbd5df; border-radius: 4px; background: #fff; box-shadow: 0 6px 18px #20304422; padding: 3px; }
-.composition-add-animation-menu button { overflow: hidden; border: 0; border-radius: 3px; background: transparent; padding: 8px; color: #263544; font-size: 11px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.composition-add-animation-menu button:hover { background: #edf4ff; }
-.composition-add-animation-menu p { margin: 0; padding: 8px; color: #718096; font-size: 10px; }
+.composition-add-animation { display: flex; align-items: center; gap: 8px; margin-top: 11px; }
+.composition-add-animation button { flex: none; border: 1px solid #cbd5df; border-radius: 4px; background: #fff; padding: 7px 10px; color: #405164; font-size: 11px; font-weight: 650; cursor: pointer; }
+.composition-add-animation button:hover:not(:disabled) { background: #f3f6f8; }
+.composition-add-animation button:disabled { background: #f4f6f8; color: #9aa5b1; cursor: default; }
+.composition-add-animation small { color: #718096; font-size: 10px; line-height: 1.3; }
 .composition-preview-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .composition-preview-actions > span { flex-basis: 100%; color: #516578; font-size: 11px; }
 .composition-preview-button { flex: 1 1 120px; min-height: 33px; border: 1px solid #176dff; border-radius: 4px; background: #176dff; color: #fff; font-size: 11px; font-weight: 700; }

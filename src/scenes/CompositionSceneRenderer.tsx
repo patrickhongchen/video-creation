@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { BarChart, LineChart } from '../charts'
 import { COMPOSITION_HEIGHT, COMPOSITION_WIDTH } from '../model'
 import { FINAL_ENTRANCE_STATE, entranceSuppressionReason, morphCompatibilityKey, resolveEntranceState, type RevealVisualState } from '../entranceAnimation'
+import { rotationFromPointerAngles } from '../elementRotation'
 import type {
   ElementFrame,
   PresentationImageAsset,
@@ -34,13 +35,17 @@ interface SlideRendererProps {
 type Corner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
 interface Interaction {
-  kind: 'drag' | 'resize'
+  kind: 'drag' | 'resize' | 'rotate'
   pointerId: number
   element: SlideElement
   frame: ElementFrame
   startX: number
   startY: number
   corner?: Corner
+  centerX?: number
+  centerY?: number
+  startPointerAngle?: number
+  startRotation?: number
 }
 
 interface SnapResult {
@@ -266,6 +271,11 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
       if (interaction.kind === 'drag') {
         frame.x += deltaX
         frame.y += deltaY
+      } else if (interaction.kind === 'rotate') {
+        const { centerX, centerY, startPointerAngle, startRotation } = interaction
+        if (centerX === undefined || centerY === undefined || startPointerAngle === undefined || startRotation === undefined) return
+        const currentPointerAngle = Math.atan2(y - centerY, x - centerX)
+        frame.rotation = rotationFromPointerAngles(startRotation, startPointerAngle, currentPointerAngle, event.shiftKey)
       } else if (interaction.corner) {
         const fromLeft = interaction.corner.endsWith('left')
         const fromTop = interaction.corner.startsWith('top')
@@ -291,7 +301,7 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
         }
       }
       let result: SnapResult = { frame }
-      if (editor.snap && !event.altKey) {
+      if (interaction.kind !== 'rotate' && editor.snap && !event.altKey) {
         const tolerance = 7 * COMPOSITION_WIDTH / rect.width
         result = interaction.kind === 'drag'
           ? snapDraggedFrame(frame, scene, interaction.element.id, tolerance)
@@ -299,13 +309,13 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
             ? { frame }
             : snapResizedFrame(frame, scene, interaction.element.id, interaction.corner!, tolerance)
       }
-      const canonicalFrame = {
-        ...result.frame,
-        x: Math.round(result.frame.x),
-        y: Math.round(result.frame.y),
-        width: Math.round(result.frame.width),
-        height: Math.round(result.frame.height),
-      }
+      const canonicalFrame = interaction.kind === 'rotate' ? result.frame : {
+          ...result.frame,
+          x: Math.round(result.frame.x),
+          y: Math.round(result.frame.y),
+          width: Math.round(result.frame.width),
+          height: Math.round(result.frame.height),
+        }
       previewFrameRef.current = canonicalFrame
       setPreview({ elementId: interaction.element.id, frame: canonicalFrame })
       setSnapGuides({ x: result.guideX, y: result.guideY })
@@ -338,14 +348,22 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
     const rect = hostRef.current?.getBoundingClientRect()
     if (!rect) return
     const frame = preview && preview.elementId === element.id ? preview.frame : element.frame
+    const startX = (event.clientX - rect.left) * COMPOSITION_WIDTH / rect.width
+    const startY = (event.clientY - rect.top) * COMPOSITION_HEIGHT / rect.height
+    const centerX = frame.x + frame.width / 2
+    const centerY = frame.y + frame.height / 2
     interactionRef.current = {
       kind,
       pointerId: event.pointerId,
       element,
       frame,
-      startX: (event.clientX - rect.left) * COMPOSITION_WIDTH / rect.width,
-      startY: (event.clientY - rect.top) * COMPOSITION_HEIGHT / rect.height,
+      startX,
+      startY,
       corner,
+      centerX: kind === 'rotate' ? centerX : undefined,
+      centerY: kind === 'rotate' ? centerY : undefined,
+      startPointerAngle: kind === 'rotate' ? Math.atan2(startY - centerY, startX - centerX) : undefined,
+      startRotation: kind === 'rotate' ? frame.rotation ?? 0 : undefined,
     }
     previewFrameRef.current = frame
   }
@@ -397,7 +415,16 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
           {animated
             ? <div className="composition-entrance" style={entranceStyle}><ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} deterministicMotion={deterministicMotion} /></div>
             : <ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} deterministicMotion={deterministicMotion} />}
-          {selected && editor && <div className="composition-selection" aria-hidden="true">
+          {selected && editor && <div className="composition-selection" aria-hidden="true" style={{ '--composition-control-scale': 1 / Math.max(scale, 0.01) } as CSSProperties}>
+            {!element.locked && <div className="composition-rotation-control">
+              <button
+                type="button"
+                tabIndex={-1}
+                className="composition-rotation-handle"
+                onPointerDown={(event) => startInteraction(event, element, 'rotate')}
+              />
+              <span className="composition-rotation-stem" />
+            </div>}
             {(['top-left', 'top-right', 'bottom-left', 'bottom-right'] as Corner[]).map((corner) => <button
               type="button"
               tabIndex={-1}

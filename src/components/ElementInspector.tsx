@@ -1,4 +1,5 @@
 import { useRef, type ChangeEvent } from 'react'
+import { normalizedRotation } from '../elementRotation'
 import type { ElementFrame, SlideChartElement, SlideElement, SlideImageElement, SlideShape } from '../model'
 import { imageMimeType, readImageFile } from '../imageUtils'
 import { createStableId, duplicateSlideElement } from '../presentationFactories'
@@ -28,10 +29,6 @@ function minimumSize(element: SlideElement) {
   return element.shape === 'line' ? { width: 60, height: 20 } : { width: 40, height: 40 }
 }
 
-function normalizedRotation(value: number) {
-  return ((value + 180) % 360 + 360) % 360 - 180
-}
-
 function chartEditor(element: SlideChartElement, update: (next: SlideChartElement) => void) {
   const updateDatum = (index: number, value: Partial<SlideChartElement['data'][number]>) => update({
     ...element,
@@ -42,7 +39,7 @@ function chartEditor(element: SlideChartElement, update: (next: SlideChartElemen
     update({ ...element, data: [...element.data, { id: createStableId(`datum-${ordinal}`), label: `Item ${ordinal}`, value: 0 }] })
   }
   return <>
-    <label className="field-row"><span>Chart type</span><select value={element.chartType} onChange={(event) => update({ ...element, chartType: event.target.value as SlideChartElement['chartType'], name: event.target.value === 'bar' ? 'Bar Chart' : 'Line Chart' })}><option value="bar">Bar</option><option value="line">Line</option></select></label>
+    <label className="field-row"><span>Chart type</span><select value={element.chartType} onChange={(event) => update({ ...element, chartType: event.target.value as SlideChartElement['chartType'], name: element.name === 'Bar Chart' || element.name === 'Line Chart' ? (event.target.value === 'bar' ? 'Bar Chart' : 'Line Chart') : element.name })}><option value="bar">Bar</option><option value="line">Line</option></select></label>
     {element.chartType === 'bar' && <label className="field-row"><span>Orientation</span><select value={element.orientation ?? 'horizontal'} onChange={(event) => update({ ...element, orientation: event.target.value as SlideChartElement['orientation'] })}><option value="horizontal">Horizontal</option><option value="vertical">Vertical</option></select></label>}
     <div className="chart-format-row">
       <label className="field-row"><span>Prefix</span><input value={element.valuePrefix ?? ''} onChange={(event) => update({ ...element, valuePrefix: event.target.value })} /></label>
@@ -123,46 +120,51 @@ export function ElementInspector({
 
   return <section className="selected-element-controls">
     <div className="section-heading"><h3>Element</h3><span>{selected.type}</span></div>
-    <div className="composition-type-controls">
-      {selected.type === 'text' && <>
-        <label className="field-row"><span>Text</span><textarea rows={4} value={selected.text} onChange={(event) => updateElement({ ...selected, text: event.target.value })} /></label>
-        <label className="field-row"><span>Role</span><select value={selected.role ?? 'body'} onChange={(event) => updateElement({ ...selected, role: event.target.value as typeof selected.role })}><option value="headline">Headline</option><option value="body">Body</option><option value="caption">Caption</option><option value="label">Label</option></select></label>
-        <Numeric label="Font size" value={selected.fontSize ?? (selected.role === 'headline' ? presentation.theme.defaultHeadlineStyle.fontSize : selected.role === 'caption' ? presentation.theme.defaultCaptionStyle.fontSize : selected.role === 'label' ? (presentation.theme.defaultLabelStyle ?? presentation.theme.defaultBodyStyle).fontSize : presentation.theme.defaultBodyStyle.fontSize)} min={1} max={512} onChange={(fontSize) => updateElement({ ...selected, fontSize })} />
-        <Numeric label="Font weight" value={selected.fontWeight ?? 500} min={100} max={900} step={100} onChange={(fontWeight) => updateElement({ ...selected, fontWeight })} />
-        <label className="field-row"><span>Align</span><select value={selected.textAlign ?? 'left'} onChange={(event) => updateElement({ ...selected, textAlign: event.target.value as typeof selected.textAlign })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
-      </>}
-      {selected.type === 'image' && <>
-        <button type="button" className="composition-replace-image" onClick={pickReplacement}>Replace Image</button>
-        {!onImportImage && <input ref={imageInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" onChange={(event) => void acceptReplacement(event)} />}
-        <label className="field-row"><span>Fit</span><select value={selected.fit} onChange={(event) => updateElement({ ...selected, fit: event.target.value as SlideImageElement['fit'] })}><option value="contain">Contain</option><option value="cover">Cover</option></select></label>
-        <label className="field-row"><span>Position</span><select value={selected.position ?? 'center'} onChange={(event) => updateElement({ ...selected, position: event.target.value as SlideImageElement['position'] })}>{['center', 'top', 'bottom', 'left', 'right', 'top-left', 'top-right', 'bottom-left', 'bottom-right'].map((position) => <option key={position} value={position}>{position}</option>)}</select></label>
-        <div className="composition-view-options"><label><input type="checkbox" checked={selected.flipX ?? false} onChange={(event) => updateElement({ ...selected, flipX: event.target.checked })} /> Flip horizontal</label><label><input type="checkbox" checked={selected.flipY ?? false} onChange={(event) => updateElement({ ...selected, flipY: event.target.checked })} /> Flip vertical</label></div>
-      </>}
-      {selected.type === 'chart' && chartEditor(selected, updateElement)}
-      {selected.type === 'shape' && <>
-        <label className="field-row"><span>Shape</span><select value={selected.shape} onChange={(event) => updateElement({ ...selected, shape: event.target.value as SlideShape })}><option value="rectangle">Rectangle</option><option value="circle">Circle</option><option value="line">Line</option></select></label>
-        {selected.shape !== 'line' && <label className="field-row"><span>Fill</span><input type="color" value={selected.fill ?? presentation.theme.accent} onChange={(event) => updateElement({ ...selected, fill: event.target.value })} /></label>}
-        <label className="field-row"><span>Stroke</span><input type="color" value={selected.stroke ?? presentation.theme.accent} onChange={(event) => updateElement({ ...selected, stroke: event.target.value })} /></label>
-        <Numeric label="Stroke width" value={selected.strokeWidth ?? 3} min={0} onChange={(strokeWidth) => updateElement({ ...selected, strokeWidth })} />
-      </>}
-      {selected.type === 'arrow' && <>
-        <label className="field-row"><span>Color</span><input type="color" value={selected.stroke ?? presentation.theme.accent} onChange={(event) => updateElement({ ...selected, stroke: event.target.value })} /></label>
-        <Numeric label="Stroke width" value={selected.strokeWidth ?? 6} min={1} onChange={(strokeWidth) => updateElement({ ...selected, strokeWidth })} />
-        <label className="field-row"><span>Start cap</span><select value={selected.startCap ?? 'none'} onChange={(event) => updateElement({ ...selected, startCap: event.target.value as typeof selected.startCap })}><option value="none">None</option><option value="dot">Dot</option></select></label>
-        <label className="field-row"><span>End cap</span><select value={selected.endCap ?? 'arrow'} onChange={(event) => updateElement({ ...selected, endCap: event.target.value as typeof selected.endCap })}><option value="arrow">Arrow</option><option value="none">Line only</option></select></label>
-      </>}
-    </div>
-
-    {(selected.frame.x + selected.frame.width < 0 || selected.frame.x > 1080 || selected.frame.y + selected.frame.height < 0 || selected.frame.y > 1920) && <p className="composition-warning">This element is completely outside the video frame.</p>}
-
+    <label className="field-row element-name-field"><span>Name</span><input aria-label="Element name" value={selected.name} onChange={(event) => updateElement({ ...selected, name: event.target.value })} onBlur={() => {
+      if (!selected.name.trim()) updateElement({ ...selected, name: selected.type === 'chart' ? (selected.chartType === 'bar' ? 'Bar Chart' : 'Line Chart') : selected.type === 'shape' ? selected.shape[0].toUpperCase() + selected.shape.slice(1) : selected.type[0].toUpperCase() + selected.type.slice(1) })
+    }} /></label>
     <div className="composition-inline-actions">
       <button type="button" onClick={() => updateElement({ ...selected, locked: !selected.locked })}>{selected.locked ? 'Unlock' : 'Lock'}</button>
       <button type="button" onClick={duplicateSelected}>Duplicate</button>
       <button type="button" onClick={removeSelected}>Delete</button>
     </div>
+    <section className="element-property-section">
+      <h4>{selected.type === 'text' ? 'Text' : selected.type === 'chart' ? 'Chart' : selected.type === 'image' ? 'Image' : selected.type === 'shape' ? 'Shape' : 'Arrow'}</h4>
+      <div className="composition-type-controls element-property-grid">
+        {selected.type === 'text' && <>
+          <label className="field-row element-wide-field"><span>Content</span><textarea rows={3} value={selected.text} onChange={(event) => updateElement({ ...selected, text: event.target.value })} /></label>
+          <label className="field-row"><span>Role</span><select value={selected.role ?? 'body'} onChange={(event) => updateElement({ ...selected, role: event.target.value as typeof selected.role })}><option value="headline">Headline</option><option value="body">Body</option><option value="caption">Caption</option><option value="label">Label</option></select></label>
+          <label className="field-row"><span>Align</span><select value={selected.textAlign ?? 'left'} onChange={(event) => updateElement({ ...selected, textAlign: event.target.value as typeof selected.textAlign })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
+          <Numeric label="Font size" value={selected.fontSize ?? (selected.role === 'headline' ? presentation.theme.defaultHeadlineStyle.fontSize : selected.role === 'caption' ? presentation.theme.defaultCaptionStyle.fontSize : selected.role === 'label' ? (presentation.theme.defaultLabelStyle ?? presentation.theme.defaultBodyStyle).fontSize : presentation.theme.defaultBodyStyle.fontSize)} min={1} max={512} onChange={(fontSize) => updateElement({ ...selected, fontSize })} />
+          <Numeric label="Font weight" value={selected.fontWeight ?? 500} min={100} max={900} step={100} onChange={(fontWeight) => updateElement({ ...selected, fontWeight })} />
+        </>}
+        {selected.type === 'image' && <>
+          <button type="button" className="composition-replace-image" onClick={pickReplacement}>Replace Image</button>
+          {!onImportImage && <input ref={imageInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" onChange={(event) => void acceptReplacement(event)} />}
+          <label className="field-row"><span>Fit</span><select value={selected.fit} onChange={(event) => updateElement({ ...selected, fit: event.target.value as SlideImageElement['fit'] })}><option value="contain">Contain</option><option value="cover">Cover</option></select></label>
+          <label className="field-row"><span>Position</span><select value={selected.position ?? 'center'} onChange={(event) => updateElement({ ...selected, position: event.target.value as SlideImageElement['position'] })}>{['center', 'top', 'bottom', 'left', 'right', 'top-left', 'top-right', 'bottom-left', 'bottom-right'].map((position) => <option key={position} value={position}>{position}</option>)}</select></label>
+          <div className="composition-view-options"><label><input type="checkbox" checked={selected.flipX ?? false} onChange={(event) => updateElement({ ...selected, flipX: event.target.checked })} /> Flip horizontal</label><label><input type="checkbox" checked={selected.flipY ?? false} onChange={(event) => updateElement({ ...selected, flipY: event.target.checked })} /> Flip vertical</label></div>
+        </>}
+        {selected.type === 'chart' && chartEditor(selected, updateElement)}
+        {selected.type === 'shape' && <>
+          <label className="field-row"><span>Shape</span><select value={selected.shape} onChange={(event) => updateElement({ ...selected, shape: event.target.value as SlideShape })}><option value="rectangle">Rectangle</option><option value="circle">Circle</option><option value="line">Line</option></select></label>
+          {selected.shape !== 'line' && <label className="field-row"><span>Fill</span><input type="color" value={selected.fill ?? presentation.theme.accent} onChange={(event) => updateElement({ ...selected, fill: event.target.value })} /></label>}
+          <label className="field-row"><span>Stroke</span><input type="color" value={selected.stroke ?? presentation.theme.accent} onChange={(event) => updateElement({ ...selected, stroke: event.target.value })} /></label>
+          <Numeric label="Stroke width" value={selected.strokeWidth ?? 3} min={0} onChange={(strokeWidth) => updateElement({ ...selected, strokeWidth })} />
+        </>}
+        {selected.type === 'arrow' && <>
+          <label className="field-row"><span>Color</span><input type="color" value={selected.stroke ?? presentation.theme.accent} onChange={(event) => updateElement({ ...selected, stroke: event.target.value })} /></label>
+          <Numeric label="Stroke width" value={selected.strokeWidth ?? 6} min={1} onChange={(strokeWidth) => updateElement({ ...selected, strokeWidth })} />
+          <label className="field-row"><span>Start cap</span><select value={selected.startCap ?? 'none'} onChange={(event) => updateElement({ ...selected, startCap: event.target.value as typeof selected.startCap })}><option value="none">None</option><option value="dot">Dot</option></select></label>
+          <label className="field-row"><span>End cap</span><select value={selected.endCap ?? 'arrow'} onChange={(event) => updateElement({ ...selected, endCap: event.target.value as typeof selected.endCap })}><option value="arrow">Arrow</option><option value="none">Line only</option></select></label>
+        </>}
+      </div>
+    </section>
 
-    <details className="composition-inspector-details inspector-disclosure">
-      <summary>Position &amp; Size</summary>
+    {(selected.frame.x + selected.frame.width < 0 || selected.frame.x > 1080 || selected.frame.y + selected.frame.height < 0 || selected.frame.y > 1920) && <p className="composition-warning">This element is completely outside the video frame.</p>}
+
+    <section className="element-property-section">
+      <h4>Position &amp; Size</h4>
       <div className="composition-transform-grid">
         <Numeric label="X" value={selected.frame.x} onChange={(value) => updateFrame('x', value)} />
         <Numeric label="Y" value={selected.frame.y} onChange={(value) => updateFrame('y', value)} />
@@ -171,19 +173,21 @@ export function ElementInspector({
         <Numeric label="Rotation" value={selected.frame.rotation ?? 0} step={1} onChange={(value) => updateFrame('rotation', value)} />
       </div>
       <button type="button" onClick={() => updateElement({ ...selected, frame: { ...selected.frame, x: (1080 - selected.frame.width) / 2, y: (1920 - selected.frame.height) / 2 } })}>Center on Canvas</button>
-    </details>
+    </section>
 
-    <details className="composition-inspector-details inspector-disclosure">
-      <summary>Appearance</summary>
-      <Numeric label="Opacity %" value={Math.round((selected.frame.opacity ?? 1) * 100)} min={0} max={100} onChange={(value) => updateFrame('opacity', value / 100)} />
-      {selected.type === 'text' && <>
-        <Numeric label="Line height" value={selected.lineHeight ?? 1.1} min={0.5} max={3} step={0.05} onChange={(lineHeight) => updateElement({ ...selected, lineHeight })} />
-      </>}
-    </details>
+    <section className="element-property-section">
+      <h4>Appearance</h4>
+      <div className="element-property-grid">
+        <Numeric label="Opacity %" value={Math.round((selected.frame.opacity ?? 1) * 100)} min={0} max={100} onChange={(value) => updateFrame('opacity', value / 100)} />
+        {selected.type === 'text' && <>
+          <Numeric label="Line height" value={selected.lineHeight ?? 1.1} min={0.5} max={3} step={0.05} onChange={(lineHeight) => updateElement({ ...selected, lineHeight })} />
+        </>}
+      </div>
+    </section>
 
-    <details className="composition-inspector-details inspector-disclosure">
-      <summary>Morph</summary>
+    <section className="element-property-section">
+      <h4>Morph</h4>
       <label className="field-row"><span>Shared ID</span><input value={selected.sharedElementId ?? ''} placeholder="Optional Morph identity" onChange={(event) => updateElement({ ...selected, sharedElementId: event.target.value.trim() || undefined })} /></label>
-    </details>
+    </section>
   </section>
 }

@@ -7,15 +7,16 @@ import type { CompositionEditorProps } from './CompositionInspector'
 
 type ElementInspectorProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 'selectedElementId' | 'onSelect' | 'onSlideChange' | 'onPresentationChange' | 'onImportImage'>
 
-function Numeric({ label, value, onChange, min, max, step = 1 }: {
+function Numeric({ label, displayLabel = label, value, onChange, min, max, step = 1 }: {
   label: string
+  displayLabel?: string
   value: number
   onChange: (value: number) => void
   min?: number
   max?: number
   step?: number
 }) {
-  return <label className="composition-number-field"><span>{label}</span><input type="number" aria-label={label} value={Number.isFinite(value) ? value : 0} min={min} max={max} step={step} onChange={(event) => {
+  return <label className="composition-number-field"><span>{displayLabel}</span><input type="number" aria-label={label} value={Number.isFinite(value) ? value : 0} min={min} max={max} step={step} onChange={(event) => {
     const next = Number(event.target.value)
     if (Number.isFinite(next)) onChange(next)
   }} /></label>
@@ -133,10 +134,9 @@ export function ElementInspector({
       <div className="composition-type-controls element-property-grid">
         {selected.type === 'text' && <>
           <label className="field-row element-wide-field"><span>Content</span><textarea rows={3} value={selected.text} onChange={(event) => updateElement({ ...selected, text: event.target.value })} /></label>
-          <label className="field-row"><span>Role</span><select value={selected.role ?? 'body'} onChange={(event) => updateElement({ ...selected, role: event.target.value as typeof selected.role })}><option value="headline">Headline</option><option value="body">Body</option><option value="caption">Caption</option><option value="label">Label</option></select></label>
-          <label className="field-row"><span>Align</span><select value={selected.textAlign ?? 'left'} onChange={(event) => updateElement({ ...selected, textAlign: event.target.value as typeof selected.textAlign })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
           <Numeric label="Font size" value={selected.fontSize ?? (selected.role === 'headline' ? presentation.theme.defaultHeadlineStyle.fontSize : selected.role === 'caption' ? presentation.theme.defaultCaptionStyle.fontSize : selected.role === 'label' ? (presentation.theme.defaultLabelStyle ?? presentation.theme.defaultBodyStyle).fontSize : presentation.theme.defaultBodyStyle.fontSize)} min={1} max={512} onChange={(fontSize) => updateElement({ ...selected, fontSize })} />
-          <Numeric label="Font weight" value={selected.fontWeight ?? 500} min={100} max={900} step={100} onChange={(fontWeight) => updateElement({ ...selected, fontWeight })} />
+          <Numeric label="Font weight" displayLabel="Weight" value={selected.fontWeight ?? 500} min={100} max={900} step={100} onChange={(fontWeight) => updateElement({ ...selected, fontWeight })} />
+          <label className="field-row"><span>Align</span><select value={selected.textAlign ?? 'left'} onChange={(event) => updateElement({ ...selected, textAlign: event.target.value as typeof selected.textAlign })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></label>
         </>}
         {selected.type === 'image' && <>
           <button type="button" className="composition-replace-image" onClick={pickReplacement}>Replace Image</button>
@@ -172,7 +172,6 @@ export function ElementInspector({
         <Numeric label="H" value={selected.frame.height} min={minimumSize(selected).height} onChange={(value) => updateFrame('height', value)} />
         <Numeric label="Rotation" value={selected.frame.rotation ?? 0} step={1} onChange={(value) => updateFrame('rotation', value)} />
       </div>
-      <button type="button" onClick={() => updateElement({ ...selected, frame: { ...selected.frame, x: (1080 - selected.frame.width) / 2, y: (1920 - selected.frame.height) / 2 } })}>Center on Canvas</button>
     </section>
 
     <section className="element-property-section">

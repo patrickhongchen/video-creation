@@ -181,7 +181,7 @@ function ElementContent({ element, theme, foreground, layoutNamespace, imageAsse
         textAlign: element.textAlign ?? 'left',
         lineHeight: element.lineHeight ?? defaultStyle.lineHeight ?? 1.1,
         letterSpacing: element.letterSpacing ?? defaultStyle.letterSpacing ?? 0,
-      }}>{element.text}</div>
+      }}><span className="composition-text-content">{element.text}</span></div>
     }
     case 'image': {
       const asset = imageAssets?.find((candidate) => candidate.id === element.assetId)

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import type { SlideElement } from '../model'
+import type { SlideElement, SlideEntranceAnimationType } from '../model'
 import { reorderLayer } from '../layerOrder'
+import { addRevealAnimation, removeRevealAnimation, revealGroups, updateRevealEntrance } from '../animationOrder'
+import { entranceSuppressionReason, previousSlideFor } from '../entranceAnimation'
 import type { CompositionEditorProps } from './CompositionInspector'
 
-type LayersPanelProps = Pick<CompositionEditorProps, 'slide' | 'selectedElementId' | 'onSelect' | 'onSlideChange'>
+type LayersPanelProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 'selectedElementId' | 'onSelect' | 'onSlideChange' | 'isPreviewing' | 'onPreviewSlide' | 'onStopPreview' | 'previewAvailable' | 'revealCount' | 'revealedCount' | 'onNextReveal'>
 
 function fallbackName(element: SlideElement) {
   if (element.type === 'text') return 'Text'
@@ -13,7 +15,9 @@ function fallbackName(element: SlideElement) {
   return element.shape === 'rectangle' ? 'Rectangle' : element.shape === 'circle' ? 'Circle' : 'Line'
 }
 
-export function LayersPanel({ slide, selectedElementId, onSelect, onSlideChange }: LayersPanelProps) {
+export function LayersPanel({ slide, presentation, selectedElementId, onSelect, onSlideChange, isPreviewing, onPreviewSlide, onStopPreview, previewAvailable, revealCount, revealedCount, onNextReveal }: LayersPanelProps) {
+  const previousSlide = previousSlideFor(presentation.slides, slide)
+  const groups = revealGroups(slide)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ id: string, edge: 'above' | 'below' } | null>(null)
   const drag = useRef<{ id: string, startY: number, moved: boolean } | null>(null)
@@ -53,14 +57,24 @@ export function LayersPanel({ slide, selectedElementId, onSelect, onSlideChange 
   }, [slide, onSlideChange])
 
   return <section className="composition-layers">
-    <div className="section-heading">
+    <div className="composition-animation-heading">
       <h3>Layers</h3>
-      <span>{slide.elements.length}</span>
+      <button type="button" className="composition-preview-button" disabled={!previewAvailable || isPreviewing} onClick={onPreviewSlide}>{isPreviewing ? 'Previewing' : 'Preview Slide'}</button>
     </div>
+    {isPreviewing && <div className="composition-preview-actions">
+      <span role="status">Reveal {revealedCount} / {revealCount}</span>
+      <button type="button" className="composition-preview-button" onClick={onNextReveal}>{revealedCount < revealCount ? 'Next Reveal' : 'Finish Preview'}</button>
+      <button type="button" className="composition-preview-button is-active" onClick={onStopPreview}>Stop Preview</button>
+    </div>}
     {slide.elements.length === 0 && <p className="composition-empty">This blank slide has no elements yet.</p>}
-    {slide.elements.length > 0 && <p className="composition-help">Layers are listed from front to back.</p>}
+    {slide.elements.length > 0 && <>
+      <p className="composition-help">Drag layers to arrange front to back. Set an entrance to animate a layer. Steps play in number order; matching steps reveal together.</p>
+      <div className="composition-layer-summary"><span>{slide.elements.length} {slide.elements.length === 1 ? 'layer' : 'layers'}</span><span>{groups.length} reveal {groups.length === 1 ? 'step' : 'steps'}</span></div>
+    </>}
     <div className="composition-layer-list" ref={listRef}>
-      {[...slide.elements].reverse().map((element) => <div
+      {[...slide.elements].reverse().map((element) => {
+        const suppression = entranceSuppressionReason(element, previousSlide)
+        return <div
         className={`composition-layer-row${element.id === selectedElementId ? ' is-selected' : ''}${element.id === draggedId ? ' is-dragging' : ''}${dropTarget?.id === element.id ? ` drop-${dropTarget.edge}` : ''}${element.hidden ? ' is-hidden' : ''}${element.locked ? ' is-locked' : ''}`}
         key={element.id}
         data-layer-id={element.id}
@@ -93,8 +107,42 @@ export function LayersPanel({ slide, selectedElementId, onSelect, onSlideChange 
         <input className="composition-layer-select" aria-label={`Layer name for ${element.name}`} value={element.name} onFocus={() => onSelect(element.id)} onChange={(event) => updateElement({ ...element, name: event.target.value })} onBlur={() => { if (!element.name.trim()) updateElement({ ...element, name: fallbackName(element) }) }} />
         <button type="button" aria-label={`${element.hidden ? 'Show' : 'Hide'} ${element.name}`} title={element.hidden ? 'Show layer' : 'Hide layer'} onClick={(event) => { event.stopPropagation(); updateElement({ ...element, hidden: !element.hidden }) }}>{element.hidden ? '○' : '●'}</button>
         <button type="button" aria-label={`${element.locked ? 'Unlock' : 'Lock'} ${element.name}`} title={element.locked ? 'Unlock layer' : 'Lock layer'} onClick={(event) => { event.stopPropagation(); updateElement({ ...element, locked: !element.locked }) }}>{element.locked ? '🔒' : '◇'}</button>
+        <div className="composition-layer-animation" onClick={(event) => event.stopPropagation()}>
+          <label><span>Entrance</span><select
+            aria-label={`Entrance for ${element.name}`}
+            value={element.animation?.entrance ?? 'none'}
+            disabled={Boolean(element.hidden && !element.animation)}
+            title={element.hidden && !element.animation ? 'Show this layer to add an entrance' : undefined}
+            onFocus={() => onSelect(element.id)}
+            onChange={(event) => {
+              if (event.target.value === 'none') onSlideChange(removeRevealAnimation(slide, element.id))
+              else onSlideChange(updateRevealEntrance(element.animation ? slide : addRevealAnimation(slide, element.id), element.id, event.target.value as SlideEntranceAnimationType))
+            }}
+          >
+            <option value="none">None · visible immediately</option>
+            <option value="appear">Appear</option>
+            <option value="fade">Fade</option>
+            <option value="pop">Pop</option>
+            <option value="slide-up">Slide Up</option>
+            <option value="slide-left">Slide Left</option>
+            <option value="slide-right">Slide Right</option>
+          </select></label>
+          {element.animation && <label className="composition-layer-step"><span>Step</span><input
+            aria-label={`Reveal step for ${element.name}`}
+            type="number"
+            min="1"
+            step="1"
+            value={element.animation.order}
+            onFocus={() => onSelect(element.id)}
+            onChange={(event) => {
+              const order = Number(event.target.value)
+              if (Number.isSafeInteger(order) && order > 0) updateElement({ ...element, animation: { ...element.animation!, order } })
+            }}
+          /></label>}
+          {element.animation && (element.hidden || suppression) && <small className="composition-layer-animation-status">{element.hidden ? 'Hidden · entrance won’t play' : suppression === 'shared-element' ? 'Continues from previous slide · entrance won’t replay' : 'Chart continues from previous slide · entrance won’t replay'}</small>}
+        </div>
       </div>
-      )}
+      })}
     </div>
   </section>
 }

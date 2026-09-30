@@ -23,7 +23,6 @@ export interface CompositionEditorProps {
   onNextReveal: () => void
 }
 
-export { AnimationInspector } from './AnimationInspector'
 export { CanvasToolbar } from './CanvasToolbar'
 export { ElementInspector } from './ElementInspector'
 export { LayersPanel } from './LayersPanel'

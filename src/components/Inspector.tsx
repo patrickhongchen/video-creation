@@ -1,7 +1,7 @@
 import { useEffect, useState, type ChangeEvent } from 'react'
 import type { Presentation, Slide, TransitionType } from '../model'
 import { ChevronLeftIcon, ChevronRightIcon } from './Icons'
-import { AnimationInspector, ElementInspector, LayersPanel } from './CompositionInspector'
+import { ElementInspector, LayersPanel } from './CompositionInspector'
 
 interface InspectorProps {
   slide: Slide
@@ -24,7 +24,7 @@ interface InspectorProps {
   onNextReveal: () => void
 }
 
-type InspectorTab = 'slide' | 'element' | 'animate' | 'layers'
+type InspectorTab = 'slide' | 'element' | 'layers'
 
 function SlideInspector({ slide, onChange }: Pick<InspectorProps, 'slide' | 'onChange'>) {
   const update = <K extends keyof Slide>(key: K, value: Slide[K]) => onChange({ ...slide, [key]: value })
@@ -78,12 +78,11 @@ export function Inspector({ slide, onChange, presentation, onPresentationChange,
       <div><button aria-label="Previous slide" onClick={onPrevious} disabled={!hasPrevious}><ChevronLeftIcon /></button><button aria-label="Next slide" onClick={onNext} disabled={!hasNext}><ChevronRightIcon /></button></div>
     </div>
     <div className="inspector-tabs" role="tablist" aria-label="Editor properties">
-      {(['slide', 'element', 'animate', 'layers'] as const).map((tab) => <button key={tab} type="button" id={`inspector-tab-${tab}`} role="tab" aria-selected={activeTab === tab} aria-controls={`inspector-panel-${tab}`} className={activeTab === tab ? 'is-active' : ''} onClick={() => setActiveTab(tab)}>{tab[0].toUpperCase() + tab.slice(1)}</button>)}
+      {(['slide', 'element', 'layers'] as const).map((tab) => <button key={tab} type="button" id={`inspector-tab-${tab}`} role="tab" aria-selected={activeTab === tab} aria-controls={`inspector-panel-${tab}`} className={activeTab === tab ? 'is-active' : ''} onClick={() => setActiveTab(tab)}>{tab[0].toUpperCase() + tab.slice(1)}</button>)}
     </div>
     <div id={`inspector-panel-${activeTab}`} className="inspector-panel" role="tabpanel" aria-labelledby={`inspector-tab-${activeTab}`}>
       {activeTab === 'slide' && <SlideInspector slide={slide} onChange={onChange} />}
       {activeTab === 'element' && <ElementInspector {...editorProps} />}
-      {activeTab === 'animate' && <AnimationInspector {...editorProps} />}
       {activeTab === 'layers' && <LayersPanel {...editorProps} />}
     </div>
   </aside>

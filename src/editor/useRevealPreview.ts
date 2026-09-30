@@ -57,6 +57,10 @@ export function useRevealPreview({ presentation, slide, mode, onSequenceEnd }: U
 
   const startPreview = useCallback(() => {
     if (revealOrders.length === 0) return
+    // Stopping clears previewRun, so the next run can reuse the previous key.
+    // Clear its reveal progress explicitly before starting a fresh preview.
+    setRevealRun(null)
+    setRevealClockMs(0)
     setPreviewRun((previous) => ({
       slideId: slide.id,
       presentationId: presentation.id,

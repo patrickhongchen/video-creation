@@ -123,6 +123,7 @@ export function App() {
 
   const { chooseProjectImage, chooseProjectVideo, dropProjectImage, copySelection, videoImporting } = useEditorClipboardImages({
     currentProject, presentation, selectedSlide, selectedIndex, selectedElementId, selectedElementIds, mode, isPreviewing,
+    createVideoProject: () => createDesktopProject(presentation),
     updateCurrent, setSelectedElementId, setSelection, setError,
   })
   const presenterVideoPlayback = useSlideVideoClock(selectedSlide.id, mode === 'present' && selectedSlide.elements.some((element) => element.type === 'video' && !element.hidden))
@@ -380,7 +381,7 @@ export function App() {
         hoveredElementId={hoveredElementId} setHoveredElementId={setHoveredElementId} setSelection={setSelection}
         selectSlide={selectSlide} previous={previous} next={next} addSlide={addSlide} copySlide={copySlide} deleteSlide={deleteSlide} moveSlide={moveSlide}
         updateSlide={updateSlide} onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)}
-        onImportImage={currentProject ? chooseProjectImage : undefined} onImportVideo={currentProject ? chooseProjectVideo : undefined} videoImporting={videoImporting} onDrop={(event) => void dropProjectImage(event)}
+        onImportImage={currentProject ? chooseProjectImage : undefined} onImportVideo={desktop ? chooseProjectVideo : undefined} onImportError={setError} videoImporting={videoImporting} onDrop={(event) => void dropProjectImage(event)}
         compositionGrid={compositionGrid} compositionGuides={compositionGuides} compositionSnap={compositionSnap}
         setCompositionGrid={setCompositionGrid} setCompositionGuides={setCompositionGuides} setCompositionSnap={setCompositionSnap}
         isPreviewing={isPreviewing} revealState={revealState} revealOrders={revealOrders}

@@ -3,7 +3,7 @@
   height: 100%;
   display: block;
   pointer-events: none;
-  background: #000;
+  background: transparent;
 }
 
 .composition-video-error {

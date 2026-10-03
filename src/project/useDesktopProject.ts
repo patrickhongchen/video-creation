@@ -158,15 +158,19 @@ export function useDesktopProject({ library, presentation, selectedSlide, select
     return true
   }, [applyProjectSnapshot, askUnsaved, currentProject, desktop, dirty, saveDesktopProject, selectedElementId, selectedSlide.id])
 
-  const createDesktopProject = useCallback(async (source = createBlankPresentation('Untitled Presentation')) => {
-    if (!desktop || !await protectUnsavedChanges()) return
+  const createDesktopProject = useCallback(async (source = createBlankPresentation('Untitled Presentation')): Promise<DesktopProjectSnapshot | null> => {
+    if (!desktop || !await protectUnsavedChanges()) return null
     try {
       const result = await desktop.createProject(source)
-      if (result.status === 'completed') applyProjectSnapshot(result.project)
+      if (result.status === 'completed') {
+        applyProjectSnapshot(result.project, source.id === presentation.id ? selectedSlide.id : undefined)
+        return result.project
+      }
     } catch (problem) {
       setError(problem instanceof Error ? `Project creation failed: ${problem.message}` : 'Project creation failed.')
     }
-  }, [applyProjectSnapshot, desktop, protectUnsavedChanges])
+    return null
+  }, [applyProjectSnapshot, desktop, presentation.id, protectUnsavedChanges, selectedSlide.id])
 
   const openDesktopProject = useCallback(async () => {
     if (!desktop || !await protectUnsavedChanges()) return

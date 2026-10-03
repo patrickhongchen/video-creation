@@ -30,6 +30,7 @@ interface EditorWorkspaceProps {
   onPresentationChange: (presentation: Presentation) => void
   onImportImage?: (action: 'add' | 'replace') => void
   onImportVideo?: () => void
+  onImportError?: (message: string) => void
   videoImporting?: boolean
   onDrop: DragEventHandler<HTMLElement>
   compositionGrid: boolean
@@ -50,7 +51,7 @@ interface EditorWorkspaceProps {
 export function EditorWorkspace({ presentation, selectedSlide, selectedIndex, direction, selectedElementId,
   selectedElementIds, hoveredElementId, setHoveredElementId, setSelectedElementId, setSelection,
   selectSlide, previous, next, addSlide, copySlide, deleteSlide, moveSlide, updateSlide,
-  onPresentationChange, onImportImage, onImportVideo, videoImporting, onDrop, compositionGrid, compositionGuides, compositionSnap,
+  onPresentationChange, onImportImage, onImportVideo, onImportError, videoImporting, onDrop, compositionGrid, compositionGuides, compositionSnap,
   setCompositionGrid, setCompositionGuides, setCompositionSnap, isPreviewing, revealState, revealOrders,
   advanceReveal, startPreview, stopPreview }: EditorWorkspaceProps) {
   return (
@@ -64,7 +65,7 @@ export function EditorWorkspace({ presentation, selectedSlide, selectedIndex, di
             onSlideChange={updateSlide}
             onPresentationChange={onPresentationChange}
             onImportImage={onImportImage}
-            onImportVideo={onImportVideo}
+            onImportVideo={onImportVideo} onImportError={onImportError}
             videoImporting={videoImporting}
             grid={compositionGrid}
             guides={compositionGuides}

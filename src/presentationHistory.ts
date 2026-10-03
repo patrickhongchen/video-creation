@@ -20,9 +20,11 @@ export function presentationHistoryReducer(state: PresentationHistoryState, acti
 
   if (action.type === 'refresh-assets') {
     const sources = new Map((action.presentation.imageAssets ?? []).map((asset) => [asset.id, asset.source]))
+    const videoSources = new Map((action.presentation.videoAssets ?? []).map((asset) => [asset.id, asset.source]))
     const refresh = (presentation: Presentation): Presentation => ({
       ...presentation,
       imageAssets: presentation.imageAssets?.map((asset) => ({ ...asset, source: sources.get(asset.id) })),
+      videoAssets: presentation.videoAssets?.map((asset) => ({ ...asset, source: videoSources.get(asset.id) })),
     })
     return {
       library: { ...state.library, presentations: state.library.presentations.map((item) =>

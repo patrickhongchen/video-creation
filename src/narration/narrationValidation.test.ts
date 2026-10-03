@@ -52,6 +52,7 @@ describe('narration cue validation', () => {
     expect(getTakeUsabilityIssue(take([
       { type: 'slide', sceneId: slide.id, timeMs: 0 },
       { type: 'reveal', sceneId: slide.id, order: 3, timeMs: 500 },
+      { type: 'hide-reveal', sceneId: slide.id, order: 3, timeMs: 750 },
     ]), section)).toBeNull()
   })
 
@@ -66,12 +67,24 @@ describe('narration cue validation', () => {
       { type: 'slide', sceneId: slide.id, timeMs: 0 },
       { type: 'reveal', sceneId: slide.id, order: 0, timeMs: 500 },
     ]), section)).toBe('The selected take contains an invalid reveal cue.')
+    expect(getTakeUsabilityIssue(take([
+      { type: 'slide', sceneId: slide.id, timeMs: 0 },
+      { type: 'hide-reveal', sceneId: slide.id, order: 0, timeMs: 500 },
+    ]), section)).toBe('The selected take contains an invalid reveal cue.')
 
     const unknownCue = { type: 'chapter', sceneId: slide.id, timeMs: 500 } as unknown as SceneCue
     expect(getTakeUsabilityIssue(take([
       { type: 'slide', sceneId: slide.id, timeMs: 0 },
       unknownCue,
     ]), section)).toBe('The selected take contains an unknown cue type.')
+  })
+
+  it('rejects negative and fractional slide reveal states', () => {
+    for (const revealedThroughOrder of [-1, 1.5]) {
+      expect(getTakeUsabilityIssue(take([
+        { type: 'slide', sceneId: slide.id, timeMs: 0, revealedThroughOrder },
+      ]), section)).toBe('The selected take contains an invalid slide reveal state.')
+    }
   })
 
   it('keeps pointerless takes valid and accepts a valid pointer track', () => {
@@ -146,5 +159,21 @@ describe('typed take reveal coverage', () => {
       { type: 'slide', sceneId: hiddenSlide.id, timeMs: 0 },
       { type: 'reveal', sceneId: hiddenSlide.id, order: 1, timeMs: 500 },
     ]), { ...section, slides: [hiddenSlide] }, { ...presentation, slides: [hiddenSlide] })).toBeNull()
+  })
+})
+
+
+describe('recorded video control validation', () => {
+  it('accepts pause/resume and rejects malformed positions or actions', () => {
+    const cues: SceneCue[] = [
+      { type: 'slide', sceneId: slide.id, timeMs: 0 },
+      { type: 'video', sceneId: slide.id, timeMs: 500, action: 'pause', positionMs: 500 },
+      { type: 'video', sceneId: slide.id, timeMs: 1000, action: 'resume', positionMs: 500 },
+    ]
+    expect(getTakeUsabilityIssue(take(cues), section)).toBeNull()
+    for (const positionMs of [-1, NaN, Infinity]) {
+      expect(getTakeUsabilityIssue(take([cues[0], { ...cues[1], positionMs } as SceneCue]), section)).toMatch(/invalid video cue/)
+    }
+    expect(getTakeUsabilityIssue(take([cues[0], { ...cues[1], action: 'stop' } as unknown as SceneCue]), section)).toMatch(/invalid video cue/)
   })
 })

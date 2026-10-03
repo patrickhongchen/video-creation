@@ -100,9 +100,21 @@ function validateCue(value: unknown, index: number): SceneCue {
   assertIdentifier(value.sceneId, `Narration cue ${index} sceneId`)
   assertFiniteNonnegative(value.timeMs, `Narration cue ${index} timeMs`)
   if (value.type === undefined) return { sceneId: value.sceneId, timeMs: value.timeMs }
-  if (value.type === 'slide') return { type: 'slide', sceneId: value.sceneId, timeMs: value.timeMs }
+  if (value.type === 'slide') {
+    if (value.revealedThroughOrder === undefined) return { type: 'slide', sceneId: value.sceneId, timeMs: value.timeMs }
+    if (Number.isSafeInteger(value.revealedThroughOrder) && (value.revealedThroughOrder as number) >= 0) {
+      return { type: 'slide', sceneId: value.sceneId, timeMs: value.timeMs, revealedThroughOrder: value.revealedThroughOrder as number }
+    }
+  }
   if (value.type === 'reveal' && Number.isSafeInteger(value.order) && (value.order as number) > 0) {
     return { type: 'reveal', sceneId: value.sceneId, order: value.order as number, timeMs: value.timeMs }
+  }
+  if (value.type === 'hide-reveal' && Number.isSafeInteger(value.order) && (value.order as number) > 0) {
+    return { type: 'hide-reveal', sceneId: value.sceneId, order: value.order as number, timeMs: value.timeMs }
+  }
+  if (value.type === 'video' && (value.action === 'pause' || value.action === 'resume')) {
+    assertFiniteNonnegative(value.positionMs, `Narration cue ${index} video positionMs`)
+    return { type: 'video', sceneId: value.sceneId, timeMs: value.timeMs, action: value.action, positionMs: value.positionMs }
   }
   throw new Error(`Narration cue ${index} has an unsupported type or reveal order.`)
 }

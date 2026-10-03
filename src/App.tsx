@@ -20,6 +20,7 @@ import { reconcileSelection } from './editor/editorSelection'
 import { useEditorShortcuts } from './editor/useEditorShortcuts'
 import { EDITOR_SHORTCUT_HELP, type EditorCommand } from './editor/editorCommands'
 import { duplicateSelection, deleteSelection, nudgeSelection, moveSelectionLayer } from './editor/selectionLayout'
+import { useSlideVideoClock } from './video/useSlideVideoClock'
 
 type AppMode = 'edit' | 'present' | 'narrate'
 
@@ -120,10 +121,11 @@ export function App() {
     })
   }, [selectedSlide.elements])
 
-  const { chooseProjectImage, dropProjectImage, copySelection } = useEditorClipboardImages({
-    currentProject, selectedSlide, selectedIndex, selectedElementId, selectedElementIds, mode, isPreviewing,
-    updateCurrent, updateSlide, setSelectedElementId, setSelection, setError,
+  const { chooseProjectImage, chooseProjectVideo, dropProjectImage, copySelection, videoImporting } = useEditorClipboardImages({
+    currentProject, presentation, selectedSlide, selectedIndex, selectedElementId, selectedElementIds, mode, isPreviewing,
+    updateCurrent, setSelectedElementId, setSelection, setError,
   })
+  const presenterVideoPlayback = useSlideVideoClock(selectedSlide.id, mode === 'present' && selectedSlide.elements.some((element) => element.type === 'video' && !element.hidden))
   const executeCommand = (command: EditorCommand) => {
     if (command.type === 'undo' || command.type === 'redo') travelHistory(command.type)
     else if (command.type === 'save') {
@@ -300,7 +302,7 @@ export function App() {
     return (
       <><main className="present-mode">
         <div className="present-stage-advance" onClick={advanceReveal}>
-          <Stage slide={selectedSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={selectedIndex + 1} slideCount={presentation.slides.length} direction={direction} revealState={revealState} className="present-stage" />
+          <Stage slide={selectedSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} videoAssets={presentation.videoAssets} videoPlayback={presenterVideoPlayback} presentationId={presentation.id} slideNumber={selectedIndex + 1} slideCount={presentation.slides.length} direction={direction} revealState={revealState} className="present-stage" />
         </div>
         <button className="exit-present" onClick={() => setMode('edit')} aria-label="Exit presentation"><CloseIcon /> Exit</button>
         <div className="present-hint" aria-hidden="true">Click / Space / → reveal or advance&nbsp;&nbsp; · &nbsp;&nbsp;← previous slide&nbsp;&nbsp; · &nbsp;&nbsp;Esc exit</div>
@@ -378,7 +380,7 @@ export function App() {
         hoveredElementId={hoveredElementId} setHoveredElementId={setHoveredElementId} setSelection={setSelection}
         selectSlide={selectSlide} previous={previous} next={next} addSlide={addSlide} copySlide={copySlide} deleteSlide={deleteSlide} moveSlide={moveSlide}
         updateSlide={updateSlide} onPresentationChange={(nextPresentation) => updateCurrent(() => nextPresentation)}
-        onImportImage={currentProject ? chooseProjectImage : undefined} onDrop={(event) => void dropProjectImage(event)}
+        onImportImage={currentProject ? chooseProjectImage : undefined} onImportVideo={currentProject ? chooseProjectVideo : undefined} videoImporting={videoImporting} onDrop={(event) => void dropProjectImage(event)}
         compositionGrid={compositionGrid} compositionGuides={compositionGuides} compositionSnap={compositionSnap}
         setCompositionGrid={setCompositionGrid} setCompositionGuides={setCompositionGuides} setCompositionSnap={setCompositionSnap}
         isPreviewing={isPreviewing} revealState={revealState} revealOrders={revealOrders}

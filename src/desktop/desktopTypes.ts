@@ -1,4 +1,4 @@
-import type { Presentation, PresentationImageAsset, PresentationImageMimeType } from '../model'
+import type { Presentation, PresentationImageAsset, PresentationImageMimeType, PresentationVideoAsset } from '../model'
 import type { NarrationCaptionTrack, NarrationTake, SceneCue } from '../narration/narrationTypes'
 import type { NarrationPointerSample } from '../narration/resolveNarrationPointer'
 
@@ -173,6 +173,11 @@ export type DesktopImportedAsset = PresentationImageAsset & {
   source: string
 }
 
+export type DesktopImportedVideoAsset = PresentationVideoAsset & {
+  path: string
+  source: string
+}
+
 export type DesktopAssetImportResult =
   | { status: 'imported'; asset: DesktopImportedAsset }
   | { status: 'cancelled' }
@@ -198,7 +203,9 @@ export interface VideoEssayDesktopApi {
   refreshProjectAssets: (projectId: string, presentation: Presentation) => Promise<DesktopProjectSnapshot>
   revealProject: (projectId: string) => Promise<void>
   chooseImage: (projectId: string) => Promise<DesktopAssetImportResult>
+  chooseVideo: (projectId: string) => Promise<{ status: 'imported'; asset: DesktopImportedVideoAsset } | { status: 'cancelled' }>
   importDroppedImage: (projectId: string, file: File) => Promise<DesktopImportedAsset>
+  importDroppedVideo: (projectId: string, file: File) => Promise<DesktopImportedVideoAsset>
   importRemoteImage: (request: DesktopRemoteImageRequest) => Promise<DesktopImportedAsset>
   importClipboardImage: (projectId: string) => Promise<DesktopAssetImportResult>
   saveImageBytes: (request: DesktopImageBytesRequest) => Promise<DesktopImportedAsset>
@@ -233,6 +240,7 @@ export interface VideoEssayDesktopApi {
   renderCalibrationReady: () => void
   renderReady: (jobId: string) => void
   renderFrameRendered: (request: DesktopRenderFrameRequest) => void
+  renderFailed: (jobId: string, message: string) => void
 }
 
 declare global {

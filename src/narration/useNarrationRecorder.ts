@@ -356,6 +356,8 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
     }
   }, [updateStatus])
 
+  const getCues = useCallback(() => cuesRef.current, [])
+
   const getElapsedMs = useCallback(() => statusRef.current === 'recording'
     ? Math.max(0, performance.now() - startedAtRef.current)
     : elapsedMs, [elapsedMs])
@@ -382,5 +384,6 @@ export function useNarrationRecorder({ onRecordingStarted, onFinished, onError }
     cancel,
     resetError,
     getElapsedMs,
+    getCues,
   }
 }

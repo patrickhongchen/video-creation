@@ -11,6 +11,7 @@ import type { DesktopExportProgress } from '../desktop/desktopTypes'
 import { Stage } from './Stage'
 import { NarrationSlideThumbnail } from './NarrationSlideThumbnail'
 import { previousSlideFor, slideRevealOrders, timedRevealStateAtTime } from '../entranceAnimation'
+import { resolveVideoPlaybackAtTime } from '../narration/resolveVideoPlayback'
 import { resolveNarrationVisualAtTime } from '../narration/resolveNarrationVisual'
 import { resolveNarrationPointerAtTime } from '../narration/resolveNarrationPointer'
 import { ArrowLeftIcon, CheckIcon, CloseIcon, PlayIcon } from './Icons'
@@ -176,6 +177,11 @@ export function FinalVideoStudio({ presentation, projectId, onExit, onOpenNarrat
           slideRevealOrders(activeSlide, previousSlideFor(presentation.slides, activeSlide)),
           segmentElapsedMs,
         )
+  const clipTimeMs = Math.min(segmentElapsedMs, visualSegment?.durationMs ?? 0)
+  const clipState = visualSegment?.type === 'narration' && activeSlide
+    ? resolveVideoPlaybackAtTime(visualSegment.take.cues, clipTimeMs, activeSlide.id)
+    : { timeMs: clipTimeMs, playing: true }
+  const videoPlayback = { ...clipState, playing: clipState.playing && playback.status === 'playing' && !scrubPosition && !inFinalHold }
   const previousSlideIndexRef = useRef(activeSlideIndex)
   const direction: 1 | -1 = activeSlideIndex >= previousSlideIndexRef.current ? 1 : -1
   useEffect(() => { previousSlideIndexRef.current = activeSlideIndex }, [activeSlideIndex])
@@ -297,7 +303,7 @@ export function FinalVideoStudio({ presentation, projectId, onExit, onOpenNarrat
         <section className="final-stage-panel">
           <div className="final-stage-well">
             {activeSlide && <FinalVideoFrame className="final-stage-frame" captionText={captionText} captionStyle={captionSettings.style}>
-              <Stage slide={activeSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={activeSlideIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} revealState={activeRevealState} pointerState={pointerState} className="final-stage" />
+              <Stage slide={activeSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} videoAssets={presentation.videoAssets} videoPlayback={videoPlayback} presentationId={presentation.id} slideNumber={activeSlideIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={playback.renderInstanceKey} revealState={activeRevealState} pointerState={pointerState} className="final-stage" />
             </FinalVideoFrame>}
           </div>
           <div className="final-scrubber-panel">

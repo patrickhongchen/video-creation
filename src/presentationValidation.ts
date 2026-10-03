@@ -11,6 +11,8 @@ import type {
   PresentationCaptionSettings,
   PresentationImageAsset,
   PresentationImageMimeType,
+  PresentationVideoAsset,
+  PresentationVideoMimeType,
   PresentationTheme,
   Slide,
   SlideEntranceAnimation,
@@ -240,7 +242,7 @@ function elementBase(data: Record<string, unknown>, path: string, legacyOrders: 
   }
 }
 
-function parseElement(value: unknown, path: string, assetIds: ReadonlySet<string>, legacyOrders: ReadonlyMap<number, number>): SlideElement {
+function parseElement(value: unknown, path: string, imageAssetIds: ReadonlySet<string>, legacyOrders: ReadonlyMap<number, number>, videoAssetIds: ReadonlySet<string> = new Set()): SlideElement {
   const data = object(value, path)
   const base = elementBase(data, path, legacyOrders)
   switch (data.type) {
@@ -272,7 +274,7 @@ function parseElement(value: unknown, path: string, assetIds: ReadonlySet<string
     }
     case 'image': {
       const assetId = id(data.assetId, `${path}.assetId`)
-      if (!assetIds.has(assetId)) fail(`${path}.assetId`, `references an unknown image asset "${assetId}"`)
+      if (!imageAssetIds.has(assetId)) fail(`${path}.assetId`, `references an unknown image asset "${assetId}"`)
       if (data.fit !== 'cover' && data.fit !== 'contain') fail(`${path}.fit`, 'expected cover or contain')
       const positions = ['center', 'top', 'bottom', 'left', 'right', 'top-left', 'top-right', 'bottom-left', 'bottom-right'] as const
       if (data.position !== undefined && !positions.includes(data.position as typeof positions[number])) {
@@ -287,6 +289,12 @@ function parseElement(value: unknown, path: string, assetIds: ReadonlySet<string
         flipX: optionalBoolean(data.flipX, `${path}.flipX`),
         flipY: optionalBoolean(data.flipY, `${path}.flipY`),
       }
+    }
+    case 'video': {
+      const assetId = id(data.assetId, `${path}.assetId`)
+      if (!videoAssetIds.has(assetId)) fail(`${path}.assetId`, `references an unknown video asset "${assetId}"`)
+      if (data.fit !== 'cover' && data.fit !== 'contain') fail(`${path}.fit`, 'expected cover or contain')
+      return { ...base, type: 'video', assetId, fit: data.fit }
     }
     case 'chart':
       return { ...base, type: 'chart', ...chartProperties(data, path) }
@@ -318,7 +326,7 @@ function parseElement(value: unknown, path: string, assetIds: ReadonlySet<string
         endCap: data.endCap,
       }
     default:
-      return fail(`${path}.type`, 'expected text, image, chart, shape, or arrow')
+      return fail(`${path}.type`, 'expected text, image, video, chart, shape, or arrow')
   }
 }
 
@@ -331,12 +339,12 @@ function background(value: unknown, path: string) {
   return result as Slide['background']
 }
 
-function parseSlide(value: unknown, index: number, assetIds: ReadonlySet<string>): Slide {
+function parseSlide(value: unknown, index: number, imageAssetIds: ReadonlySet<string>, videoAssetIds: ReadonlySet<string> = new Set()): Slide {
   const path = `presentation.slides[${index}]`
   const data = object(value, path)
   if (!Array.isArray(data.elements)) fail(`${path}.elements`, 'expected an array')
   const legacyOrders = deriveLegacyAnimationOrders(data.elements, `${path}.elements`, legacyAnimationValidation)
-  const elements = data.elements.map((element, elementIndex) => parseElement(element, `${path}.elements[${elementIndex}]`, assetIds, legacyOrders))
+  const elements = data.elements.map((element, elementIndex) => parseElement(element, `${path}.elements[${elementIndex}]`, imageAssetIds, legacyOrders, videoAssetIds))
   const elementIds = new Set<string>()
   const sharedIds = new Set<string>()
   elements.forEach((element, elementIndex) => {
@@ -431,6 +439,47 @@ function imageAssets(value: unknown): PresentationImageAsset[] | undefined {
       id: assetId,
       name: nonEmptyString(data.name, `${path}.name`),
       mimeType: mimeType as PresentationImageMimeType,
+      ...(projectPath ? { path: projectPath } : {}),
+      ...(source ? { source } : {}),
+    }
+  })
+}
+
+const VIDEO_MIME_TYPES: readonly PresentationVideoMimeType[] = ['video/mp4', 'video/quicktime']
+
+function videoAssets(value: unknown): PresentationVideoAsset[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value)) fail('presentation.videoAssets', 'expected an array')
+  const seenIds = new Set<string>()
+  return value.map((candidate, index) => {
+    const path = `presentation.videoAssets[${index}]`
+    const data = object(candidate, path)
+    const assetId = id(data.id, `${path}.id`)
+    if (seenIds.has(assetId)) fail(`${path}.id`, `duplicate video asset ID "${assetId}"`)
+    seenIds.add(assetId)
+    const mimeType = string(data.mimeType, `${path}.mimeType`)
+    if (!VIDEO_MIME_TYPES.includes(mimeType as PresentationVideoMimeType)) {
+      fail(`${path}.mimeType`, `expected one of ${VIDEO_MIME_TYPES.join(', ')}`)
+    }
+    const projectPath = data.path === undefined ? undefined : string(data.path, `${path}.path`)
+    const source = data.source === undefined ? undefined : string(data.source, `${path}.source`)
+    if (projectPath !== undefined && !isSafeProjectAssetPath(projectPath)) {
+      fail(`${path}.path`, 'expected a safe project-relative path under assets/')
+    }
+    if (source !== undefined) {
+      const dataUrl = /^data:([^;,]+)(?:;[^,]*)?,(.+)$/is.exec(source)
+      const runtimeUrl = /^ves-asset:\/\//i.test(source)
+      const browserUrl = /^blob:/i.test(source)
+      if (!dataUrl && !runtimeUrl && !browserUrl) fail(`${path}.source`, 'expected a data, blob, or managed project asset URL')
+      if (dataUrl && dataUrl[1].toLowerCase() !== mimeType.toLowerCase()) {
+        fail(`${path}.source`, `expected a data URL with MIME type ${mimeType}`)
+      }
+    }
+    if (projectPath === undefined && source === undefined) fail(path, 'expected either path or source')
+    return {
+      id: assetId,
+      name: nonEmptyString(data.name, `${path}.name`),
+      mimeType: mimeType as PresentationVideoMimeType,
       ...(projectPath ? { path: projectPath } : {}),
       ...(source ? { source } : {}),
     }
@@ -651,7 +700,12 @@ export function validatePresentationV2(value: unknown): Presentation {
   if (!Array.isArray(data.slides) || data.slides.length === 0) fail('presentation.slides', 'expected at least one slide')
   const parsedAssets = imageAssets(data.imageAssets)
   const assetIds = new Set(parsedAssets?.map((asset) => asset.id) ?? [])
-  const slides = data.slides.map((slide, index) => parseSlide(slide, index, assetIds))
+  const parsedVideoAssets = videoAssets(data.videoAssets)
+  const videoAssetIds = new Set(parsedVideoAssets?.map((asset) => asset.id) ?? [])
+  for (const assetId of videoAssetIds) {
+    if (assetIds.has(assetId)) fail('presentation.videoAssets', `asset ID "${assetId}" is already used by an image asset`)
+  }
+  const slides = data.slides.map((slide, index) => parseSlide(slide, index, assetIds, videoAssetIds))
   const slideIds = new Set<string>()
   slides.forEach((slide, index) => {
     if (slideIds.has(slide.id)) fail(`presentation.slides[${index}].id`, `duplicate slide ID "${slide.id}"`)
@@ -669,6 +723,7 @@ export function validatePresentationV2(value: unknown): Presentation {
     aspectRatio: '9:16',
     theme: theme(data.theme),
     ...(parsedAssets ? { imageAssets: parsedAssets } : {}),
+    ...(parsedVideoAssets ? { videoAssets: parsedVideoAssets } : {}),
     slides,
     ...(narration ? { narration } : {}),
   }

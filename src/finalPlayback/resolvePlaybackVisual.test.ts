@@ -75,7 +75,7 @@ describe('resolvePlaybackVisual', () => {
     expect(resolvePlaybackVisual(silentJob, 1400).revealState.revealedThroughOrder).toBe(3)
   })
 
-  it('resolves recorded reveal frames deterministically for export', () => {
+  it('resolves recorded reveal and hide frames deterministically for export', () => {
     const animatedSlide = {
       ...firstSlide,
       elements: firstSlide.elements.map((element, index) => index === 0
@@ -86,7 +86,12 @@ describe('resolvePlaybackVisual', () => {
       presentation: { ...samplePresentation, slides: [animatedSlide, ...samplePresentation.slides.slice(1)] },
       segments: [{
         type: 'narration', sectionId: 'section', title: 'Section', sceneIds: [animatedSlide.id], durationMs: 2000,
-        cues: [{ type: 'slide', sceneId: animatedSlide.id, timeMs: 0 }, { type: 'reveal', sceneId: animatedSlide.id, order: 1, timeMs: 1000 }],
+        cues: [
+          { type: 'slide', sceneId: animatedSlide.id, timeMs: 0 },
+          { type: 'reveal', sceneId: animatedSlide.id, order: 1, timeMs: 1000 },
+          { type: 'hide-reveal', sceneId: animatedSlide.id, order: 1, timeMs: 1300 },
+          { type: 'reveal', sceneId: animatedSlide.id, order: 1, timeMs: 1600 },
+        ],
         audio: { takeId: 'take', mimeType: 'audio/webm', bytes: new ArrayBuffer(1) },
       }],
     }
@@ -94,5 +99,50 @@ describe('resolvePlaybackVisual', () => {
     const frame = resolvePlaybackVisual(typedJob, 1125)
     expect(frame.revealState).toMatchObject({ revealedThroughOrder: 1, activeRevealOrder: 1, activeRevealElapsedMs: 125 })
     expect(resolvePlaybackVisual(typedJob, 1125)).toEqual(frame)
+    expect(resolvePlaybackVisual(typedJob, 1400).revealState).toEqual({ revealedThroughOrder: 0, activeRevealOrder: null, activeRevealElapsedMs: 0 })
+    expect(resolvePlaybackVisual(typedJob, 1675).revealState).toEqual({ revealedThroughOrder: 1, activeRevealOrder: 1, activeRevealElapsedMs: 75 })
+  })
+
+  it('renders a backward slide entry fully revealed without an active entrance', () => {
+    const animatedSlide = {
+      ...firstSlide,
+      elements: firstSlide.elements.map((element, index) => index === 0
+        ? { ...element, animation: { entrance: 'fade' as const, order: 3 } }
+        : element),
+    }
+    const typedJob: Pick<DesktopExportJob, 'presentation' | 'segments'> = {
+      presentation: { ...samplePresentation, slides: [animatedSlide, ...samplePresentation.slides.slice(1)] },
+      segments: [{
+        type: 'narration', sectionId: 'section', title: 'Section', sceneIds: [animatedSlide.id], durationMs: 2000,
+        cues: [{ type: 'slide', sceneId: animatedSlide.id, timeMs: 0, revealedThroughOrder: 3 }],
+        audio: { takeId: 'take', mimeType: 'audio/webm', bytes: new ArrayBuffer(1) },
+      }],
+    }
+
+    expect(resolvePlaybackVisual(typedJob, 500).revealState).toEqual({
+      revealedThroughOrder: 3,
+      activeRevealOrder: null,
+      activeRevealElapsedMs: 0,
+    })
+  })
+})
+
+
+describe('export video synchronization', () => {
+  it('keeps recorded pauses on export and freezes footage during the final hold', () => {
+    const videoJob: Pick<DesktopExportJob, 'presentation' | 'segments'> = {
+      presentation: samplePresentation,
+      segments: [{ type: 'narration', sectionId: 'section', title: 'Section', sceneIds: [firstSlide.id], durationMs: 3000,
+        cues: [
+          { type: 'slide', sceneId: firstSlide.id, timeMs: 0 },
+          { type: 'video', sceneId: firstSlide.id, timeMs: 1000, action: 'pause', positionMs: 1000 },
+          { type: 'video', sceneId: firstSlide.id, timeMs: 2000, action: 'resume', positionMs: 1000 },
+        ],
+        audio: { takeId: 'take', mimeType: 'audio/webm', bytes: new ArrayBuffer(1) },
+      }],
+    }
+    expect(resolvePlaybackVisual(videoJob, 1800).videoTimeMs).toBe(1000)
+    expect(resolvePlaybackVisual(videoJob, 2500).videoTimeMs).toBe(1500)
+    expect(resolvePlaybackVisual(videoJob, 3500).videoTimeMs).toBe(2000)
   })
 })

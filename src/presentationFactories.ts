@@ -7,6 +7,7 @@ import {
   type SlideChartElement,
   type SlideElement,
   type SlideImageElement,
+  type SlideVideoElement,
   type SlideShape,
   type SlideShapeElement,
   type SlideTextElement,
@@ -147,6 +148,17 @@ export function createSlideImageElement(assetId = ''): SlideImageElement {
   }
 }
 
+export function createSlideVideoElement(assetId = ''): SlideVideoElement {
+  return {
+    id: createStableId('video'),
+    type: 'video',
+    name: 'Video',
+    frame: { x: 90, y: 480, width: 900, height: 960, rotation: 0, opacity: 1 },
+    assetId,
+    fit: 'contain',
+  }
+}
+
 export function createSlideChartElement(): SlideChartElement {
   return {
     id: createStableId('chart-element'),
@@ -200,6 +212,7 @@ export function createSlideElement(type: SlideElementType): SlideElement {
   switch (type) {
     case 'text': return createSlideTextElement()
     case 'image': return createSlideImageElement()
+    case 'video': return createSlideVideoElement()
     case 'chart': return createSlideChartElement()
     case 'shape': return createSlideShapeElement()
     case 'arrow': return createSlideArrowElement()

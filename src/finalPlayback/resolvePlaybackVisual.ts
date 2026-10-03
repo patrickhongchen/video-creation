@@ -7,6 +7,7 @@ import {
   type RevealVisualState,
 } from '../entranceAnimation'
 import { resolveNarrationVisualAtTime } from '../narration/resolveNarrationVisual'
+import { resolveVideoPlaybackAtTime } from '../narration/resolveVideoPlayback'
 import { isSlideCue } from '../narration/narrationTypes'
 import {
   resolveNarrationPointerAtTime,
@@ -22,6 +23,7 @@ function firstSceneId(segment: DesktopExportSegment | undefined) {
 
 export interface ResolvedPlaybackVisual {
   slide: Slide
+  videoTimeMs: number
   slideIndex: number
   revealState: RevealVisualState
   segmentIndex: number
@@ -68,6 +70,9 @@ export function resolvePlaybackVisual(job: Pick<DesktopExportJob, 'presentation'
     : null
   return {
     slide,
+    videoTimeMs: activeSegment?.type === 'narration'
+      ? resolveVideoPlaybackAtTime(activeSegment.cues, Math.min(localTimeMs, activeSegment.durationMs), slide.id).timeMs
+      : Math.min(localTimeMs, activeSegment?.durationMs ?? 0),
     slideIndex,
     revealState,
     segmentIndex,

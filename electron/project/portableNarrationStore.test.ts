@@ -48,6 +48,8 @@ function take(
     cues: [
       { type: 'slide', sceneId: 'slide-one', timeMs: 0 },
       { type: 'reveal', sceneId: 'slide-one', order: 1, timeMs: 800 },
+      { type: 'hide-reveal', sceneId: 'slide-one', order: 1, timeMs: 1_000 },
+      { type: 'slide', sceneId: 'slide-one', timeMs: 1_200, revealedThroughOrder: 1 },
     ],
     pointerTrack: [
       { sceneId: 'slide-one', timeMs: 400, x: 0.25, y: 0.75, visible: true },
@@ -512,5 +514,21 @@ describe('PortableNarrationStore', () => {
     await expect(value.store.store('not-the-active-project', take(value.presentationId)))
       .rejects.toThrow(/currently active Project/)
     expect(await readdir(value.root)).not.toContain('narration')
+  })
+})
+
+
+describe('portable video controls', () => {
+  it('preserves recorded clip controls when reopening narration', async () => {
+    const value = await fixture()
+    const recording = take(value.presentationId)
+    recording.cues = [
+      { type: 'slide', sceneId: 'slide-one', timeMs: 0 },
+      { type: 'video', sceneId: 'slide-one', timeMs: 500, action: 'pause', positionMs: 500 },
+      { type: 'video', sceneId: 'slide-one', timeMs: 1000, action: 'resume', positionMs: 500 },
+    ]
+    await value.store.store(value.projectId, recording)
+    const reopened = await value.store.list(value.projectId, value.presentationId, 'section-one')
+    expect(reopened[0].cues).toEqual(recording.cues)
   })
 })

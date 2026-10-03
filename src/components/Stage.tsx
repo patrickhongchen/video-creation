@@ -1,7 +1,8 @@
 import { forwardRef, useMemo, type PointerEventHandler } from 'react'
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import type { Variants } from 'motion/react'
-import type { PresentationImageAsset, PresentationTheme, Slide, SlideChartElement, TransitionType } from '../model'
+import type { PresentationImageAsset, PresentationTheme, PresentationVideoAsset, Slide, SlideChartElement, TransitionType } from '../model'
+import type { VideoPlaybackState } from '../narration/resolveVideoPlayback'
 import { renderSlide } from '../scenes/SceneRenderers'
 import type { SlideEditorController } from '../scenes/CompositionSceneRenderer'
 import { DEFAULT_ENTRANCE_DURATION_MS, previousSlideFor, type RevealVisualState } from '../entranceAnimation'
@@ -17,6 +18,8 @@ interface StageProps {
   className?: string
   renderInstanceKey?: string
   imageAssets?: PresentationImageAsset[]
+  videoAssets?: PresentationVideoAsset[]
+  videoPlayback?: VideoPlaybackState
   slideEditor?: SlideEditorController
   slides?: readonly Slide[]
   deterministicMotion?: boolean
@@ -53,7 +56,7 @@ export function slideFrameKey(slide: Slide, presentationId: string, renderInstan
     : JSON.stringify([presentationId, renderInstanceKey, 'slide', slide.id])
 }
 
-export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ slide, theme, presentationId, slideNumber, slideCount, direction, className = '', renderInstanceKey = 'default', imageAssets, slideEditor, revealState = null, pointerState = null, onPointerMove, onPointerLeave, slides, deterministicMotion = false }, ref) {
+export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ slide, theme, presentationId, slideNumber, slideCount, direction, className = '', renderInstanceKey = 'default', imageAssets, videoAssets, videoPlayback, slideEditor, revealState = null, pointerState = null, onPointerMove, onPointerLeave, slides, deterministicMotion = false }, ref) {
   const reduceMotion = useReducedMotion()
   const variants = transitionVariants[reduceMotion ? 'fade' : slide.transition.type]
   const duration = reduceMotion ? 0.01 : slide.transition.duration
@@ -79,12 +82,12 @@ export const Stage = forwardRef<HTMLDivElement, StageProps>(function Stage({ sli
           onUpdate={deterministicMotion ? noopMotionUpdate : undefined}
         >
           <div className="scene-canvas slide-canvas" style={{ background: theme.background, color: theme.foreground, fontFamily: theme.fontFamily }}>
-            {renderSlide(slide, theme, namespace, { imageAssets, editor: slideEditor, revealState: stableRevealState, previousSlide, deterministicMotion })}
+            {renderSlide(slide, theme, namespace, { imageAssets, videoAssets, videoPlayback, editor: slideEditor, revealState: stableRevealState, previousSlide, deterministicMotion })}
           </div>
         </motion.div>
       </AnimatePresence>
     </LayoutGroup>
-  ), [namespace, direction, slide, presentationId, renderInstanceKey, variants, duration, deterministicMotion, theme, imageAssets, slideEditor, stableRevealState, previousSlide])
+  ), [namespace, direction, slide, presentationId, renderInstanceKey, variants, duration, deterministicMotion, theme, imageAssets, videoAssets, videoPlayback, slideEditor, stableRevealState, previousSlide])
 
   return (
     <div ref={ref} className={`stage ${className}`} aria-live="polite" aria-label={`Slide ${slideNumber} of ${slideCount}: ${slide.title}`} onPointerMove={onPointerMove} onPointerLeave={onPointerLeave}>

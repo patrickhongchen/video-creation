@@ -29,6 +29,8 @@ interface EditorWorkspaceProps {
   updateSlide: (slide: Slide) => void
   onPresentationChange: (presentation: Presentation) => void
   onImportImage?: (action: 'add' | 'replace') => void
+  onImportVideo?: () => void
+  videoImporting?: boolean
   onDrop: DragEventHandler<HTMLElement>
   compositionGrid: boolean
   compositionGuides: boolean
@@ -48,7 +50,7 @@ interface EditorWorkspaceProps {
 export function EditorWorkspace({ presentation, selectedSlide, selectedIndex, direction, selectedElementId,
   selectedElementIds, hoveredElementId, setHoveredElementId, setSelectedElementId, setSelection,
   selectSlide, previous, next, addSlide, copySlide, deleteSlide, moveSlide, updateSlide,
-  onPresentationChange, onImportImage, onDrop, compositionGrid, compositionGuides, compositionSnap,
+  onPresentationChange, onImportImage, onImportVideo, videoImporting, onDrop, compositionGrid, compositionGuides, compositionSnap,
   setCompositionGrid, setCompositionGuides, setCompositionSnap, isPreviewing, revealState, revealOrders,
   advanceReveal, startPreview, stopPreview }: EditorWorkspaceProps) {
   return (
@@ -62,6 +64,8 @@ export function EditorWorkspace({ presentation, selectedSlide, selectedIndex, di
             onSlideChange={updateSlide}
             onPresentationChange={onPresentationChange}
             onImportImage={onImportImage}
+            onImportVideo={onImportVideo}
+            videoImporting={videoImporting}
             grid={compositionGrid}
             guides={compositionGuides}
             snap={compositionSnap}
@@ -75,6 +79,7 @@ export function EditorWorkspace({ presentation, selectedSlide, selectedIndex, di
               slides={isPreviewing ? presentation.slides : undefined}
               theme={presentation.theme}
               imageAssets={presentation.imageAssets}
+              videoAssets={presentation.videoAssets}
               presentationId={presentation.id}
               slideNumber={selectedIndex + 1}
               slideCount={presentation.slides.length}

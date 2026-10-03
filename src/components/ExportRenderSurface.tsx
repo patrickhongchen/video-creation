@@ -7,6 +7,7 @@ import { MotionGlobalConfig, frameData } from 'motion/react'
 import { resolveCaptionSettings } from '../model'
 import { resolveFinalVideoCaption } from '../finalPlayback/resolveFinalVideoCaption'
 import { FinalVideoFrame } from './FinalVideoFrame'
+import { prepareSlideVideoFrames } from '../videoFrameReadiness'
 
 export function ExportRenderSurface() {
   // Motion's JS driver uses the requested video timestamp in this isolated renderer.
@@ -16,6 +17,7 @@ export function ExportRenderSurface() {
   const [elapsedMs, setElapsedMs] = useState(0)
   const [requestedFrame, setRequestedFrame] = useState<DesktopRenderFrameRequest | null>(null)
   const previousSlideIndexRef = useRef(0)
+  const renderSurfaceRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     if (!bridge) return
@@ -38,9 +40,19 @@ export function ExportRenderSurface() {
     if (!bridge || !job) return
     let cancelled = false
     let frame: number | null = null
-    void decodePresentationAssets(job.presentation).then(() => {
-      if (!cancelled) frame = requestAnimationFrame(() => bridge.renderReady(job.jobId))
-    })
+    void decodePresentationAssets(job.presentation)
+      .then(() => new Promise<void>((resolve) => {
+        frame = requestAnimationFrame(() => resolve())
+      }))
+      .then(() => renderSurfaceRef.current ? prepareSlideVideoFrames(renderSurfaceRef.current) : undefined)
+      .then(() => {
+        if (!cancelled) frame = requestAnimationFrame(() => bridge.renderReady(job.jobId))
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return
+        console.error('Export renderer asset preparation failed.', error)
+        bridge.renderFailed(job.jobId, error instanceof Error ? error.message : 'A video asset could not be prepared for export.')
+      })
     return () => {
       cancelled = true
       if (frame !== null) cancelAnimationFrame(frame)
@@ -60,8 +72,22 @@ export function ExportRenderSurface() {
 
   useLayoutEffect(() => {
     if (!bridge || !job || !requestedFrame || requestedFrame.jobId !== job.jobId) return
-    const frame = requestAnimationFrame(() => bridge.renderFrameRendered(requestedFrame))
-    return () => cancelAnimationFrame(frame)
+    let cancelled = false
+    let frame = requestAnimationFrame(() => {
+      void (renderSurfaceRef.current ? prepareSlideVideoFrames(renderSurfaceRef.current) : Promise.resolve())
+        .then(() => {
+          if (!cancelled) frame = requestAnimationFrame(() => bridge.renderFrameRendered(requestedFrame))
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return
+          console.error(`Export frame ${requestedFrame.frameIndex} video preparation failed.`, error)
+          bridge.renderFailed(job.jobId, error instanceof Error ? error.message : `A video frame could not be prepared for export.`)
+        })
+    })
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(frame)
+    }
   }, [bridge, job, requestedFrame])
 
   const visual = useMemo(() => job ? resolvePlaybackVisual(job, elapsedMs) : null, [elapsedMs, job])
@@ -86,6 +112,7 @@ export function ExportRenderSurface() {
 
   return (
     <main
+      ref={renderSurfaceRef}
       className="export-render-surface"
       style={{ '--stage-vw': `${job.editorViewportWidth / 100}px` } as CSSProperties}
     >
@@ -95,6 +122,8 @@ export function ExportRenderSurface() {
           slides={job.presentation.slides}
           theme={job.presentation.theme}
           imageAssets={job.presentation.imageAssets}
+          videoAssets={job.presentation.videoAssets}
+          videoPlayback={{ timeMs: visual.videoTimeMs, playing: false }}
           presentationId={job.presentation.id}
           slideNumber={visual.slideIndex + 1}
           slideCount={job.presentation.slides.length}

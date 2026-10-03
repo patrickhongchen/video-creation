@@ -1,4 +1,4 @@
-import type { PresentationImageAsset } from './model'
+import type { PresentationImageAsset, PresentationVideoAsset } from './model'
 
 const PROJECT_ASSET_PREFIX = 'assets/'
 
@@ -16,10 +16,10 @@ export function validateProjectAssetPath(value: string, label = 'asset path') {
   return value
 }
 
-export function runtimeAssetSource(asset: PresentationImageAsset) {
+export function runtimeAssetSource(asset: PresentationImageAsset | PresentationVideoAsset) {
   return asset.source ?? ''
 }
 
-export function canonicalizeProjectAssets(assets: PresentationImageAsset[] | undefined) {
+export function canonicalizeProjectAssets<T extends PresentationImageAsset | PresentationVideoAsset>(assets: T[] | undefined) {
   return assets?.map(({ source: _runtimeSource, ...asset }) => asset)
 }

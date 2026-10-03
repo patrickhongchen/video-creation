@@ -7,6 +7,7 @@ import { OffscreenRenderSession, rendererLocation, type InputPixelFormat } from 
 import { probeDurationMs, spawnFfmpeg, waitForExit, waitForSpawn } from './ffmpeg'
 import { finalPreviewAudioCache } from '../finalPreviewAudioProcessor'
 import { finalPreviewAudioRequestFromExportJob } from '../finalPreviewAudioCache'
+import { isSlideCue } from '../../src/narration/narrationTypes'
 import {
   VIDEO_FPS,
   VIDEO_HEIGHT,
@@ -111,7 +112,7 @@ function progressContext(job: DesktopExportJob, elapsedMs: number) {
   let activeSceneId = cues[0]?.sceneId ?? active.sceneIds[0]
   for (const cue of cues) {
     if (cue.timeMs > localTime) break
-    if (!('type' in cue) || cue.type !== 'reveal') activeSceneId = cue.sceneId
+    if (isSlideCue(cue)) activeSceneId = cue.sceneId
   }
   return { activeSceneId, activeSectionTitle: active.title }
 }
@@ -183,6 +184,12 @@ export class VideoExporter {
   handleRenderFrameRendered(sender: WebContents, request: DesktopRenderFrameRequest) {
     if (this.ownsRenderSender(sender) && this.active?.job.jobId === request.jobId) {
       this.active.renderSession?.handleRenderFrameRendered(request)
+    }
+  }
+
+  handleRenderFailed(sender: WebContents, jobId: string, message: string) {
+    if (this.ownsRenderSender(sender) && this.active?.job.jobId === jobId) {
+      this.active.renderSession?.handleRenderFailed(message)
     }
   }
 

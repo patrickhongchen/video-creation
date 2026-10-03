@@ -30,7 +30,9 @@ const CHANNELS = {
   projectRefreshAssets: 'video-essay:project:refresh-assets',
   projectReveal: 'video-essay:project:reveal',
   projectChooseImage: 'video-essay:project:choose-image',
+  projectChooseVideo: 'video-essay:project:choose-video',
   projectImportImage: 'video-essay:project:import-image',
+  projectImportVideo: 'video-essay:project:import-video',
   projectImportRemoteImage: 'video-essay:project:import-remote-image',
   projectImportClipboardImage: 'video-essay:project:import-clipboard-image',
   projectSaveImageBytes: 'video-essay:project:save-image-bytes',
@@ -65,6 +67,7 @@ const CHANNELS = {
   renderCalibrationReady: 'video-essay:render:calibration-ready',
   renderReady: 'video-essay:render:ready',
   renderFrameRendered: 'video-essay:render:frame-rendered',
+  renderFailed: 'video-essay:render:failed',
 } as const
 
 type Unsubscribe = () => void
@@ -83,7 +86,12 @@ const videoEssayDesktop = Object.freeze({
   refreshProjectAssets: (projectId: string, presentation: Presentation) => ipcRenderer.invoke(CHANNELS.projectRefreshAssets, projectId, presentation),
   revealProject: (projectId: string) => ipcRenderer.invoke(CHANNELS.projectReveal, projectId),
   chooseImage: (projectId: string) => ipcRenderer.invoke(CHANNELS.projectChooseImage, projectId),
+  chooseVideo: (projectId: string) => ipcRenderer.invoke(CHANNELS.projectChooseVideo, projectId),
   importDroppedImage: (projectId: string, file: File) => ipcRenderer.invoke(CHANNELS.projectImportImage, {
+    projectId,
+    sourcePath: webUtils.getPathForFile(file),
+  }),
+  importDroppedVideo: (projectId: string, file: File) => ipcRenderer.invoke(CHANNELS.projectImportVideo, {
     projectId,
     sourcePath: webUtils.getPathForFile(file),
   }),
@@ -129,6 +137,7 @@ const videoEssayDesktop = Object.freeze({
   renderCalibrationReady: () => ipcRenderer.send(CHANNELS.renderCalibrationReady),
   renderReady: (jobId: string) => ipcRenderer.send(CHANNELS.renderReady, jobId),
   renderFrameRendered: (request: DesktopRenderFrameRequest) => ipcRenderer.send(CHANNELS.renderFrameRendered, request),
+  renderFailed: (jobId: string, message: string) => ipcRenderer.send(CHANNELS.renderFailed, { jobId, message }),
 })
 
 contextBridge.exposeInMainWorld('videoEssayDesktop', videoEssayDesktop)

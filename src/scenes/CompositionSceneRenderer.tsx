@@ -7,10 +7,13 @@ import { rotationFromPointerAngles } from '../elementRotation'
 import type {
   ElementFrame,
   PresentationImageAsset,
+  PresentationVideoAsset,
   PresentationTheme,
   Slide,
   SlideElement,
 } from '../model'
+import type { VideoPlaybackState } from '../narration/resolveVideoPlayback'
+import { SlideVideo } from '../components/SlideVideo'
 
 export interface SlideEditorController {
   selectedElementIds: string[]
@@ -30,6 +33,8 @@ interface SlideRendererProps {
   theme: PresentationTheme
   layoutNamespace: string
   imageAssets?: PresentationImageAsset[]
+  videoAssets?: PresentationVideoAsset[]
+  videoPlayback?: VideoPlaybackState
   editor?: SlideEditorController
   revealState?: RevealVisualState | null
   previousSlide?: Slide
@@ -68,6 +73,7 @@ function minimumSize(element: SlideElement) {
     case 'chart': return { width: 280, height: 220 }
     case 'text': return { width: 120, height: 80 }
     case 'image': return { width: 80, height: 80 }
+    case 'video': return { width: 80, height: 80 }
     case 'arrow': return { width: 80, height: 30 }
     case 'shape': return element.shape === 'line' ? { width: 60, height: 20 } : { width: 40, height: 40 }
   }
@@ -167,12 +173,14 @@ function imagePosition(position: string | undefined) {
   return (position ?? 'center').replace('-', ' ')
 }
 
-function ElementContent({ element, theme, foreground, layoutNamespace, imageAssets, deterministicMotion }: {
+function ElementContent({ element, theme, foreground, layoutNamespace, imageAssets, videoAssets, videoPlayback, deterministicMotion }: {
   element: SlideElement
   theme: PresentationTheme
   foreground: string
   layoutNamespace: string
   imageAssets?: PresentationImageAsset[]
+  videoAssets?: PresentationVideoAsset[]
+  videoPlayback?: VideoPlaybackState
   deterministicMotion?: boolean
 }) {
   switch (element.type) {
@@ -196,6 +204,12 @@ function ElementContent({ element, theme, foreground, layoutNamespace, imageAsse
       return asset?.source
         ? <img className="composition-image" src={asset.source} alt="" draggable={false} style={{ objectFit: element.fit, objectPosition: imagePosition(element.position), transform: `scale(${element.flipX ? -1 : 1}, ${element.flipY ? -1 : 1})` }} />
         : <div className="composition-missing-asset">Missing image</div>
+    }
+    case 'video': {
+      const asset = videoAssets?.find((candidate) => candidate.id === element.assetId)
+      return asset?.source
+        ? <SlideVideo element={element} asset={asset} playback={videoPlayback} deterministicMotion={deterministicMotion} />
+        : <div className="composition-missing-asset">Missing video</div>
     }
     case 'chart': {
       return element.chartType === 'bar'
@@ -245,7 +259,7 @@ function elementStyle(frame: ElementFrame): CSSProperties {
 
 const noopMotionUpdate = () => undefined
 
-export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAssets, editor, revealState = null, previousSlide, deterministicMotion = false }: SlideRendererProps) {
+export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAssets, videoAssets, videoPlayback, editor, revealState = null, previousSlide, deterministicMotion = false }: SlideRendererProps) {
   const hostRef = useRef<HTMLDivElement>(null)
   const interactionRef = useRef<Interaction | null>(null)
   const previewFramesRef = useRef<Map<string, ElementFrame>>(new Map())
@@ -253,6 +267,7 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
   const [previewFrames, setPreviewFrames] = useState<Map<string, ElementFrame>>(new Map())
   const [snapGuides, setSnapGuides] = useState<{ x?: number; y?: number }>({})
   const assetsById = useMemo(() => new Map(imageAssets?.map((asset) => [asset.id, asset]) ?? []), [imageAssets])
+  const videoAssetsById = useMemo(() => new Map(videoAssets?.map((asset) => [asset.id, asset]) ?? []), [videoAssets])
 
   useLayoutEffect(() => {
     const host = hostRef.current
@@ -293,7 +308,7 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
         if (fromLeft) frame.x += deltaX
         if (fromTop) frame.y += deltaY
         const minimum = minimumSize(interaction.element)
-        if (interaction.element.type === 'image' && !event.shiftKey) {
+        if ((interaction.element.type === 'image' || interaction.element.type === 'video') && !event.shiftKey) {
           const ratio = interaction.frame.width / interaction.frame.height
           if (Math.abs(deltaX) >= Math.abs(deltaY)) frame.height = frame.width / ratio
           else frame.width = frame.height * ratio
@@ -314,7 +329,7 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
         const tolerance = 7 * COMPOSITION_WIDTH / rect.width
         result = interaction.kind === 'drag'
           ? snapDraggedFrame(frame, scene, [...(interaction.groupFrames?.keys() ?? [interaction.element.id])], tolerance)
-          : interaction.element.type === 'image' && !event.shiftKey
+          : (interaction.element.type === 'image' || interaction.element.type === 'video') && !event.shiftKey
             ? { frame }
             : snapResizedFrame(frame, scene, interaction.element.id, interaction.corner!, tolerance)
       }
@@ -428,7 +443,8 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
         const selected = editor?.selectedElementIds.includes(element.id) ?? false
         const primary = editor?.selectedElementId === element.id
         const hovered = editor?.hoveredElementId === element.id
-        const assetMissing = element.type === 'image' && !assetsById.has(element.assetId)
+        const assetMissing = (element.type === 'image' && !assetsById.has(element.assetId))
+          || (element.type === 'video' && !videoAssetsById.has(element.assetId))
         // An incoming Morph identity stays visible; its first appearance may still enter.
         const suppressEntrance = entranceSuppressionReason(element, previousSlide) !== null
         const entrance = resolveEntranceState(element.animation, editor || suppressEntrance ? null : revealState)
@@ -456,8 +472,8 @@ export function SlideRenderer({ slide: scene, theme, layoutNamespace, imageAsset
           aria-label={element.name}
         >
           {animated
-            ? <div className="composition-entrance" style={entranceStyle}><ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} deterministicMotion={deterministicMotion} /></div>
-            : <ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} deterministicMotion={deterministicMotion} />}
+            ? <div className="composition-entrance" style={entranceStyle}><ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} videoAssets={videoAssets} videoPlayback={videoPlayback} deterministicMotion={deterministicMotion} /></div>
+            : <ElementContent element={{ ...element, frame }} theme={theme} foreground={foreground} layoutNamespace={layoutNamespace} imageAssets={imageAssets} videoAssets={videoAssets} videoPlayback={videoPlayback} deterministicMotion={deterministicMotion} />}
           {hovered && editor && !selected && <div className="composition-hover-outline" aria-hidden="true" />}
           {selected && editor && <div className={`composition-selection${primary ? ' is-primary' : ' is-secondary'}`} aria-hidden="true" style={{ '--composition-control-scale': 1 / Math.max(scale, 0.01) } as CSSProperties}>
             {primary && !element.locked && <div className="composition-rotation-control">

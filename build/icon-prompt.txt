@@ -1,0 +1,7 @@
+Generated with the built-in image_gen tool.
+
+Use case: logo-brand
+Asset type: production macOS app icon for AI Presentation Studio, a desktop tool for creating slides, recording narration and exporting video.
+Primary request: one polished, distinctive app icon. A softly rounded square tile in deep ink navy, with a central sculptural stack of two presentation slides, the front slide in warm white with a bold coral-red play triangle and a small refined blue accent on the rear slide. Elegant, simple, tactile macOS icon style with subtle depth and restrained lighting. Use the app palette: ink #111821, coral #ff554f, blue #176dff, warm white.
+Composition: square 1024 x 1024 canvas, icon tile centered and fills approximately 86 percent of canvas width, generous clean transparent margins beyond rounded tile, central symbol large and legible at Dock size. Straight-on view, balanced silhouette.
+Constraints: actual transparent background outside the rounded square tile. No text, no letters, no watermark, no surrounding scene, no extra objects, no tiny details. Deliver only the icon asset.

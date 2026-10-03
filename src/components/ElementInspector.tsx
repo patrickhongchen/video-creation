@@ -1,6 +1,6 @@
 import { useRef, type ChangeEvent } from 'react'
 import { normalizedRotation } from '../elementRotation'
-import type { ElementFrame, SlideChartElement, SlideElement, SlideImageElement, SlideShape } from '../model'
+import type { ElementFrame, SlideChartElement, SlideElement, SlideImageElement, SlideShape, SlideVideoElement } from '../model'
 import { imageMimeType, readImageFile } from '../imageUtils'
 import { createStableId, duplicateSlideElement } from '../presentationFactories'
 import { alignSelection, deleteSelection, distributeSelection, duplicateSelection, type DistributionAxis, type SelectionAlignment } from '../editor/selectionLayout'
@@ -27,6 +27,7 @@ function minimumSize(element: SlideElement) {
   if (element.type === 'chart') return { width: 280, height: 220 }
   if (element.type === 'text') return { width: 120, height: 80 }
   if (element.type === 'image') return { width: 80, height: 80 }
+  if (element.type === 'video') return { width: 120, height: 80 }
   if (element.type === 'arrow') return { width: 80, height: 30 }
   return element.shape === 'line' ? { width: 60, height: 20 } : { width: 40, height: 40 }
 }
@@ -177,7 +178,7 @@ export function ElementInspector({
       <button type="button" disabled={selected.locked} title={selected.locked ? 'Unlock this element before deleting it' : undefined} onClick={removeSelected}>Delete</button>
     </div>
     <section className="element-property-section">
-      <h4>{selected.type === 'text' ? 'Text' : selected.type === 'chart' ? 'Chart' : selected.type === 'image' ? 'Image' : selected.type === 'shape' ? 'Shape' : 'Arrow'}</h4>
+      <h4>{selected.type === 'text' ? 'Text' : selected.type === 'chart' ? 'Chart' : selected.type === 'image' ? 'Image' : selected.type === 'video' ? 'Video' : selected.type === 'shape' ? 'Shape' : 'Arrow'}</h4>
       <div className="composition-type-controls element-property-grid">
         {selected.type === 'text' && <>
           <label className="field-row element-wide-field"><span>Content</span><textarea rows={3} value={selected.text} onChange={(event) => updateElement({ ...selected, text: event.target.value })} /></label>
@@ -191,6 +192,10 @@ export function ElementInspector({
           <label className="field-row"><span>Fit</span><select value={selected.fit} onChange={(event) => updateElement({ ...selected, fit: event.target.value as SlideImageElement['fit'] })}><option value="contain">Contain</option><option value="cover">Cover</option></select></label>
           <label className="field-row"><span>Position</span><select value={selected.position ?? 'center'} onChange={(event) => updateElement({ ...selected, position: event.target.value as SlideImageElement['position'] })}>{['center', 'top', 'bottom', 'left', 'right', 'top-left', 'top-right', 'bottom-left', 'bottom-right'].map((position) => <option key={position} value={position}>{position}</option>)}</select></label>
           <div className="composition-view-options"><label><input type="checkbox" checked={selected.flipX ?? false} onChange={(event) => updateElement({ ...selected, flipX: event.target.checked })} /> Flip horizontal</label><label><input type="checkbox" checked={selected.flipY ?? false} onChange={(event) => updateElement({ ...selected, flipY: event.target.checked })} /> Flip vertical</label></div>
+        </>}
+        {selected.type === 'video' && <>
+          <label className="field-row"><span>Fit</span><select value={selected.fit} onChange={(event) => updateElement({ ...selected, fit: event.target.value as SlideVideoElement['fit'] })}><option value="contain">Contain</option><option value="cover">Cover</option></select></label>
+          <p className="composition-help element-wide-field">Video audio is ignored. Use Narrate to record your voice and pointer.</p>
         </>}
         {selected.type === 'chart' && chartEditor(selected, updateElement)}
         {selected.type === 'shape' && <>

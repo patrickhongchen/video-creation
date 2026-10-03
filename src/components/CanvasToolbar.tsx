@@ -1,17 +1,19 @@
 import { useRef, type ChangeEvent } from 'react'
 import type { SlideElement } from '../model'
 import { imageMimeType, readImageFile, readImageRatioWithFallback } from '../imageUtils'
+import { readVideoFile, readVideoRatio, videoMimeType } from '../videoUtils'
 import {
   createSlideArrowElement,
   createSlideChartElement,
   createSlideImageElement,
+  createSlideVideoElement,
   createSlideShapeElement,
   createSlideTextElement,
   createStableId,
 } from '../presentationFactories'
 import type { CompositionEditorProps } from './CompositionInspector'
 
-type CanvasToolbarProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 'grid' | 'guides' | 'snap' | 'onGridChange' | 'onGuidesChange' | 'onSnapChange' | 'onSelect' | 'onSlideChange' | 'onPresentationChange' | 'onImportImage'>
+type CanvasToolbarProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 'grid' | 'guides' | 'snap' | 'onGridChange' | 'onGuidesChange' | 'onSnapChange' | 'onSelect' | 'onSlideChange' | 'onPresentationChange' | 'onImportImage' | 'onImportVideo' | 'videoImporting'>
 
 export function CanvasToolbar({
   slide,
@@ -26,8 +28,11 @@ export function CanvasToolbar({
   onSlideChange,
   onPresentationChange,
   onImportImage,
+  onImportVideo,
+  videoImporting = false,
 }: CanvasToolbarProps) {
   const imageInput = useRef<HTMLInputElement>(null)
+  const videoInput = useRef<HTMLInputElement>(null)
   const shapeMenu = useRef<HTMLDetailsElement>(null)
   const addElement = (element: SlideElement) => {
     onSlideChange({ ...slide, elements: [...slide.elements, element] })
@@ -59,11 +64,28 @@ export function CanvasToolbar({
     const height = Math.round(ratio >= 1 ? 700 / ratio : 700)
     addElement({ ...element, frame: { ...element.frame, x: (1080 - width) / 2, y: (1920 - height) / 2, width, height } })
   }
+  const pickVideo = () => onImportVideo ? onImportVideo() : videoInput.current?.click()
+  const acceptVideo = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    const mimeType = videoMimeType(file)
+    if (!mimeType) return
+    const source = (await readVideoFile(file)).replace(/^data:[^;,]*/i, `data:${mimeType}`)
+    const ratio = await readVideoRatio(source)
+    const asset = { id: createStableId(file.name.replace(/\.[^.]+$/, '') || 'video'), name: file.name, mimeType, source }
+    onPresentationChange({ ...presentation, videoAssets: [...(presentation.videoAssets ?? []), asset] })
+    const element = createSlideVideoElement(asset.id)
+    const width = Math.round(ratio >= 1 ? 900 : 900 * ratio)
+    const height = Math.round(ratio >= 1 ? 900 / ratio : 900)
+    addElement({ ...element, frame: { ...element.frame, x: (1080 - width) / 2, y: (1920 - height) / 2, width, height } })
+  }
 
   return <div className="canvas-toolbar" aria-label="Canvas tools">
     <div className="composition-toolbar-actions canvas-toolbar-group">
       <button type="button" onClick={() => addElement(createSlideTextElement())}>+ Text</button>
       <button type="button" onClick={pickImage}>+ Image</button>
+      <button type="button" disabled={videoImporting} onClick={pickVideo}>{videoImporting ? 'Importing Video…' : '+ Video'}</button>
       <button type="button" onClick={() => addElement(createSlideChartElement())}>+ Chart</button>
       <details ref={shapeMenu} name="canvas-tools" className="composition-toolbar-menu canvas-toolbar-menu">
         <summary>+ Shape</summary>
@@ -88,5 +110,6 @@ export function CanvasToolbar({
       </details>
     </div>
     {!onImportImage && <input ref={imageInput} className="visually-hidden" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml,.svg" onChange={(event) => void acceptImage(event)} />}
+    {!onImportVideo && <input ref={videoInput} className="visually-hidden" type="file" accept="video/mp4,video/quicktime,.mp4,.mov" onChange={(event) => void acceptVideo(event)} />}
   </div>
 }

@@ -18,6 +18,8 @@ export interface CompositionEditorProps {
   onSlideChange: (slide: Slide) => void
   onPresentationChange: (presentation: Presentation) => void
   onImportImage?: (action: 'add' | 'replace') => void
+  onImportVideo?: () => void
+  videoImporting?: boolean
   isPreviewing: boolean
   onPreviewSlide: () => void
   onStopPreview: () => void

@@ -18,7 +18,7 @@ Run the desktop application with `npm run desktop:dev`. Build the browser render
 ```text
 Presentation
   → Slides
-      → Text / Image / Chart / Shape / Arrow elements
+      → Text / Image / Video / Chart / Shape / Arrow elements
 ```
 
 - Every slide uses explicit coordinates on a fixed 1080×1920 canvas.
@@ -71,6 +71,10 @@ The element array is the authoritative back-to-front order. Hidden elements are 
 
 Narration Studio keeps contiguous slide ranges, multiple takes, selected takes, microphone recording, cue capture, replay, and readiness. The user advances reveal groups and slides while speaking; typed slide and reveal cue times drive final playback and export. Legacy takes with untyped slide cues remain playable and use deterministic fallback reveal timing, so schema migration does not require re-recording.
 
+Import a Mac recording with **Add video** or drop an MP4/MOV onto the slide. Desktop imports copy the clip into the Project's `assets/` folder and register it in `videoAssets`. Video elements can be positioned, resized, and fitted like images. They always play silently, once, and hold the last frame; the imported audio is never mixed into the final video.
+
+Record your voice in Narration Studio while the footage plays. Entering or revisiting a slide starts its videos from the beginning. **Pause video / Resume video** (V) controls only the footage, so your microphone and pointer keep recording. Enable **Pointer** (S or P) to point at details on the video. Clip controls and pointer movements are saved with the take and reproduced in narration replay, final preview, and MP4 export. You advance the slide when ready; its length follows your narration cues rather than the clip's length. Editor canvases and thumbnails show the first frame, while Present mode plays clips on slide entry.
+
 On desktop Projects, the caption workflow is **Generate → Review/Correct → Preview → Export**. **Generate captions** transcribes an individual take locally with `whisper.cpp` and the English `medium.en` model. FFmpeg prepares a temporary 16 kHz mono WAV; the original audio stays unchanged. Transcription audio never needs to leave the machine. Captions are optional, portable take metadata with timestamped segments. **Review captions** in Narration Studio lets you listen, correct text, and save edits per take. Whisper supplies take-relative timing, which is not manually editable. The corrected `text` is authoritative in Final Preview and burned into MP4 export; the original Whisper `generatedText` remains available in review. Browser/local mode cannot run local Whisper transcription, but existing caption metadata can be edited there.
 
 The **Captions** controls in Preview & Export apply to the whole presentation: Off by default, or On with Social and Minimal presets. Existing Projects without caption settings stay Off. Final Preview and MP4 export use the same deterministic caption resolver and frame overlay, including while scrubbing or crossing slide transitions. Missing captions are reported by section but do not block export. Caption tracks remain portable with their narration takes; the Whisper executable and model remain application dependencies rather than Project data.
@@ -108,7 +112,7 @@ The seeded **Small Screens, Bigger Questions** and **Chart Story Lab** presentat
 
 ## Intentional boundaries
 
-There is no built-in LLM/chat UI, Codex/OpenAI API integration, arbitrary JSON merging, stock search, video element, music, timeline, keyframes, grouping, nested components, symbol system, theme editor, plugin system, cloud backend, or collaboration. Slides and their reveal steps define the visual sequence, while narration cues provide narrated timing.
+There is no built-in LLM/chat UI, Codex/OpenAI API integration, arbitrary JSON merging, stock search, music, timeline, keyframes, grouping, nested components, symbol system, theme editor, plugin system, cloud backend, or collaboration. Slides and their reveal steps define the visual sequence, while narration cues provide narrated timing.
 
 See [docs/PRESENTATION_FORMAT.md](docs/PRESENTATION_FORMAT.md) for the schema, complete example, migration mapping, and validation rules. See [docs/CODEX_AUTHORING.md](docs/CODEX_AUTHORING.md) for the practical Codex workflow, design recipes, prompt patterns, theme guidance, anti-patterns, and completion checklist.
 

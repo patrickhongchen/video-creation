@@ -16,6 +16,7 @@ import {
   slideRevealOrders,
   type RevealVisualState,
 } from '../entranceAnimation'
+import { resolveVideoPlaybackAtTime } from '../narration/resolveVideoPlayback'
 import { resolveNarrationVisualAtTime } from '../narration/resolveNarrationVisual'
 import { NARRATION_POINTER_FADE_END_MS, narrationPointerOpacityAtTime, resolveNarrationPointerAtTime } from '../narration/resolveNarrationPointer'
 import { coverSlidesWithSections, mergeSectionIntoPrevious, sectionsWithChangedSlideRanges, splitSectionAtSlide } from '../narration/sectionBoundaries'
@@ -88,6 +89,7 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
   const [draftTitle, setDraftTitle] = useState('')
   const recordingSectionIdRef = useRef<string | null>(null)
   const stageRef = useRef<HTMLDivElement | null>(null)
+  const [, setVideoControlVersion] = useState(0)
   const [pointerMode, setPointerMode] = useState(false)
   const pointerModeRef = useRef(false)
   const livePointerRef = useRef<{ sceneId: string; x: number; y: number; timeMs: number; activatedAtMs: number } | null>(null)
@@ -425,37 +427,81 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
       }
     }
 
+    if (offset === -1 && recordingRevealedThroughOrderRef.current > 0) {
+      const orders = slideRevealOrders(currentSlide, previousSlideFor(presentation.slides, currentSlide))
+      const order = orders.filter((candidate) => candidate <= recordingRevealedThroughOrderRef.current).at(-1)
+      if (order !== undefined) {
+        const cueTime = recorder.addCue({ type: 'hide-reveal', sceneId: currentSlide.id, order })
+        if (cueTime !== undefined) {
+          const previousOrder = orders.filter((candidate) => candidate < order).at(-1) ?? 0
+          recordingRevealedThroughOrderRef.current = previousOrder
+          setRecordingRevealedThroughOrder(previousOrder)
+          setRecordingActiveReveal(null)
+        }
+        return
+      }
+    }
+
     const next = Math.max(0, Math.min(current + offset, selectedResolved.slides.length - 1))
     if (next === current) return
+    const nextSlide = selectedResolved.slides[next]
+    const revealedThroughOrder = offset === -1
+      ? slideRevealOrders(nextSlide, previousSlideFor(presentation.slides, nextSlide)).at(-1) ?? 0
+      : 0
+    const cueTime = offset === -1
+      ? recorder.addCue({ type: 'slide', sceneId: nextSlide.id, revealedThroughOrder })
+      : recorder.addCue({ type: 'slide', sceneId: nextSlide.id })
+    if (cueTime === undefined) return
     hideLivePointer()
     setDirection(offset)
-    recorder.addCue({ type: 'slide', sceneId: selectedResolved.slides[next].id })
     activeRelativeIndexRef.current = next
     setActiveRelativeIndex(next)
-    recordingRevealedThroughOrderRef.current = 0
-    setRecordingRevealedThroughOrder(0)
+    recordingRevealedThroughOrderRef.current = revealedThroughOrder
+    setRecordingRevealedThroughOrder(revealedThroughOrder)
     setRecordingActiveReveal(null)
   }, [hideLivePointer, presentation.slides, recorder.addCue, selectedResolved])
+
+  const toggleRecordingVideo = useCallback(() => {
+    if (recorder.status !== 'recording') return
+    const slide = selectedResolved?.slides[activeRelativeIndexRef.current]
+    if (!slide?.elements.some((element) => element.type === 'video' && !element.hidden)) return
+    const state = resolveVideoPlaybackAtTime(recorder.getCues(), recorder.getElapsedMs(), slide.id)
+    recorder.addCue({ type: 'video', sceneId: slide.id, action: state.playing ? 'pause' : 'resume', positionMs: state.timeMs })
+    setVideoControlVersion((version) => version + 1)
+  }, [recorder.status, recorder.getCues, recorder.getElapsedMs, recorder.addCue, selectedResolved])
+
+  const finishTake = useCallback(() => {
+    resetPointerMode()
+    recorder.stopRecording()
+  }, [recorder.stopRecording, resetPointerMode])
 
   useEffect(() => {
     if (recorder.status !== 'recording') return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() === 'p' && !event.repeat && !event.altKey && !event.ctrlKey && !event.metaKey) {
-        const target = event.target
-        if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select, [contenteditable="true"]'))) return
+      if (event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return
+      const target = event.target
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))) return
+      const key = event.key.toLowerCase()
+      if (key === 'v' && !event.shiftKey) {
+        event.preventDefault()
+        toggleRecordingVideo()
+      } else if (key === 'f' && !event.shiftKey) {
+        event.preventDefault()
+        finishTake()
+      } else if (!event.shiftKey && (key === 's' || key === 'p')) {
         event.preventDefault()
         togglePointerMode()
-      } else if (event.key === ' ' || event.key === 'ArrowRight') {
+      } else if (!event.shiftKey && (key === 'd' || key === ' ' || key === 'arrowright')) {
         event.preventDefault()
         moveRecordingVisual(1)
-      } else if (event.key === 'ArrowLeft') {
+      } else if (!event.shiftKey && (key === 'a' || key === 'arrowleft')) {
         event.preventDefault()
         moveRecordingVisual(-1)
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [moveRecordingVisual, recorder.status, togglePointerMode])
+  }, [finishTake, moveRecordingVisual, recorder.status, togglePointerMode, toggleRecordingVideo])
 
   const beginTake = () => {
     if (!selectedSection || !selectedResolved?.valid || !selectedResolved.slides[0]) return
@@ -480,11 +526,6 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
     setAdvanceHint(false)
     resetPointerMode()
     recorder.cancel()
-  }
-
-  const finishTake = () => {
-    resetPointerMode()
-    recorder.stopRecording()
   }
 
   const changeMicrophone = (deviceId: string) => {
@@ -645,6 +686,12 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
   const playbackVisual = playbackTake
     ? resolveNarrationVisualAtTime(playbackTake.cues, playback.currentTimeMs, presentation.slides, selectedResolved?.slides[0]?.id)
     : null
+  const stageVideoPlayback = currentSlide && recorder.status === 'recording'
+    ? resolveVideoPlaybackAtTime(recorder.getCues(), recorder.getElapsedMs(), currentSlide.id)
+    : currentSlide && playbackTake
+      ? { ...resolveVideoPlaybackAtTime(playbackTake.cues, playback.currentTimeMs, currentSlide.id),
+          playing: playback.isPlaying && resolveVideoPlaybackAtTime(playbackTake.cues, playback.currentTimeMs, currentSlide.id).playing }
+      : { timeMs: 0, playing: false }
   const recordingRevealState: RevealVisualState = {
     revealedThroughOrder: recordingRevealedThroughOrder,
     activeRevealOrder: recordingActiveReveal?.order ?? null,
@@ -744,11 +791,13 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
           selectedSectionValid={selectedResolved?.valid ?? false} activeSectionSlideIndex={activeRelativeIndex}
           direction={direction} renderInstanceKey={renderInstanceKey}
           revealState={stageRevealState} pointerState={stagePointerState} stageRef={stageRef}
+          videoPlayback={stageVideoPlayback} onToggleVideo={toggleRecordingVideo}
           mode={uiMode} recorderStatus={recorder.status} recorderBusy={recorderBusy}
           recorderCountdown={recorder.countdown} recorderElapsedMs={recorder.elapsedMs}
           microphoneName={microphoneName} microphoneLevel={recorder.level}
           recordingProgress={recordingProgress} advanceHint={advanceHint} pointerMode={pointerMode}
           hasUpcomingReveal={upcomingRevealOrder !== null}
+          hasPreviousReveal={recordingRevealedThroughOrder > 0}
           onAdvanceRecording={moveRecordingVisual} onTogglePointer={togglePointerMode}
           onFinishTake={finishTake} onCancelTake={cancelTake} onBeginTake={beginTake}
           onPointerMove={moveLivePointer} onPointerLeave={hideLivePointer}

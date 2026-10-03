@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef, type DragEvent as ReactDragEvent } from 'react'
-import type { Presentation, Slide, SlideElement } from '../model'
-import { createSlideImageElement } from '../presentationFactories'
+import { useCallback, useEffect, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
+import type { Presentation, PresentationImageAsset, PresentationVideoAsset, Slide, SlideElement } from '../model'
+import { createSlideImageElement, createSlideVideoElement } from '../presentationFactories'
 import { duplicateSelection } from './selectionLayout'
 import { getDesktopBridge } from '../desktop/desktopBridge'
-import type { DesktopImportedAsset, DesktopProjectSnapshot } from '../desktop/desktopTypes'
+import type { DesktopImportedAsset, DesktopImportedVideoAsset, DesktopProjectSnapshot } from '../desktop/desktopTypes'
 import { imageMimeType, isSupportedImageMimeType, readImageRatio } from '../imageUtils'
+import { readVideoRatio, videoMimeType } from '../videoUtils'
 
 interface ClipboardImagesOptions {
   currentProject: DesktopProjectSnapshot | null
+  presentation: Presentation
   selectedSlide: Slide
   selectedIndex: number
   selectedElementId: string | null
@@ -15,7 +17,6 @@ interface ClipboardImagesOptions {
   mode: 'edit' | 'present' | 'narrate'
   isPreviewing: boolean
   updateCurrent: (update: (presentation: Presentation) => Presentation) => void
-  updateSlide: (slide: Slide) => void
   setSelectedElementId: (id: string | null) => void
   setSelection: (ids: string[]) => void
   setError: (error: string) => void
@@ -33,12 +34,19 @@ function imageFromClipboardHtml(html: string) {
 }
 
 /** All image entry points share the same asset placement path. */
-export function useEditorClipboardImages({ currentProject, selectedSlide, selectedIndex, selectedElementId, selectedElementIds, mode, isPreviewing, updateCurrent, updateSlide, setSelectedElementId, setSelection, setError }: ClipboardImagesOptions) {
+export function useEditorClipboardImages({ currentProject, presentation, selectedSlide, selectedIndex, selectedElementId, selectedElementIds, mode, isPreviewing, updateCurrent, setSelectedElementId, setSelection, setError }: ClipboardImagesOptions) {
   const desktop = getDesktopBridge()
   const copiedElements = useRef<SlideElement[]>([])
+  const copiedImageAssets = useRef<PresentationImageAsset[]>([])
+  const copiedVideoAssets = useRef<PresentationVideoAsset[]>([])
   const internalCopyIsCurrent = useRef(false)
+  const [videoImporting, setVideoImporting] = useState(false)
   const copySelection = () => {
     copiedElements.current = structuredClone(selectedSlide.elements.filter(({ id }) => selectedElementIds.includes(id)))
+    const imageIds = new Set(copiedElements.current.filter((element) => element.type === 'image').map((element) => element.assetId))
+    const videoIds = new Set(copiedElements.current.filter((element) => element.type === 'video').map((element) => element.assetId))
+    copiedImageAssets.current = structuredClone((presentation.imageAssets ?? []).filter((asset) => imageIds.has(asset.id)))
+    copiedVideoAssets.current = structuredClone((presentation.videoAssets ?? []).filter((asset) => videoIds.has(asset.id)))
     internalCopyIsCurrent.current = copiedElements.current.length > 0
   }
   useEffect(() => {
@@ -90,6 +98,33 @@ export function useEditorClipboardImages({ currentProject, selectedSlide, select
       setError(problem instanceof Error ? `Image import failed: ${problem.message}` : 'Image import failed.')
     }
   }, [currentProject, desktop, placeImportedAsset])
+
+  const placeImportedVideo = useCallback(async (asset: DesktopImportedVideoAsset, center?: { x: number; y: number }) => {
+    const ratio = await readVideoRatio(asset.source)
+    const width = Math.round(ratio >= 1 ? 900 : 900 * ratio)
+    const height = Math.round(ratio >= 1 ? 900 / ratio : 900)
+    const video = createSlideVideoElement(asset.id)
+    const frame = { ...video.frame, x: Math.round((center?.x ?? 540) - width / 2), y: Math.round((center?.y ?? 960) - height / 2), width, height }
+    updateCurrent((current) => ({
+      ...current,
+      videoAssets: [...(current.videoAssets ?? []).filter((candidate) => candidate.id !== asset.id), asset],
+      slides: current.slides.map((slide, index) => index === selectedIndex ? { ...slide, elements: [...slide.elements, { ...video, frame }] } : slide),
+    }))
+    setSelectedElementId(video.id)
+  }, [selectedIndex, setSelectedElementId, updateCurrent])
+
+  const chooseProjectVideo = useCallback(async () => {
+    if (!desktop || !currentProject || videoImporting) return
+    setVideoImporting(true)
+    try {
+      const result = await desktop.chooseVideo(currentProject.projectId)
+      if (result.status === 'imported') await placeImportedVideo(result.asset)
+    } catch (problem) {
+      setError(problem instanceof Error ? `Video import failed: ${problem.message}` : 'Video import failed.')
+    } finally {
+      setVideoImporting(false)
+    }
+  }, [currentProject, desktop, placeImportedVideo, setError, videoImporting])
 
   const importImageBytes = useCallback(async (file: File, suggestedName: string, center?: { x: number; y: number }) => {
     if (!desktop || !currentProject) return
@@ -143,7 +178,13 @@ export function useEditorClipboardImages({ currentProject, selectedSlide, select
       const pasteCopiedElement = () => {
         if (!copiedElements.current.length) return false
         const copies = duplicateSelection(copiedElements.current, copiedElements.current.map(({ id }) => id))
-        updateSlide({ ...selectedSlide, elements: [...selectedSlide.elements, ...copies.elements.slice(copiedElements.current.length)] })
+        const pasted = copies.elements.slice(copiedElements.current.length)
+        updateCurrent((current) => ({
+          ...current,
+          imageAssets: [...(current.imageAssets ?? []), ...copiedImageAssets.current.filter((asset) => !(current.imageAssets ?? []).some(({ id }) => id === asset.id))],
+          videoAssets: [...(current.videoAssets ?? []), ...copiedVideoAssets.current.filter((asset) => !(current.videoAssets ?? []).some(({ id }) => id === asset.id))],
+          slides: current.slides.map((slide, index) => index === selectedIndex ? { ...slide, elements: [...slide.elements, ...pasted] } : slide),
+        }))
         setSelection(copies.selectedIds)
         return true
       }
@@ -191,7 +232,7 @@ export function useEditorClipboardImages({ currentProject, selectedSlide, select
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
-  }, [currentProject, desktop, importClipboardImageSource, importImageBytes, isPreviewing, mode, placeImportedAsset, selectedSlide, updateSlide, setSelection])
+  }, [currentProject, desktop, importClipboardImageSource, importImageBytes, isPreviewing, mode, placeImportedAsset, selectedIndex, selectedSlide, setSelection, updateCurrent])
 
   useEffect(() => {
     const preventFileNavigation = (event: DragEvent) => {
@@ -208,9 +249,9 @@ export function useEditorClipboardImages({ currentProject, selectedSlide, select
   const dropProjectImage = async (event: ReactDragEvent<HTMLElement>) => {
     event.preventDefault()
     if (isPreviewing) return
-    const file = [...event.dataTransfer.files].find((candidate) => imageMimeType(candidate))
+    const file = [...event.dataTransfer.files].find((candidate) => imageMimeType(candidate) || videoMimeType(candidate))
     if (!file || !currentProject || !desktop) {
-      if (event.dataTransfer.files.length) setError('Only PNG, JPEG, WebP, and SVG images can be dropped on a slide.')
+      if (event.dataTransfer.files.length) setError('Only PNG, JPEG, WebP, SVG, MP4, and MOV files can be dropped on a slide.')
       return
     }
     const stage = event.currentTarget.querySelector<HTMLElement>('.stage')
@@ -220,12 +261,23 @@ export function useEditorClipboardImages({ currentProject, selectedSlide, select
       y: Math.max(0, Math.min(1920, ((event.clientY - bounds.top) / bounds.height) * 1920)),
     } : undefined
     try {
-      const asset = await desktop.importDroppedImage(currentProject.projectId, file)
-      await placeImportedAsset(asset, 'add', center)
+      if (videoMimeType(file)) {
+        if (videoImporting) return
+        setVideoImporting(true)
+        try {
+          const asset = await desktop.importDroppedVideo(currentProject.projectId, file)
+          await placeImportedVideo(asset, center)
+        } finally {
+          setVideoImporting(false)
+        }
+      } else {
+        const asset = await desktop.importDroppedImage(currentProject.projectId, file)
+        await placeImportedAsset(asset, 'add', center)
+      }
     } catch (problem) {
       setError(problem instanceof Error ? `Drop failed: ${problem.message}` : 'Drop failed.')
     }
   }
 
-  return { chooseProjectImage, dropProjectImage, copySelection }
+  return { chooseProjectImage, chooseProjectVideo, dropProjectImage, copySelection, videoImporting }
 }

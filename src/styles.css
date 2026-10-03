@@ -607,6 +607,7 @@ button.narration-rail-slide:hover { background: #f4f7f9; }
 .narration-toolbar-actions button svg { width: 13px; }
 .narration-toolbar-actions button:disabled { opacity: .45; cursor: not-allowed; }
 .narration-toolbar-actions .record-button, .narration-toolbar-actions .stop-recording { min-width: 136px; border-color: #b73b32; background: #bd4037; color: #fff; }
+.narration-toolbar-actions .stop-recording kbd { color: #33465a; }
 .narration-toolbar-actions .discard-recording { border-color: transparent; color: #9b3b35; }
 .narration-toolbar-actions .pointer-toggle[aria-pressed="true"] { border-color: #c84846; background: #fff0ee; color: #b52c2c; }
 .narration-record-status { color: #8b3c35; font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }

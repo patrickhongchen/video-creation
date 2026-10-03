@@ -1,9 +1,12 @@
-import type { PresentationImageAsset, PresentationTheme, Slide } from '../model'
+import type { PresentationImageAsset, PresentationTheme, PresentationVideoAsset, Slide } from '../model'
+import type { VideoPlaybackState } from '../narration/resolveVideoPlayback'
 import { SlideRenderer, type SlideEditorController } from './CompositionSceneRenderer'
 import type { RevealVisualState } from '../entranceAnimation'
 
 interface RenderSlideOptions {
   imageAssets?: PresentationImageAsset[]
+  videoAssets?: PresentationVideoAsset[]
+  videoPlayback?: VideoPlaybackState
   editor?: SlideEditorController
   revealState?: RevealVisualState | null
   previousSlide?: Slide
@@ -25,6 +28,8 @@ export function renderSlide(
     theme={theme}
     layoutNamespace={layoutNamespace}
     imageAssets={options.imageAssets}
+    videoAssets={options.videoAssets}
+    videoPlayback={options.videoPlayback}
     editor={options.editor}
     revealState={options.revealState}
     previousSlide={options.previousSlide}

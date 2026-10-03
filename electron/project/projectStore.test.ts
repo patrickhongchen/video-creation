@@ -12,6 +12,7 @@ const temporaryDirectories: string[] = []
 const openStores: ProjectStore[] = []
 const svgBytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>')
 const pngBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+const mp4Bytes = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypisom'), Buffer.alloc(12)])
 
 async function temporaryDirectory() {
   const directory = await mkdtemp(path.join(tmpdir(), 'video-project-test-'))
@@ -87,6 +88,16 @@ function presentationWithDataAsset(): Presentation {
   return presentation
 }
 
+function presentationWithVideoDataAsset(): Presentation {
+  const presentation = createBlankPresentation('Video Project')
+  presentation.videoAssets = [{ id: 'demo-video', name: 'Demo', mimeType: 'video/mp4', source: `data:video/mp4;base64,${mp4Bytes.toString('base64')}` }]
+  presentation.slides[0].elements.push({
+    id: 'demo-element', type: 'video', name: 'Demo', assetId: 'demo-video', fit: 'contain',
+    frame: { x: 90, y: 480, width: 900, height: 960 },
+  })
+  return presentation
+}
+
 function projectStore() {
   const store = new ProjectStore({ watchFactory: () => ({ close() {} }) })
   openStores.push(store)
@@ -99,6 +110,18 @@ afterEach(async () => {
 })
 
 describe('ProjectStore', () => {
+  it('materializes video data URLs as portable project media', async () => {
+    const root = path.join(await temporaryDirectory(), 'video-project')
+    const store = projectStore()
+    const project = await store.createAt(root, presentationWithVideoDataAsset())
+    expect(await readFile(path.join(root, 'assets', 'demo.mp4'))).toEqual(mp4Bytes)
+    expect(project.presentation.videoAssets?.[0]).toMatchObject({
+      id: 'demo-video', path: 'assets/demo.mp4', source: expect.stringMatching(/^ves-asset:\/\/project\//),
+    })
+    const saved = await readFile(path.join(root, 'presentation.json'), 'utf8')
+    expect(saved).not.toContain('data:video')
+  })
+
   it('creates the plain folder format and migrates data URLs to canonical relative assets', async () => {
     const parent = await temporaryDirectory()
     const root = path.join(parent, 'portable-project')
@@ -451,8 +474,26 @@ describe('ProjectStore', () => {
     const replacement = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><circle r="5"/></svg>')
     await writeFile(path.join(root, 'assets', 'hero-art.svg'), replacement)
     expect(store.resolveExportAsset('export-job', 'hero-art').bytes).toEqual(svgBytes)
-    store.releaseExportAssets('export-job')
+    await store.releaseExportAssets('export-job')
     expect(() => store.resolveExportAsset('export-job', 'hero-art')).toThrow(/unavailable/)
+  })
+
+  it('freezes referenced videos in temporary files and removes them after export', async () => {
+    const root = path.join(await temporaryDirectory(), 'video-export-snapshot')
+    const store = projectStore()
+    const project = await store.createAt(root, presentationWithVideoDataAsset())
+    const frozen = await store.captureExportAssets('video-export', project.presentation)
+    expect(frozen.videoAssets?.[0].source).toMatch(/^ves-asset:\/\/export\/video-export\/demo-video\?v=/)
+    const frozenAsset = store.resolveExportAsset('video-export', 'demo-video')
+    expect(frozenAsset.bytes).toBeUndefined()
+    expect(frozenAsset.filePath).toBeTruthy()
+    expect(await readFile(frozenAsset.filePath!)).toEqual(mp4Bytes)
+    await writeFile(path.join(root, 'assets', 'demo.mp4'), Buffer.concat([mp4Bytes, Buffer.from('changed')]))
+    expect(await readFile(store.resolveExportAsset('video-export', 'demo-video').filePath!)).toEqual(mp4Bytes)
+    const frozenPath = frozenAsset.filePath!
+    await store.releaseExportAssets('video-export')
+    await expect(readFile(frozenPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(() => store.resolveExportAsset('video-export', 'demo-video')).toThrow(/unavailable/)
   })
 
   it('waits briefly for a newly referenced asset before emitting a presentation change', async () => {

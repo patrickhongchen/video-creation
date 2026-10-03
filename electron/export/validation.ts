@@ -27,8 +27,13 @@ function isCue(value: unknown): value is ExportCue {
   return isRecord(value)
     && isNonEmptyString(value.sceneId)
     && isDuration(value.timeMs, true)
-    && (value.type === undefined || value.type === 'slide'
-      || (value.type === 'reveal' && typeof value.order === 'number' && Number.isSafeInteger(value.order) && value.order > 0))
+    && (value.type === undefined
+      || (value.type === 'slide' && (value.revealedThroughOrder === undefined
+        || (typeof value.revealedThroughOrder === 'number'
+          && Number.isSafeInteger(value.revealedThroughOrder) && value.revealedThroughOrder >= 0)))
+      || (value.type === 'video' && (value.action === 'pause' || value.action === 'resume') && isDuration(value.positionMs, true))
+      || ((value.type === 'reveal' || value.type === 'hide-reveal')
+        && typeof value.order === 'number' && Number.isSafeInteger(value.order) && value.order > 0))
 }
 
 function isPointerSample(value: unknown, sceneIds: readonly string[], durationMs: number) {

@@ -6,7 +6,7 @@ import {
   type RevealVisualState,
 } from '../entranceAnimation'
 import type { Slide } from '../model'
-import { cuesAreLegacy, isRevealCue, isSlideCue, type SceneCue } from './narrationTypes'
+import { cuesAreLegacy, isHideRevealCue, isRevealCue, isSlideCue, type SceneCue } from './narrationTypes'
 
 export interface ResolvedNarrationVisual {
   sceneId: string | undefined
@@ -30,12 +30,14 @@ export function resolveNarrationVisualAtTime(
   const clampedTimeMs = Math.max(0, timeMs)
   let sceneId = sortedCues.find(isSlideCue)?.sceneId ?? fallbackSceneId
   let slideActivatedAtMs = 0
+  let slideCueIndex = -1
 
-  for (const cue of sortedCues) {
+  for (const [index, cue] of sortedCues.entries()) {
     if (cue.timeMs > clampedTimeMs) break
     if (isSlideCue(cue)) {
       sceneId = cue.sceneId
       slideActivatedAtMs = cue.timeMs
+      slideCueIndex = index
     }
   }
 
@@ -58,14 +60,31 @@ export function resolveNarrationVisualAtTime(
     }
   }
 
-  let revealState = INITIAL_REVEAL_STATE
-  for (const cue of sortedCues) {
+  const revealOrders = slideRevealOrders(slide, previousSlideFor(slides, slide))
+  const slideCue = sortedCues[slideCueIndex]
+  let revealState: RevealVisualState = {
+    revealedThroughOrder: slideCue && 'type' in slideCue && slideCue.type === 'slide'
+      ? slideCue.revealedThroughOrder ?? 0
+      : 0,
+    activeRevealOrder: null,
+    activeRevealElapsedMs: 0,
+  }
+  for (let index = slideCueIndex + 1; index < sortedCues.length; index += 1) {
+    const cue = sortedCues[index]
     if (cue.timeMs > clampedTimeMs) break
-    if (cue.timeMs < slideActivatedAtMs || !isRevealCue(cue) || cue.sceneId !== sceneId) continue
-    revealState = {
-      revealedThroughOrder: cue.order,
-      activeRevealOrder: cue.order,
-      activeRevealElapsedMs: clampedTimeMs - cue.timeMs,
+    if (cue.sceneId !== sceneId) continue
+    if (isRevealCue(cue)) {
+      revealState = {
+        revealedThroughOrder: cue.order,
+        activeRevealOrder: cue.order,
+        activeRevealElapsedMs: clampedTimeMs - cue.timeMs,
+      }
+    } else if (isHideRevealCue(cue)) {
+      revealState = {
+        revealedThroughOrder: revealOrders.filter((order) => order < cue.order).at(-1) ?? 0,
+        activeRevealOrder: null,
+        activeRevealElapsedMs: 0,
+      }
     }
   }
 

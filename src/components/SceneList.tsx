@@ -28,6 +28,7 @@ export function SlideList({ presentation, selectedIndex, onSelect, onPrevious, o
                 slide={slide}
                 theme={presentation.theme}
                 imageAssets={presentation.imageAssets}
+                videoAssets={presentation.videoAssets}
                 layoutNamespace={`thumbnail-${presentation.id}-${slide.id}`}
               />
               <span className="scene-row-copy"><b>{slide.title}</b></span>

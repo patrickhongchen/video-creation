@@ -1,35 +1,44 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { lookup } from 'node:dns/promises'
-import { watch } from 'node:fs'
+import { constants as fsConstants, watch } from 'node:fs'
 import { request } from 'node:https'
 import {
   access,
+  chmod,
+  copyFile,
   lstat,
   mkdir,
+  mkdtemp,
   open,
   readFile,
   readdir,
   realpath,
   rename,
+  rm,
   stat,
   unlink,
   writeFile,
 } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { isIP, type LookupFunction } from 'node:net'
 import type {
   Presentation,
   PresentationImageAsset,
   PresentationImageMimeType,
+  PresentationVideoAsset,
+  PresentationVideoMimeType,
 } from '../../src/model'
 import { validatePresentation } from '../../src/presentationValidation'
 import type {
   DesktopImportedAsset,
+  DesktopImportedVideoAsset,
   DesktopMissingAsset,
   DesktopProjectExternalChange,
   DesktopProjectSaveResult,
   DesktopProjectSnapshot,
 } from '../../src/desktop/desktopTypes'
+import { hashFile, readFileHeader } from './assetStreaming'
 
 export const PROJECT_FILE_NAME = 'presentation.json'
 export const PROJECT_ASSETS_DIRECTORY = 'assets'
@@ -38,7 +47,7 @@ export const PROJECT_ASSET_PROTOCOL = 'ves-asset'
 
 export const PROJECT_AGENTS_MD = `# AI Presentation Studio Project
 
-\`presentation.json\` is the source of truth. Its Slides are the presentation timeline; each Slide contains ordinary Text, Image, Chart, Shape, or Arrow Elements. Element frames use a fixed 1080×1920 coordinate system. \`assets/\` holds visual files registered in \`imageAssets\` with safe Project-relative paths. Inspect both the JSON and existing assets before editing.
+\`presentation.json\` is the source of truth. Its Slides are the presentation timeline; each Slide contains ordinary Text, Image, Video, Chart, Shape, or Arrow Elements. Element frames use a fixed 1080×1920 coordinate system. \`assets/\` holds visual files registered in \`imageAssets\` and \`videoAssets\` with safe Project-relative paths. Inspect both the JSON and existing assets before editing.
 
 ## Authoring workflow
 
@@ -50,6 +59,8 @@ export const PROJECT_AGENTS_MD = `# AI Presentation Studio Project
 6. Preserve \`presentation.id\`, surviving Slide and element IDs, narration section IDs, asset IDs, chart identities, and shared identities when revising an existing Project. Create readable unique IDs for genuinely new objects. Recorded audio and take-specific timing metadata live under \`narration/\`; preserve that directory when moving or copying a Project.
 7. Write related \`presentation.json\` and \`assets/\` changes close together, then run \`npm run validate-project -- /path/to/this/project\` from the AI Presentation Studio repository. Fix errors and review actionable warnings, then check the story, readability, visual variety, and factual accuracy.
 
+Imported Video Elements are always silent. Narration cues control their play, pause, and timing during a recorded presentation.
+
 AI Presentation Studio watches the open Project and applies stable, valid external changes automatically. Keep \`presentation.json\` valid JSON. Do not use remote image URLs or add a separate layout type.
 `
 
@@ -60,15 +71,38 @@ const IMAGE_EXTENSIONS: Record<PresentationImageMimeType, string> = {
   'image/svg+xml': '.svg',
 }
 
-const EXTENSION_MIME_TYPES = new Map<string, PresentationImageMimeType>([
+const VIDEO_EXTENSIONS: Record<PresentationVideoMimeType, string> = {
+  'video/mp4': '.mp4',
+  'video/quicktime': '.mov',
+}
+
+type PresentationAssetMimeType = PresentationImageMimeType | PresentationVideoMimeType
+
+interface FrozenExportAsset {
+  mimeType: PresentationAssetMimeType
+  fingerprint: string
+  bytes?: Buffer
+  filePath?: string
+  byteLength: number
+}
+
+interface FrozenExportAssets {
+  assets: Map<string, FrozenExportAsset>
+  temporaryDirectory: string | null
+}
+
+const EXTENSION_MIME_TYPES = new Map<string, PresentationAssetMimeType>([
   ['.png', 'image/png'],
   ['.jpg', 'image/jpeg'],
   ['.jpeg', 'image/jpeg'],
   ['.webp', 'image/webp'],
   ['.svg', 'image/svg+xml'],
+  ['.mp4', 'video/mp4'],
+  ['.mov', 'video/quicktime'],
 ])
 
 const MAX_IMAGE_BYTES = 100 * 1024 * 1024
+export const MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024
 const MAX_REMOTE_REDIRECTS = 5
 
 interface ActiveProject {
@@ -140,6 +174,16 @@ function assertMimeType(value: unknown): asserts value is PresentationImageMimeT
   if (value !== 'image/png' && value !== 'image/jpeg' && value !== 'image/webp' && value !== 'image/svg+xml') {
     throw new Error('Only PNG, JPEG, WebP, and SVG images are supported.')
   }
+}
+
+function assertVideoMimeType(value: unknown): asserts value is PresentationVideoMimeType {
+  if (value !== 'video/mp4' && value !== 'video/quicktime') {
+    throw new Error('Only MP4 and QuickTime videos are supported.')
+  }
+}
+
+function isVideoMimeType(value: PresentationAssetMimeType): value is PresentationVideoMimeType {
+  return value === 'video/mp4' || value === 'video/quicktime'
 }
 
 function addressIsPrivate(value: string) {
@@ -286,6 +330,28 @@ function verifyImageBytes(bytes: Buffer, mimeType: PresentationImageMimeType) {
   if (!valid) throw new Error(`The selected file does not contain valid ${mimeType} image data.`)
 }
 
+function verifyVideoHeader(bytes: Buffer, byteLength: number, mimeType: PresentationVideoMimeType) {
+  if (byteLength === 0 || byteLength > MAX_VIDEO_BYTES) {
+    throw new Error(`Video data must be between 1 byte and ${MAX_VIDEO_BYTES / 1024 / 1024} MB.`)
+  }
+  const valid = bytes.byteLength >= 12
+    && bytes.toString('ascii', 4, 8) === 'ftyp'
+    && bytes.readUInt32BE(0) >= 8
+    && bytes.readUInt32BE(0) <= byteLength
+  if (!valid) throw new Error(`The selected file does not contain valid ${mimeType} video data.`)
+}
+
+function verifyVideoBytes(bytes: Buffer, mimeType: PresentationVideoMimeType) {
+  verifyVideoHeader(bytes, bytes.byteLength, mimeType)
+}
+
+async function verifyVideoFile(filePath: string, mimeType: PresentationVideoMimeType) {
+  const info = await stat(filePath)
+  if (!info.isFile()) throw new Error('The selected video is not a regular file.')
+  verifyVideoHeader(await readFileHeader(filePath), info.size, mimeType)
+  return info
+}
+
 function dataUrlBytes(source: string, expectedMimeType: PresentationImageMimeType) {
   const match = /^data:([^;,]+)((?:;[^,]*)?),(.*)$/is.exec(source)
   if (!match || match[1].toLowerCase() !== expectedMimeType) throw new Error(`Invalid ${expectedMimeType} data URL.`)
@@ -301,6 +367,21 @@ function dataUrlBytes(source: string, expectedMimeType: PresentationImageMimeTyp
   return bytes
 }
 
+function videoDataUrlBytes(source: string, expectedMimeType: PresentationVideoMimeType) {
+  const match = /^data:([^;,]+)((?:;[^,]*)?),(.*)$/is.exec(source)
+  if (!match || match[1].toLowerCase() !== expectedMimeType) throw new Error(`Invalid ${expectedMimeType} data URL.`)
+  let bytes: Buffer
+  try {
+    bytes = /;base64/i.test(match[2])
+      ? Buffer.from(match[3].replace(/\s/g, ''), 'base64')
+      : Buffer.from(decodeURIComponent(match[3]), 'utf8')
+  } catch {
+    throw new Error(`Invalid ${expectedMimeType} data URL encoding.`)
+  }
+  verifyVideoBytes(bytes, expectedMimeType)
+  return bytes
+}
+
 async function pathExists(value: string) {
   try {
     await access(value)
@@ -310,12 +391,12 @@ async function pathExists(value: string) {
   }
 }
 
-async function duplicateSafePath(directory: string, requestedName: string, mimeType: PresentationImageMimeType) {
+async function duplicateSafePath(directory: string, requestedName: string, mimeType: PresentationAssetMimeType) {
   const requestedExtension = path.extname(requestedName).toLowerCase()
   const extension = EXTENSION_MIME_TYPES.get(requestedExtension) === mimeType
     ? requestedExtension
-    : IMAGE_EXTENSIONS[mimeType]
-  const stem = sanitizeStem(requestedName, 'image')
+    : isVideoMimeType(mimeType) ? VIDEO_EXTENSIONS[mimeType] : IMAGE_EXTENSIONS[mimeType]
+  const stem = sanitizeStem(requestedName, isVideoMimeType(mimeType) ? 'video' : 'image')
   for (let index = 1; index < 10_000; index += 1) {
     const fileName = index === 1 ? `${stem}${extension}` : `${stem}-${index}${extension}`
     const destination = path.join(directory, fileName)
@@ -357,9 +438,19 @@ function canonicalizePresentation(value: unknown) {
     }
     return asset
   })
+  const videoAssets = validated.videoAssets?.map(({ source: _source, ...asset }, index) => {
+    if (!asset.path) throw new Error(`presentation.videoAssets[${index}].path is required for a desktop Project.`)
+    validateAssetRelativePath(asset.path)
+    if (EXTENSION_MIME_TYPES.get(path.extname(asset.path).toLowerCase()) !== asset.mimeType
+      || EXTENSION_MIME_TYPES.get(path.posix.extname(asset.path).toLowerCase()) !== asset.mimeType) {
+      throw new Error(`presentation.videoAssets[${index}].path extension does not match ${asset.mimeType}.`)
+    }
+    return asset
+  })
   return validatePresentation({
     ...validated,
     ...(imageAssets ? { imageAssets } : {}),
+    ...(videoAssets ? { videoAssets } : {}),
   })
 }
 
@@ -379,6 +470,12 @@ function withRuntimeAssetSources(
   return {
     ...presentation,
     imageAssets: presentation.imageAssets?.map((asset) => ({
+      ...asset,
+      ...(missingAssetIds.has(asset.id) ? {} : {
+        source: assetUrl(projectId, asset.path!, fingerprints.get(asset.path!) ?? 'untracked'),
+      }),
+    })),
+    videoAssets: presentation.videoAssets?.map((asset) => ({
       ...asset,
       ...(missingAssetIds.has(asset.id) ? {} : {
         source: assetUrl(projectId, asset.path!, fingerprints.get(asset.path!) ?? 'untracked'),
@@ -430,7 +527,7 @@ async function scanAssetTree(rootPath: string) {
       } else if (info.isDirectory()) {
         await visit(absolutePath)
       } else if (info.isFile()) {
-        fingerprints.set(relativePath, hash(await readFile(absolutePath)))
+        fingerprints.set(relativePath, await hashFile(absolutePath))
       }
     }
   }
@@ -452,7 +549,7 @@ async function missingAssets(rootPath: string, presentation: Presentation): Prom
   const referencedBy = new Map<string, Array<{ id: string; label: string }>>()
   for (const [slideIndex, slide] of presentation.slides.entries()) {
     for (const element of slide.elements) {
-      if (element.type !== 'image') continue
+      if (element.type !== 'image' && element.type !== 'video') continue
       const slides = referencedBy.get(element.assetId) ?? []
       if (!slides.some(({ id }) => id === slide.id)) slides.push({
         id: slide.id,
@@ -462,7 +559,7 @@ async function missingAssets(rootPath: string, presentation: Presentation): Prom
     }
   }
   const missing: DesktopMissingAsset[] = []
-  for (const asset of presentation.imageAssets ?? []) {
+  for (const asset of [...(presentation.imageAssets ?? []), ...(presentation.videoAssets ?? [])]) {
     const slides = referencedBy.get(asset.id)
     if (!slides?.length || !asset.path) continue
     const slideIds = slides.map(({ id }) => id)
@@ -473,7 +570,10 @@ async function missingAssets(rootPath: string, presentation: Presentation): Prom
         const realAssetPath = await realpath(absolutePath)
         const info = await stat(realAssetPath)
         readable = pathIsWithin(rootPath, realAssetPath) && info.isFile()
-        if (readable) verifyImageBytes(await readFile(realAssetPath), asset.mimeType)
+        if (readable) {
+          if (isVideoMimeType(asset.mimeType)) await verifyVideoFile(realAssetPath, asset.mimeType)
+          else verifyImageBytes(await readFile(realAssetPath), asset.mimeType)
+        }
       } catch {
         readable = false
       }
@@ -518,7 +618,7 @@ async function readProjectFile(rootPath: string) {
 export class ProjectStore {
   private active: ActiveProject | null = null
   private readonly listeners = new Set<(change: DesktopProjectExternalChange) => void>()
-  private readonly exportAssets = new Map<string, Map<string, { bytes: Buffer; mimeType: PresentationImageMimeType }>>()
+  private readonly exportAssets = new Map<string, FrozenExportAssets>()
   private readonly watchers = new Set<ProjectWatcher>()
   private watchedAssetDirectories: string[] = []
   private watchGeneration = 0
@@ -558,6 +658,7 @@ export class ProjectStore {
 
   close() {
     this.stopWatching()
+    for (const jobId of this.exportAssets.keys()) void this.releaseExportAssets(jobId)
   }
 
   async createAt(rootPath: string, value: unknown) {
@@ -671,13 +772,23 @@ export class ProjectStore {
     await this.assertActiveRootAvailable(active)
     const resolvedSource = path.resolve(sourcePath)
     const mimeType = EXTENSION_MIME_TYPES.get(path.extname(resolvedSource).toLowerCase())
-    if (!mimeType) throw new Error('Only PNG, JPEG, WebP, and SVG image files can be imported.')
+    if (!mimeType || isVideoMimeType(mimeType)) throw new Error('Only PNG, JPEG, WebP, and SVG image files can be imported.')
     const sourceInfo = await stat(resolvedSource)
     if (!sourceInfo.isFile()) throw new Error('The selected image is not a regular file.')
     if (sourceInfo.size > MAX_IMAGE_BYTES) throw new Error(`Images larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB are not supported.`)
     const bytes = await readFile(resolvedSource)
     verifyImageBytes(bytes, mimeType)
-    return this.writeImportedAsset(active, bytes, mimeType, path.basename(resolvedSource))
+    return this.writeImportedAsset(active, bytes, mimeType, path.basename(resolvedSource)) as Promise<DesktopImportedAsset>
+  }
+
+  async importVideoFile(projectId: string, sourcePath: string, requestedName = path.basename(sourcePath)): Promise<DesktopImportedVideoAsset> {
+    const active = this.assertActive(projectId)
+    await this.assertActiveRootAvailable(active)
+    const resolvedSource = path.resolve(sourcePath)
+    const mimeType = EXTENSION_MIME_TYPES.get(path.extname(resolvedSource).toLowerCase())
+    if (!mimeType || !isVideoMimeType(mimeType)) throw new Error('Only MP4 and QuickTime video files can be imported.')
+    await verifyVideoFile(resolvedSource, mimeType)
+    return this.writeImportedVideo(active, resolvedSource, mimeType, requestedName)
   }
 
   async importBytes(
@@ -691,7 +802,7 @@ export class ProjectStore {
     assertMimeType(mimeType)
     const bytes = Buffer.from(value instanceof ArrayBuffer ? new Uint8Array(value) : value)
     verifyImageBytes(bytes, mimeType)
-    return this.writeImportedAsset(active, bytes, mimeType, suggestedName || 'pasted-image')
+    return this.writeImportedAsset(active, bytes, mimeType, suggestedName || 'pasted-image') as Promise<DesktopImportedAsset>
   }
 
   async importRemote(projectId: string, url: string, suggestedName = 'copied-image') {
@@ -705,7 +816,7 @@ export class ProjectStore {
     } catch {
       // Keep the readable clipboard fallback when a URL path is malformed.
     }
-    return this.writeImportedAsset(active, downloaded.bytes, downloaded.mimeType, remoteName)
+    return this.writeImportedAsset(active, downloaded.bytes, downloaded.mimeType, remoteName) as Promise<DesktopImportedAsset>
   }
 
   async resolveProtocolAsset(projectId: string, relativePath: string) {
@@ -726,55 +837,93 @@ export class ProjectStore {
     if (this.exportAssets.has(jobId)) throw new Error('This export is already running.')
     const presentation = validatePresentation(value)
     const visibleAssetIds = new Set(presentation.slides.flatMap((slide) => slide.elements
-      .filter((element) => element.type === 'image' && !element.hidden)
-      .map((element) => element.type === 'image' ? element.assetId : '')))
-    const projectAssets = presentation.imageAssets?.filter((asset) => asset.path && visibleAssetIds.has(asset.id)) ?? []
+      .filter((element) => (element.type === 'image' || element.type === 'video') && !element.hidden)
+      .map((element) => element.type === 'image' || element.type === 'video' ? element.assetId : '')))
+    const projectAssets = [...(presentation.imageAssets ?? []), ...(presentation.videoAssets ?? [])]
+      .filter((asset) => asset.path && visibleAssetIds.has(asset.id))
     if (projectAssets.length === 0) return presentation
     const active = this.active
     if (!active) throw new Error('This presentation references Project assets, but no Project is active.')
     await this.assertActiveRootAvailable(active)
-    const captured = new Map<string, { bytes: Buffer; mimeType: PresentationImageMimeType }>()
-    for (const asset of projectAssets) {
-      const resolved = await this.resolveProtocolAsset(active.id, asset.path!)
-      if (resolved.mimeType !== asset.mimeType) throw new Error(`Asset ${asset.path} has an unexpected image type.`)
-      const bytes = await readFile(resolved.filePath)
-      try {
-        verifyImageBytes(bytes, asset.mimeType)
-      } catch (error) {
-        const detail = error instanceof Error ? error.message : 'invalid image data'
-        throw new Error(`Asset ${asset.path} could not be decoded for export: ${detail}`)
+    const captured = new Map<string, FrozenExportAsset>()
+    let temporaryDirectory: string | null = null
+    try {
+      for (const asset of projectAssets) {
+        const resolved = await this.resolveProtocolAsset(active.id, asset.path!)
+        if (resolved.mimeType !== asset.mimeType) throw new Error(`Asset ${asset.path} has an unexpected media type.`)
+        try {
+          if (isVideoMimeType(asset.mimeType)) {
+            temporaryDirectory ??= await mkdtemp(path.join(tmpdir(), 'ai-presentation-export-assets-'))
+            const frozenPath = path.join(temporaryDirectory, `${randomUUID()}${VIDEO_EXTENSIONS[asset.mimeType]}`)
+            await copyFile(resolved.filePath, frozenPath, fsConstants.COPYFILE_EXCL)
+            await chmod(frozenPath, 0o600)
+            const info = await verifyVideoFile(frozenPath, asset.mimeType)
+            captured.set(asset.id, {
+              filePath: frozenPath,
+              byteLength: info.size,
+              fingerprint: await hashFile(frozenPath),
+              mimeType: asset.mimeType,
+            })
+          } else {
+            const bytes = await readFile(resolved.filePath)
+            verifyImageBytes(bytes, asset.mimeType)
+            captured.set(asset.id, {
+              bytes,
+              byteLength: bytes.byteLength,
+              fingerprint: hash(bytes),
+              mimeType: asset.mimeType,
+            })
+          }
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : 'invalid media data'
+          throw new Error(`Asset ${asset.path} could not be decoded for export: ${detail}`)
+        }
       }
-      captured.set(asset.id, { bytes, mimeType: asset.mimeType })
+    } catch (error) {
+      if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined)
+      throw error
     }
-    this.exportAssets.set(jobId, captured)
+    this.exportAssets.set(jobId, { assets: captured, temporaryDirectory })
     return {
       ...presentation,
       imageAssets: presentation.imageAssets?.map((asset) => {
         const frozen = captured.get(asset.id)
         return frozen ? {
           ...asset,
-          source: `${PROJECT_ASSET_PROTOCOL}://export/${encodeURIComponent(jobId)}/${encodeURIComponent(asset.id)}?v=${hash(frozen.bytes)}`,
+          source: `${PROJECT_ASSET_PROTOCOL}://export/${encodeURIComponent(jobId)}/${encodeURIComponent(asset.id)}?v=${frozen.fingerprint}`,
+        } : asset
+      }),
+      videoAssets: presentation.videoAssets?.map((asset) => {
+        const frozen = captured.get(asset.id)
+        return frozen ? {
+          ...asset,
+          source: `${PROJECT_ASSET_PROTOCOL}://export/${encodeURIComponent(jobId)}/${encodeURIComponent(asset.id)}?v=${frozen.fingerprint}`,
         } : asset
       }),
     }
   }
 
   resolveExportAsset(jobId: string, assetId: string) {
-    const asset = this.exportAssets.get(jobId)?.get(assetId)
+    const asset = this.exportAssets.get(jobId)?.assets.get(assetId)
     if (!asset) throw new Error('Export asset is unavailable.')
     return asset
   }
 
-  releaseExportAssets(jobId: string) {
+  async releaseExportAssets(jobId: string) {
+    const frozen = this.exportAssets.get(jobId)
     this.exportAssets.delete(jobId)
+    if (frozen?.temporaryDirectory) {
+      await rm(frozen.temporaryDirectory, { recursive: true, force: true })
+    }
   }
 
   async assertRequiredAssetsAvailable(value: unknown) {
     const presentation = validatePresentation(value)
     const visibleAssetIds = new Set(presentation.slides.flatMap((slide) => slide.elements
-      .filter((element) => element.type === 'image' && !element.hidden)
-      .map((element) => element.type === 'image' ? element.assetId : '')))
-    const projectAssets = presentation.imageAssets?.filter((asset) => asset.path && visibleAssetIds.has(asset.id)) ?? []
+      .filter((element) => (element.type === 'image' || element.type === 'video') && !element.hidden)
+      .map((element) => element.type === 'image' || element.type === 'video' ? element.assetId : '')))
+    const projectAssets = [...(presentation.imageAssets ?? []), ...(presentation.videoAssets ?? [])]
+      .filter((asset) => asset.path && visibleAssetIds.has(asset.id))
     if (projectAssets.length === 0) return
     if (!this.active) throw new Error('This presentation references Project assets, but no Project is active.')
     const missing = (await missingAssets(this.active.realRootPath, presentation))
@@ -782,9 +931,9 @@ export class ProjectStore {
     if (missing.length > 0) throw new Error(missing.map((asset) => asset.message).join('\n'))
     for (const asset of projectAssets) {
       const resolved = await this.resolveProtocolAsset(this.active.id, asset.path!)
-      const bytes = await readFile(resolved.filePath)
       try {
-        verifyImageBytes(bytes, resolved.mimeType)
+        if (isVideoMimeType(resolved.mimeType)) await verifyVideoFile(resolved.filePath, resolved.mimeType)
+        else verifyImageBytes(await readFile(resolved.filePath), resolved.mimeType)
       } catch (error) {
         const detail = error instanceof Error ? error.message : 'invalid image data'
         throw new Error(`Asset ${asset.path} could not be decoded for export: ${detail}`)
@@ -874,9 +1023,9 @@ export class ProjectStore {
   private async writeImportedAsset(
     active: ActiveProject,
     bytes: Buffer,
-    mimeType: PresentationImageMimeType,
+    mimeType: PresentationAssetMimeType,
     requestedName: string,
-  ): Promise<DesktopImportedAsset> {
+  ): Promise<DesktopImportedAsset | DesktopImportedVideoAsset> {
     const assetsPath = path.join(active.realRootPath, PROJECT_ASSETS_DIRECTORY)
     await mkdir(assetsPath, { recursive: true })
     await this.assertRealPathWithin(active.realRootPath, assetsPath)
@@ -892,13 +1041,47 @@ export class ProjectStore {
     }
     active.assetFingerprints.set(relativePath, fingerprint)
     active.assetRevision = assetRevision(active.assetFingerprints)
-    const stem = sanitizeStem(fileName, 'image')
+    const stem = sanitizeStem(fileName, isVideoMimeType(mimeType) ? 'video' : 'image')
     return {
       id: `${stem}-${randomUUID().slice(0, 8)}`,
       name: stem.replace(/-/g, ' '),
       mimeType,
       path: relativePath,
       source: assetUrl(active.id, relativePath, fingerprint),
+    }
+  }
+
+  private async writeImportedVideo(
+    active: ActiveProject,
+    sourcePath: string,
+    mimeType: PresentationVideoMimeType,
+    requestedName: string,
+  ): Promise<DesktopImportedVideoAsset> {
+    const assetsPath = path.join(active.realRootPath, PROJECT_ASSETS_DIRECTORY)
+    await mkdir(assetsPath, { recursive: true })
+    await this.assertRealPathWithin(active.realRootPath, assetsPath)
+    const { fileName, destination } = await duplicateSafePath(assetsPath, requestedName, mimeType)
+    const relativePath = `assets/${fileName}`
+    try {
+      await copyFile(sourcePath, destination, fsConstants.COPYFILE_EXCL)
+      await chmod(destination, 0o600)
+      await verifyVideoFile(destination, mimeType)
+      const fingerprint = await hashFile(destination)
+      active.internalAssetWrites.set(relativePath, fingerprint)
+      active.assetFingerprints.set(relativePath, fingerprint)
+      active.assetRevision = assetRevision(active.assetFingerprints)
+      const stem = sanitizeStem(fileName, 'video')
+      return {
+        id: `${stem}-${randomUUID().slice(0, 8)}`,
+        name: stem.replace(/-/g, ' '),
+        mimeType,
+        path: relativePath,
+        source: assetUrl(active.id, relativePath, fingerprint),
+      }
+    } catch (error) {
+      active.internalAssetWrites.delete(relativePath)
+      await unlink(destination).catch(() => undefined)
+      throw error
     }
   }
 
@@ -927,7 +1110,41 @@ export class ProjectStore {
       await writeFile(destination, bytes, { flag: 'wx', mode: 0o600 })
       imageAssets.push({ ...asset, path: `assets/${fileName}`, source: undefined })
     }
-    return canonicalizePresentation({ ...presentation, ...(imageAssets.length ? { imageAssets } : { imageAssets: undefined }) })
+    const videoAssets: PresentationVideoAsset[] = []
+    for (const [index, asset] of (presentation.videoAssets ?? []).entries()) {
+      assertVideoMimeType(asset.mimeType)
+      let bytes: Buffer | null = null
+      let sourceFilePath: string | null = null
+      let requestedName = asset.name || 'video'
+      if (asset.source?.startsWith('data:')) {
+        bytes = videoDataUrlBytes(asset.source, asset.mimeType)
+      } else if (asset.path && sourceRoot) {
+        const relativePath = validateAssetRelativePath(asset.path)
+        const candidate = path.resolve(sourceRoot, relativePath)
+        const realCandidate = await realpath(candidate)
+        const realSourceRoot = await realpath(sourceRoot)
+        if (!pathIsWithin(realSourceRoot, realCandidate)) throw new Error(`presentation.videoAssets[${index}].path escapes its Project root.`)
+        await verifyVideoFile(realCandidate, asset.mimeType)
+        sourceFilePath = realCandidate
+        requestedName = path.basename(relativePath)
+      } else {
+        throw new Error(`presentation.videoAssets[${index}] cannot be copied into the new Project.`)
+      }
+      const { fileName, destination } = await duplicateSafePath(assetsPath, requestedName, asset.mimeType)
+      if (sourceFilePath) {
+        await copyFile(sourceFilePath, destination, fsConstants.COPYFILE_EXCL)
+        await chmod(destination, 0o600)
+        await verifyVideoFile(destination, asset.mimeType)
+      } else {
+        await writeFile(destination, bytes!, { flag: 'wx', mode: 0o600 })
+      }
+      videoAssets.push({ ...asset, path: `assets/${fileName}`, source: undefined })
+    }
+    return canonicalizePresentation({
+      ...presentation,
+      ...(imageAssets.length ? { imageAssets } : { imageAssets: undefined }),
+      ...(videoAssets.length ? { videoAssets } : { videoAssets: undefined }),
+    })
   }
 
   private async assertRealPathWithin(rootPath: string, candidate: string) {

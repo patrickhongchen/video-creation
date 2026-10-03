@@ -1,6 +1,6 @@
 import type { NarrationSection, Presentation, Slide } from '../model'
 import { previousSlideFor, slideRevealOrders } from '../entranceAnimation'
-import { cuesAreLegacy, isRevealCue, isSlideCue, type NarrationTake } from './narrationTypes'
+import { cuesAreLegacy, isHideRevealCue, isRevealCue, isSlideCue, type NarrationTake } from './narrationTypes'
 
 export const NARRATION_CUE_DURATION_TOLERANCE_MS = 100
 
@@ -80,17 +80,26 @@ export function getTakeUsabilityIssue(
   if (take.cues.some((cue) => {
     if (!('type' in cue)) return false
     const type = (cue as { type?: unknown }).type
-    return type !== 'slide' && type !== 'reveal'
+    return type !== 'slide' && type !== 'reveal' && type !== 'hide-reveal' && type !== 'video'
   })) {
     return 'The selected take contains an unknown cue type.'
+  }
+
+  if (take.cues.some((cue) => 'type' in cue && cue.type === 'video'
+    && ((cue.action !== 'pause' && cue.action !== 'resume') || !Number.isFinite(cue.positionMs) || cue.positionMs < 0))) {
+    return 'The selected take contains an invalid video cue.'
   }
 
   const slideIds = new Set(section.slides.map((slide) => slide.id))
   if (take.cues.some((cue) => !slideIds.has(cue.sceneId))) {
     return 'The selected take contains a cue for a slide outside this section.'
   }
-  if (take.cues.some((cue) => isRevealCue(cue) && (!Number.isSafeInteger(cue.order) || cue.order < 1))) {
+  if (take.cues.some((cue) => (isRevealCue(cue) || isHideRevealCue(cue)) && (!Number.isSafeInteger(cue.order) || cue.order < 1))) {
     return 'The selected take contains an invalid reveal cue.'
+  }
+  if (take.cues.some((cue) => 'type' in cue && cue.type === 'slide' && cue.revealedThroughOrder !== undefined
+    && (!Number.isSafeInteger(cue.revealedThroughOrder) || cue.revealedThroughOrder < 0))) {
+    return 'The selected take contains an invalid slide reveal state.'
   }
   if (take.cues.some((cue) =>
     !(cue.timeMs >= 0

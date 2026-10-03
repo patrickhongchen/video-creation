@@ -1,0 +1,22 @@
+.composition-video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  background: #000;
+}
+
+.composition-video-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: #17191d;
+  color: #fff;
+  font-size: 26px;
+  font-weight: 650;
+  line-height: 1.3;
+  text-align: center;
+  pointer-events: none;
+}

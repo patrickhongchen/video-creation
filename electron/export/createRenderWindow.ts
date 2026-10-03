@@ -37,6 +37,7 @@ function withFailureTimeout<T>(promise: Promise<T>, durationMs: number, message:
 export class OffscreenRenderSession {
   readonly window: BrowserWindow
   private latestFrame: Buffer | null = null
+  private renderFailure: Error | null = null
   private frameSequence = 0
   private calibrationSignal = deferred<InputPixelFormat>()
   private calibrationRequested = false
@@ -130,7 +131,13 @@ export class OffscreenRenderSession {
     this.readySignals.delete(jobId)
   }
 
+  handleRenderFailed(message: string) {
+    this.renderFailure = new Error(message)
+    this.rejectPending(this.renderFailure)
+  }
+
   async requestFrame(request: DesktopRenderFrameRequest) {
+    if (this.renderFailure) throw this.renderFailure
     const rendered = deferred<void>()
     this.renderedFrameSignals.set(request.frameIndex, rendered)
     this.window.webContents.send(CHANNELS.renderFrame, request)

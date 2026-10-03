@@ -1,11 +1,13 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readFile } from 'node:fs/promises'
+import { mkdtemp, rm, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, protocol, session, shell, type WebContents } from 'electron'
 import { CHANNELS } from './export/channels'
 import { VideoExporter } from './export/videoExporter'
 import { validateCompletedVideoPath, validateExportJob, validateJobId, validateRenderFrameRequest } from './export/validation'
-import { PROJECT_ASSET_PROTOCOL, ProjectStore } from './project/projectStore'
+import { MAX_VIDEO_BYTES, PROJECT_ASSET_PROTOCOL, ProjectStore } from './project/projectStore'
+import { bufferAssetResponse, fileAssetResponse } from './project/assetStreaming'
 import { PortableNarrationStore } from './project/portableNarrationStore'
 import type { DesktopNarrationTakeWrite } from '../src/desktop/desktopTypes'
 import { narrationPreviewCache } from './narrationPreviewProcessor'
@@ -13,11 +15,11 @@ import { finalPreviewAudioCache } from './finalPreviewAudioProcessor'
 import { CaptionTranscriber } from './captions/captionTranscriber'
 import { resolveWhisperExecutable, resolveWhisperModel } from './captions/captionResources'
 import type { NarrationCaptionTrack } from '../src/narration/narrationTypes'
-import { resolveFfmpegPath } from './export/ffmpeg'
+import { resolveFfmpegPath, spawnFfmpeg, waitForExit, waitForSpawn } from './export/ffmpeg'
 
 protocol.registerSchemesAsPrivileged([{
   scheme: PROJECT_ASSET_PROTOCOL,
-  privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true },
 }])
 
 app.commandLine.appendSwitch('force-device-scale-factor', '1')
@@ -184,6 +186,51 @@ function installApplicationMenu() {
   ]))
 }
 
+async function importNormalizedVideo(projectId: string, sourcePath: string) {
+  const resolvedSourcePath = path.resolve(sourcePath)
+  const extension = path.extname(resolvedSourcePath).toLowerCase()
+  if (extension !== '.mp4' && extension !== '.mov') {
+    throw new Error('Only MP4 and QuickTime video files can be imported.')
+  }
+  let sourceInfo
+  try {
+    sourceInfo = await stat(resolvedSourcePath)
+  } catch {
+    throw new Error('The selected video is unavailable.')
+  }
+  if (!sourceInfo.isFile()) throw new Error('The selected video is not a regular file.')
+  if (sourceInfo.size === 0 || sourceInfo.size > MAX_VIDEO_BYTES) {
+    throw new Error(`Video files must be between 1 byte and ${MAX_VIDEO_BYTES / 1024 / 1024 / 1024} GB.`)
+  }
+  const temporaryRoot = await mkdtemp(path.join(tmpdir(), 'ai-presentation-video-import-'))
+  const outputPath = path.join(temporaryRoot, 'normalized.mp4')
+  try {
+    const child = spawnFfmpeg([
+      '-nostdin', '-hide_banner', '-loglevel', 'error', '-y',
+      '-i', resolvedSourcePath,
+      '-map', '0:v:0', '-an',
+      '-vf', 'pad=ceil(iw/2)*2:ceil(ih/2)*2',
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', '18',
+      '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+      outputPath,
+    ])
+    let stderr = ''
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', (chunk: string) => { stderr += chunk })
+    await waitForSpawn(child)
+    child.stdin.end()
+    try {
+      await waitForExit(child, { get value() { return stderr } })
+    } catch {
+      const detail = stderr.trim().split('\n').slice(-6).join('\n')
+      throw new Error(`The selected video could not be decoded${detail ? `: ${detail}` : '.'}`)
+    }
+    return await projects.importVideoFile(projectId, outputPath, path.basename(resolvedSourcePath))
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true }).catch(() => undefined)
+  }
+}
+
 function installIpcHandlers() {
   ipcMain.handle(CHANNELS.projectCreate, async (event, presentation: unknown) => {
     assertMainSender(event.sender)
@@ -255,12 +302,32 @@ function installIpcHandlers() {
     if (selected.canceled || selected.filePaths.length !== 1) return { status: 'cancelled' as const }
     return { status: 'imported' as const, asset: await projects.importFile(projectId, selected.filePaths[0]) }
   })
+  ipcMain.handle(CHANNELS.projectChooseVideo, async (event, projectId: unknown) => {
+    assertMainSender(event.sender)
+    if (typeof projectId !== 'string') throw new Error('Invalid Project ID.')
+    projects.revealPath(projectId)
+    const selected = await dialog.showOpenDialog(mainWindow!, {
+      title: 'Choose Video',
+      buttonLabel: 'Import Video',
+      properties: ['openFile'],
+      filters: [{ name: 'Videos', extensions: ['mp4', 'mov'] }],
+    })
+    if (selected.canceled || selected.filePaths.length !== 1) return { status: 'cancelled' as const }
+    return { status: 'imported' as const, asset: await importNormalizedVideo(projectId, selected.filePaths[0]) }
+  })
   ipcMain.handle(CHANNELS.projectImportImage, async (event, request: unknown) => {
     assertMainSender(event.sender)
     if (!request || typeof request !== 'object') throw new Error('Invalid image import request.')
     const { projectId, sourcePath } = request as Record<string, unknown>
     if (typeof projectId !== 'string' || typeof sourcePath !== 'string') throw new Error('Invalid image import request.')
     return projects.importFile(projectId, sourcePath)
+  })
+  ipcMain.handle(CHANNELS.projectImportVideo, async (event, request: unknown) => {
+    assertMainSender(event.sender)
+    if (!request || typeof request !== 'object') throw new Error('Invalid video import request.')
+    const { projectId, sourcePath } = request as Record<string, unknown>
+    if (typeof projectId !== 'string' || typeof sourcePath !== 'string') throw new Error('Invalid video import request.')
+    return importNormalizedVideo(projectId, sourcePath)
   })
   ipcMain.handle(CHANNELS.projectImportRemoteImage, async (event, request: unknown) => {
     assertMainSender(event.sender)
@@ -398,7 +465,7 @@ function installIpcHandlers() {
     try {
       return await exporter!.export({ ...value, presentation: presentation as unknown as typeof value.presentation }, event.sender)
     } finally {
-      projects.releaseExportAssets(value.jobId)
+      await projects.releaseExportAssets(value.jobId)
     }
   })
   ipcMain.handle(CHANNELS.exportCancel, async (event) => {
@@ -434,6 +501,13 @@ function installIpcHandlers() {
     const request = validateRenderFrameRequest(value)
     exporter.handleRenderFrameRendered(event.sender, request)
   })
+  ipcMain.on(CHANNELS.renderFailed, (event, value: unknown) => {
+    if (!exporter?.ownsRenderSender(event.sender) || !value || typeof value !== 'object') return
+    const { jobId: rawJobId, message } = value as Record<string, unknown>
+    const jobId = validateJobId(rawJobId)
+    if (typeof message !== 'string' || message.length === 0 || message.length > 2_000) return
+    exporter.handleRenderFailed(event.sender, jobId, message)
+  })
 }
 
 function installProjectAssetProtocol() {
@@ -443,29 +517,16 @@ function installProjectAssetProtocol() {
       const segments = url.pathname.split('/').filter(Boolean).map((segment) => decodeURIComponent(segment))
       if (url.hostname === 'export' && segments.length === 2) {
         const asset = projects.resolveExportAsset(segments[0], segments[1])
-        return new Response(new Uint8Array(asset.bytes), {
-          status: 200,
-          headers: {
-            'Content-Type': asset.mimeType,
-            'Content-Length': String(asset.bytes.byteLength),
-            'Cache-Control': 'no-store',
-          },
-        })
+        if (asset.bytes) return bufferAssetResponse(request, asset.bytes, asset.mimeType)
+        if (asset.filePath) return await fileAssetResponse(request, asset.filePath, asset.mimeType)
+        throw new Error('Export asset data is unavailable.')
       }
       if (url.hostname !== 'project') return new Response('Not found', { status: 404 })
       const projectId = segments.shift()
       if (!projectId) return new Response('Not found', { status: 404 })
       const relativePath = segments.join('/')
       const asset = await projects.resolveProtocolAsset(projectId, relativePath)
-      const bytes = await readFile(asset.filePath)
-      return new Response(new Uint8Array(bytes), {
-        status: 200,
-        headers: {
-          'Content-Type': asset.mimeType,
-          'Content-Length': String(bytes.byteLength),
-          'Cache-Control': 'no-store',
-        },
-      })
+      return await fileAssetResponse(request, asset.filePath, asset.mimeType)
     } catch {
       return new Response('Not found', { status: 404 })
     }

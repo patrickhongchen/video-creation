@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { canonicalizeProjectAssets, isSafeProjectAssetPath } from './projectAssets'
-import { createBlankPresentation, createSlideImageElement } from './presentationFactories'
+import { createBlankPresentation, createSlideImageElement, createSlideVideoElement } from './presentationFactories'
 import { validatePresentation } from './presentationValidation'
 
 describe('project asset paths', () => {
@@ -27,5 +27,15 @@ describe('project asset paths', () => {
 
     presentation.imageAssets[0].path = 'assets/../private.png'
     expect(() => validatePresentation(presentation)).toThrow(/safe project-relative path/)
+  })
+
+  it('validates video assets separately and rejects IDs shared with images', () => {
+    const presentation = createBlankPresentation('Video asset test')
+    presentation.videoAssets = [{ id: 'clip', name: 'Clip', mimeType: 'video/mp4', path: 'assets/clip.mp4' }]
+    presentation.slides[0].elements = [createSlideVideoElement('clip')]
+    expect(validatePresentation(presentation).videoAssets?.[0].path).toBe('assets/clip.mp4')
+
+    presentation.imageAssets = [{ id: 'clip', name: 'Collision', mimeType: 'image/png', path: 'assets/collision.png' }]
+    expect(() => validatePresentation(presentation)).toThrow(/already used by an image asset/)
   })
 })

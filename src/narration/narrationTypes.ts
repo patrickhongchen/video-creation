@@ -8,6 +8,8 @@ export interface SlideCue {
   type: 'slide'
   sceneId: string
   timeMs: number
+  /** Initial reveal state when entering this slide. Omitted values start at 0. */
+  revealedThroughOrder?: number
 }
 
 export interface RevealCue {
@@ -17,12 +19,32 @@ export interface RevealCue {
   timeMs: number
 }
 
-export type TypedSceneCue = SlideCue | RevealCue
-export type TypedSceneCueInput = Omit<SlideCue, 'timeMs'> | Omit<RevealCue, 'timeMs'>
+export interface HideRevealCue {
+  type: 'hide-reveal'
+  sceneId: string
+  order: number
+  timeMs: number
+}
+
+/** A clip control recorded against the narration clock. Applies to videos on this slide. */
+export interface VideoCue {
+  type: 'video'
+  sceneId: string
+  timeMs: number
+  action: 'pause' | 'resume'
+  positionMs: number
+}
+
+export type TypedSceneCue = SlideCue | RevealCue | HideRevealCue | VideoCue
+export type TypedSceneCueInput = Omit<SlideCue, 'timeMs'> | Omit<RevealCue, 'timeMs'> | Omit<HideRevealCue, 'timeMs'> | Omit<VideoCue, 'timeMs'>
 export type SceneCue = LegacySceneCue | TypedSceneCue
 
 export function isRevealCue(cue: SceneCue): cue is RevealCue {
   return 'type' in cue && cue.type === 'reveal'
+}
+
+export function isHideRevealCue(cue: SceneCue): cue is HideRevealCue {
+  return 'type' in cue && cue.type === 'hide-reveal'
 }
 
 export function isSlideCue(cue: SceneCue): cue is LegacySceneCue | SlideCue {

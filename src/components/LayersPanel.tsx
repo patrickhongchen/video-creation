@@ -11,6 +11,7 @@ type LayersPanelProps = Pick<CompositionEditorProps, 'slide' | 'presentation' | 
 function fallbackName(element: SlideElement) {
   if (element.type === 'text') return 'Text'
   if (element.type === 'image') return 'Image'
+  if (element.type === 'video') return 'Video'
   if (element.type === 'chart') return element.chartType === 'bar' ? 'Bar Chart' : 'Line Chart'
   if (element.type === 'arrow') return 'Arrow'
   return element.shape === 'rectangle' ? 'Rectangle' : element.shape === 'circle' ? 'Circle' : 'Line'

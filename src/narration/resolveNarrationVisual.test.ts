@@ -88,4 +88,80 @@ describe('resolveNarrationVisualAtTime', () => {
     expect(resolveNarrationVisualAtTime(cues, 1600, slides).revealState).toMatchObject({ revealedThroughOrder: 0, activeRevealOrder: null })
     expect(resolveNarrationVisualAtTime(cues, 1900, slides).revealState).toMatchObject({ revealedThroughOrder: 4, activeRevealOrder: 4, activeRevealElapsedMs: 100 })
   })
+
+  it('hides sparse reveal groups immediately and can reveal the group again', () => {
+    const cues = [
+      { type: 'slide' as const, sceneId: 'one', timeMs: 0 },
+      { type: 'reveal' as const, sceneId: 'one', order: 1, timeMs: 500 },
+      { type: 'reveal' as const, sceneId: 'one', order: 4, timeMs: 1000 },
+      { type: 'hide-reveal' as const, sceneId: 'one', order: 4, timeMs: 1400 },
+      { type: 'hide-reveal' as const, sceneId: 'one', order: 1, timeMs: 1700 },
+      { type: 'reveal' as const, sceneId: 'one', order: 1, timeMs: 2000 },
+    ]
+
+    expect(resolveNarrationVisualAtTime(cues, 1300, slides).revealState).toMatchObject({
+      revealedThroughOrder: 4,
+      activeRevealOrder: 4,
+    })
+    expect(resolveNarrationVisualAtTime(cues, 1400, slides).revealState).toEqual({
+      revealedThroughOrder: 1,
+      activeRevealOrder: null,
+      activeRevealElapsedMs: 0,
+    })
+    expect(resolveNarrationVisualAtTime(cues, 1700, slides).revealState).toEqual({
+      revealedThroughOrder: 0,
+      activeRevealOrder: null,
+      activeRevealElapsedMs: 0,
+    })
+    expect(resolveNarrationVisualAtTime(cues, 2075, slides).revealState).toEqual({
+      revealedThroughOrder: 1,
+      activeRevealOrder: 1,
+      activeRevealElapsedMs: 75,
+    })
+    expect(resolveNarrationVisualAtTime(cues, 1450, slides).revealState).toEqual({
+      revealedThroughOrder: 1,
+      activeRevealOrder: null,
+      activeRevealElapsedMs: 0,
+    })
+  })
+
+  it('seeds a backward slide entry fully revealed, then hides and reveals its groups', () => {
+    const cues = [
+      { type: 'slide' as const, sceneId: 'two', timeMs: 0 },
+      { type: 'slide' as const, sceneId: 'one', timeMs: 500, revealedThroughOrder: 4 },
+      { type: 'hide-reveal' as const, sceneId: 'one', order: 4, timeMs: 800 },
+      { type: 'reveal' as const, sceneId: 'one', order: 4, timeMs: 1100 },
+    ]
+
+    expect(resolveNarrationVisualAtTime(cues, 600, slides).revealState).toEqual({
+      revealedThroughOrder: 4,
+      activeRevealOrder: null,
+      activeRevealElapsedMs: 0,
+    })
+    expect(resolveNarrationVisualAtTime(cues, 900, slides).revealState).toEqual({
+      revealedThroughOrder: 1,
+      activeRevealOrder: null,
+      activeRevealElapsedMs: 0,
+    })
+    expect(resolveNarrationVisualAtTime(cues, 1150, slides).revealState).toEqual({
+      revealedThroughOrder: 4,
+      activeRevealOrder: 4,
+      activeRevealElapsedMs: 50,
+    })
+  })
+
+  it('resets forward reentry and uses the latest slide cue as the same-timestamp boundary', () => {
+    const cues = [
+      { type: 'slide' as const, sceneId: 'one', timeMs: 0 },
+      { type: 'reveal' as const, sceneId: 'one', order: 4, timeMs: 500 },
+      { type: 'slide' as const, sceneId: 'two', timeMs: 1000 },
+      { type: 'reveal' as const, sceneId: 'one', order: 4, timeMs: 1500 },
+      { type: 'slide' as const, sceneId: 'one', timeMs: 1500 },
+    ]
+
+    expect(resolveNarrationVisualAtTime(cues, 1500, slides)).toMatchObject({
+      sceneId: 'one',
+      revealState: { revealedThroughOrder: 0, activeRevealOrder: null, activeRevealElapsedMs: 0 },
+    })
+  })
 })

@@ -8,6 +8,6 @@ export const NarrationSlideThumbnail = memo(function NarrationSlideThumbnail({ p
   index: number
 }) {
   return <div className="narration-slide-thumbnail" aria-hidden="true">
-    <Stage slide={slide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} presentationId={presentation.id} slideNumber={index + 1} slideCount={presentation.slides.length} direction={1} renderInstanceKey={`deck-thumbnail-${slide.id}`} deterministicMotion className="narration-thumbnail-stage" />
+    <Stage slide={slide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} videoAssets={presentation.videoAssets} presentationId={presentation.id} slideNumber={index + 1} slideCount={presentation.slides.length} direction={1} renderInstanceKey={`deck-thumbnail-${slide.id}`} deterministicMotion className="narration-thumbnail-stage" />
   </div>
 })

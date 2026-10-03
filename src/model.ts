@@ -65,6 +65,12 @@ export interface SlideImageElement extends SlideElementBase {
   flipY?: boolean
 }
 
+export interface SlideVideoElement extends SlideElementBase {
+  type: 'video'
+  assetId: string
+  fit: ImageFit
+}
+
 export type ChartType = 'bar' | 'line'
 export type ChartOrientation = 'horizontal' | 'vertical'
 
@@ -114,6 +120,7 @@ export interface SlideArrowElement extends SlideElementBase {
 export type SlideElement =
   | SlideTextElement
   | SlideImageElement
+  | SlideVideoElement
   | SlideChartElement
   | SlideShapeElement
   | SlideArrowElement
@@ -185,6 +192,18 @@ export interface PresentationImageAsset {
   source?: string
 }
 
+export type PresentationVideoMimeType = 'video/mp4' | 'video/quicktime'
+
+export interface PresentationVideoAsset {
+  id: string
+  name: string
+  mimeType: PresentationVideoMimeType
+  /** Canonical project-relative path, for example assets/demo.mov. */
+  path?: string
+  /** Runtime URL or legacy browser object/data URL. Desktop project saves omit runtime URLs. */
+  source?: string
+}
+
 export interface NarrationSection {
   id: string
   title: string
@@ -214,6 +233,7 @@ export interface Presentation {
   aspectRatio: '9:16'
   theme: PresentationTheme
   imageAssets?: PresentationImageAsset[]
+  videoAssets?: PresentationVideoAsset[]
   slides: Slide[]
   narration?: NarrationStructure
 }
@@ -234,6 +254,7 @@ export type CompositionTextRole = TextRole
 export type CompositionTextAlign = TextAlign
 export type CompositionTextElement = SlideTextElement
 export type CompositionImageElement = SlideImageElement
+export type CompositionVideoElement = SlideVideoElement
 export type CompositionChartElement = SlideChartElement
 export type CompositionShape = SlideShape
 export type CompositionShapeElement = SlideShapeElement
@@ -243,6 +264,7 @@ export type CompositionBackground = SlideBackground
 export type CompositionScene = Slide
 export type TextElement = SlideTextElement
 export type ImageElement = SlideImageElement
+export type VideoElement = SlideVideoElement
 export type ChartElement = SlideChartElement
 export type ShapeElement = SlideShapeElement
 export type ArrowElement = SlideArrowElement

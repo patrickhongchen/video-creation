@@ -45,8 +45,9 @@ describe('desktop export schema v2 boundary', () => {
         type: 'narration', sectionId: 'section', title: 'Section', sceneIds: [slideId],
         durationMs: 3_000,
         cues: [
-          { type: 'slide', sceneId: slideId, timeMs: 0 },
+          { type: 'slide', sceneId: slideId, timeMs: 0, revealedThroughOrder: 2 },
           { type: 'reveal', sceneId: slideId, order: 2, timeMs: 1_000 },
+          { type: 'hide-reveal', sceneId: slideId, order: 2, timeMs: 1_500 },
         ],
         audio: { takeId: 'take', mimeType: 'audio/webm', bytes: new ArrayBuffer(1) },
       }],
@@ -54,6 +55,14 @@ describe('desktop export schema v2 boundary', () => {
     expect(() => validateExportJob(job)).not.toThrow()
     job.segments[0].cues[1].order = 0
     expect(() => validateExportJob(job)).toThrow(/invalid narration cues/)
+    job.segments[0].cues[1].order = 2
+    job.segments[0].cues[2].order = 0
+    expect(() => validateExportJob(job)).toThrow(/invalid narration cues/)
+    job.segments[0].cues[2].order = 2
+    for (const invalid of [-1, 1.5]) {
+      job.segments[0].cues[0].revealedThroughOrder = invalid
+      expect(() => validateExportJob(job)).toThrow(/invalid narration cues/)
+    }
   })
 
   it('accepts pointerless jobs and validates optional narration pointer samples', () => {
@@ -154,5 +163,28 @@ describe('desktop export schema v2 boundary', () => {
 
     delete (job.segments[0] as { captions?: unknown }).captions
     expect(() => validateExportJob(job)).not.toThrow()
+  })
+})
+
+
+describe('export video control cues', () => {
+  it('accepts recorded pauses and rejects invalid media positions and actions', () => {
+    const sceneId = demoPresentation.slides[0].id
+    const job = {
+      ...silentJob(),
+      segments: [{
+        type: 'narration', sectionId: 'section', title: 'Section', sceneIds: [sceneId], durationMs: 3000,
+        cues: [{ type: 'slide', sceneId, timeMs: 0 }, { type: 'video', sceneId, timeMs: 1000, action: 'pause', positionMs: 1000 }],
+        audio: { takeId: 'take', mimeType: 'audio/webm', bytes: new ArrayBuffer(1) },
+      }],
+    }
+    expect(() => validateExportJob(job)).not.toThrow()
+    for (const positionMs of [-1, NaN, Infinity]) {
+      job.segments[0].cues[1].positionMs = positionMs
+      expect(() => validateExportJob(job)).toThrow(/invalid narration cues/)
+    }
+    job.segments[0].cues[1].positionMs = 1000
+    job.segments[0].cues[1].action = 'stop'
+    expect(() => validateExportJob(job)).toThrow(/invalid narration cues/)
   })
 })

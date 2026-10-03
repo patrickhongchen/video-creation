@@ -6,7 +6,9 @@ export const CHANNELS = {
   projectRefreshAssets: 'video-essay:project:refresh-assets',
   projectReveal: 'video-essay:project:reveal',
   projectChooseImage: 'video-essay:project:choose-image',
+  projectChooseVideo: 'video-essay:project:choose-video',
   projectImportImage: 'video-essay:project:import-image',
+  projectImportVideo: 'video-essay:project:import-video',
   projectImportRemoteImage: 'video-essay:project:import-remote-image',
   projectImportClipboardImage: 'video-essay:project:import-clipboard-image',
   projectSaveImageBytes: 'video-essay:project:save-image-bytes',
@@ -41,4 +43,5 @@ export const CHANNELS = {
   renderCalibrationReady: 'video-essay:render:calibration-ready',
   renderReady: 'video-essay:render:ready',
   renderFrameRendered: 'video-essay:render:frame-rendered',
+  renderFailed: 'video-essay:render:failed',
 } as const

@@ -101,12 +101,14 @@ export function App() {
   }, [next, presentation.slides.length, selectedIndex])
   const {
     advanceReveal,
+    completeSlideReveals,
     isPreviewing,
     resetReveal,
     revealOrders,
     revealState,
     startPreview,
     stopPreview,
+    undoReveal,
   } = useRevealPreview({ presentation, slide: selectedSlide, mode, onSequenceEnd: onRevealSequenceEnd })
 
   useEffect(() => {
@@ -136,8 +138,13 @@ export function App() {
     } else if (command.type === 'new-project' && desktop) void createDesktopProject()
     else if (command.type === 'open-project' && desktop) void openDesktopProject()
     else if (command.type === 'advance-reveal') advanceReveal()
-    else if (command.type === 'previous-slide' && selectedIndex > 0) previous()
-    else if (command.type === 'exit-present') setMode('edit')
+    else if (command.type === 'previous-slide') {
+      if (mode === 'present' && undoReveal()) return
+      if (selectedIndex > 0) {
+        if (mode === 'present') completeSlideReveals(presentation.slides[selectedIndex - 1])
+        previous()
+      }
+    } else if (command.type === 'exit-present') setMode('edit')
     else if (command.type === 'exit-preview') stopPreview()
     else if (command.type === 'clear-selection') setSelection([])
     else if (command.type === 'copy') copySelection()
@@ -306,7 +313,7 @@ export function App() {
           <Stage slide={selectedSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} videoAssets={presentation.videoAssets} videoPlayback={presenterVideoPlayback} presentationId={presentation.id} slideNumber={selectedIndex + 1} slideCount={presentation.slides.length} direction={direction} revealState={revealState} className="present-stage" />
         </div>
         <button className="exit-present" onClick={() => setMode('edit')} aria-label="Exit presentation"><CloseIcon /> Exit</button>
-        <div className="present-hint" aria-hidden="true">Click / Space / → reveal or advance&nbsp;&nbsp; · &nbsp;&nbsp;← previous slide&nbsp;&nbsp; · &nbsp;&nbsp;Esc exit</div>
+        <div className="present-hint" aria-hidden="true">Click / Space / → reveal or advance&nbsp;&nbsp; · &nbsp;&nbsp;← undo reveal or previous slide&nbsp;&nbsp; · &nbsp;&nbsp;Esc exit</div>
       </main>{projectSafetyDialogs}</>
     )
   }

@@ -18,7 +18,7 @@ interface UseRevealPreviewOptions {
 /** Owns the click-driven reveal state shared by editor preview and presenter mode. */
 export function useRevealPreview({ presentation, slide, mode, onSequenceEnd }: UseRevealPreviewOptions) {
   const [previewRun, setPreviewRun] = useState<{ slideId: string; presentationId: string; generation: number } | null>(null)
-  const [revealRun, setRevealRun] = useState<{ key: string; through: number; active: number; startedAt: number } | null>(null)
+  const [revealRun, setRevealRun] = useState<{ key: string; through: number; active: number | null; startedAt: number } | null>(null)
   const [revealClockMs, setRevealClockMs] = useState(0)
   const revealOrders = useMemo(
     () => slideRevealOrders(slide, previousSlideFor(presentation.slides, slide)),
@@ -52,7 +52,9 @@ export function useRevealPreview({ presentation, slide, mode, onSequenceEnd }: U
 
   useEffect(() => {
     setPreviewRun(null)
-    setRevealRun(null)
+    // Preserve completed reveals prepared for a backward presenter navigation.
+    const key = `${presentation.id}:${slide.id}:${mode}:`
+    setRevealRun((current) => current?.key === key ? current : null)
   }, [slide.id, presentation.id, mode])
 
   const startPreview = useCallback(() => {
@@ -70,6 +72,15 @@ export function useRevealPreview({ presentation, slide, mode, onSequenceEnd }: U
 
   const stopPreview = useCallback(() => setPreviewRun(null), [])
   const resetReveal = useCallback(() => setRevealRun(null), [])
+  const completeSlideReveals = useCallback((targetSlide: Slide) => {
+    const orders = slideRevealOrders(targetSlide, previousSlideFor(presentation.slides, targetSlide))
+    setRevealRun({
+      key: `${presentation.id}:${targetSlide.id}:${mode}:`,
+      through: orders.at(-1) ?? 0,
+      active: null,
+      startedAt: 0,
+    })
+  }, [presentation.id, presentation.slides, mode])
 
   const advanceReveal = useCallback(() => {
     const order = nextRevealOrder(revealOrders, revealState.revealedThroughOrder)
@@ -83,13 +94,23 @@ export function useRevealPreview({ presentation, slide, mode, onSequenceEnd }: U
     setRevealRun({ key: revealKey, through: order, active: order, startedAt })
   }, [isPreviewing, onSequenceEnd, revealKey, revealOrders, revealState.revealedThroughOrder, stopPreview])
 
+  const undoReveal = useCallback(() => {
+    const order = revealOrders.filter((candidate) => candidate <= revealState.revealedThroughOrder).at(-1)
+    if (order === undefined) return false
+    const through = revealOrders.filter((candidate) => candidate < order).at(-1) ?? 0
+    setRevealRun({ key: revealKey, through, active: null, startedAt: 0 })
+    return true
+  }, [revealKey, revealOrders, revealState.revealedThroughOrder])
+
   return {
     advanceReveal,
+    completeSlideReveals,
     isPreviewing,
     resetReveal,
     revealOrders,
     revealState,
     startPreview,
     stopPreview,
+    undoReveal,
   }
 }

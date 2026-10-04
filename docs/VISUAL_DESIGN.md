@@ -6,9 +6,11 @@ Use [PRESENTATION_FORMAT.md](PRESENTATION_FORMAT.md) for the schema and [CODEX_A
 
 ## Design intent
 
-Aim for editorial, restrained, human-designed slides. Every visual choice should help the audience understand a claim, follow a relationship, examine evidence, or remember a useful idea. Prefer confident typography, deliberate composition, and whitespace to decoration.
+Aim for visually clean, editorial, human-designed slides. Every visual choice should help the audience understand a claim, follow a relationship, examine evidence, or remember a useful idea. Use intentional composition, strong focal points, and purposeful whitespace, with layouts suited to each idea.
 
-Give each slide one main communication task and one clear visual focal point. Make the takeaway recognizable before the audience reads the small text. A short statement, a large number, an annotated screenshot, or a simple diagram can carry a complete slide. Do not fill space just because it is available.
+Give each slide one main communication task and one clear visual focal point. Make the main idea recognizable before the audience reads the small text. A large number, an annotated screenshot, a readable chart, or a simple diagram can carry a complete slide. Keep visible text lean: retain necessary headlines, labels, units, qualifications, and evidence, and put fuller explanations in speaker notes. Do not fill space just because it is available.
+
+Omit generic bottom takeaway callouts, motivational summaries, and slogan-like conclusions unless explicitly requested. Use concrete, specific copy that supports the evidence; avoid generic AI-looking imagery and formulaic AI copy.
 
 Avoid generic AI-presentation aesthetics as defaults:
 
@@ -44,33 +46,33 @@ There are no native arbitrary paths, Bézier controls, groups, nested components
 
 Establish a small type hierarchy for the deck through `theme.fontFamily` and its headline, body, caption, and optional label defaults. Use element overrides when a slide needs a deliberate emphasis. Theme colors and `chartStyle` set the shared visual language; a theme does not determine layout.
 
-Choose a readable font family available in the rendering environment and provide sensible fallbacks. Usually one family and two or three weights are enough. Keep typography consistent across native text and SVG artwork.
+Choose a coherent, readable font family available in the rendering environment and provide sensible fallbacks. Usually one family and a restrained set of weights are enough. Keep typography consistent across native text and SVG artwork. Give changes in size, weight, or color a clear purpose, and preserve useful hierarchy when redesigning. Do not default to making everything Arial or flattening all text to neutral colors.
 
 Use large, short headlines, often 3–12 words. Prefer a sentence that states the point to a vague category heading. Break lines at meaningful phrases; avoid isolated trailing words. Use size and weight before adding a box, underline, or accent color.
 
-For this canvas, headline sizes around 80–132 and supporting text around 32–44 are useful starting points, not fixed requirements. A single word or number may be much larger. Captions can be smaller, but key information must remain readable when the tall slide is shown at a reduced viewing size. Check actual wrapping and font rendering before finalizing.
+For this canvas, headline sizes around 80–132 and supporting text around 32–44 are useful starting points, not fixed requirements. There is no fixed maximum of three font sizes or minimum size of 40. Choose sizes for readability, hierarchy, and the actual canvas. A single word or number may be much larger. Captions can be smaller, but key information must remain readable when the tall slide is shown at a reduced viewing size. Check actual wrapping and font rendering before finalizing.
 
 Text frames must fit the rendered copy with breathing room. If text overflows, shorten the copy or change the composition before reducing everything to tiny type. Use `lineHeight`, `letterSpacing`, and alignment deliberately; do not rely on rich text or arbitrary CSS.
 
 Build a clear reading path with aligned edges, related spacing, and a few strong scale differences. Default to left alignment for explanatory copy; centered text works for a brief statement or number. Leave substantial empty space around the main idea. Avoid borders and background panels when proximity and alignment already establish the relationship.
 
-Use a restrained palette: a coherent background and foreground, one primary accent, and muted supporting marks. Maintain readable contrast, especially for small labels and charts. Color should indicate emphasis or meaning; pair it with labels, position, or shape so meaning survives without color.
+Use a limited, coherent palette with restrained accents and supporting marks. Preserve meaningful chart colors and use distinct colors where they identify data series, categories, or emphasis. Maintain readable contrast, especially for small labels and charts. Color should indicate emphasis or meaning; pair it with labels, position, or shape so meaning survives without color.
 
 ## Choose the simplest visual that explains the point
 
-Start from the communication task, not a template. These compositions use ordinary elements:
+Start from the communication task, not a template. Prefer concrete visual explanations, readable charts, comparisons, and diagrams over lists of statements. These compositions use ordinary elements:
 
 | Task | Useful treatment |
 | --- | --- |
-| State a conclusion | One large phrase with a small supporting label if needed. |
+| State an evidence-based conclusion | One concise, specific claim supported by a relevant value or visual. |
 | Make one value memorable | A large number, unit, and short explanation. |
 | Compare two things | Two aligned visual clusters with direct labels and the difference made obvious. |
 | Explain a mechanism | A few labeled nodes and arrows showing a clear sequence or relationship. |
 | Point to evidence | A large screenshot or image with one precise annotation. |
-| Explain a trend | One readable semantic chart and a takeaway headline. |
+| Explain a trend | One readable semantic chart and a concise headline stating the observed trend. |
 | Develop an idea over time | Continue the same meaningful object or chart across slides, changing emphasis. |
 
-Do not turn every list into a card grid. Try a typographic list, a sequence of labels, two contrasting regions, or separate narration beats when those communicate more clearly.
+Use a list only when the items themselves are the point, and do not turn every list into a card grid. Otherwise, show the relationship through a comparison, sequence, chart, or diagram, with supporting statements in notes.
 
 ### Diagrams, arrows, and annotations
 
@@ -84,7 +86,7 @@ For screenshots, crop or frame the relevant area large enough to read. Add a cir
 
 Use a semantic `chart` element for supported bar and line charts. Keep data, labels, `highlightIds`, `showValues`, formatting, and domains meaningful. A single statistic usually works better as large editable text than a one-bar chart.
 
-Give the chart enough space to read. Use an explicit takeaway, concise labels, restrained grid lines through `theme.chartStyle`, and one emphasis at a time. Prefer direct labels and values over an added legend when the available chart controls and composition allow it. Do not invent unsupported chart options.
+Give the chart enough space to read. Make the relevant comparison or trend clear through composition, a concise headline, labels, and purposeful emphasis. Use restrained grid lines through `theme.chartStyle` and preserve meaningful series and category colors. Prefer direct labels and values over an added legend when the available chart controls and composition allow it. Do not invent unsupported chart options.
 
 Preserve supplied values and units; never invent data for visual balance. Keep comparable scales consistent and avoid misleading domains. If custom SVG is necessary for an unsupported visualization, retain the underlying data and source context in the project or notes, and recognize that the result is an image rather than an editable semantic chart.
 
@@ -94,7 +96,7 @@ Inspect the existing `assets/` files and `imageAssets` registry before creating 
 
 **Use custom SVG when primitives are insufficient.** Appropriate reasons include an irregular outline, a curved connector, a subject-specific illustration, or a diagram whose geometry cannot be expressed cleanly with the supported shapes. Compose it with simple paths, restrained fills, consistent strokes, and the deck's palette. Include a suitable `viewBox`, preserve its aspect ratio, and avoid unnecessary detail. Keep the file self-contained with no external image, font, or script dependencies. Put slide headlines and changing labels in native text where practical; SVG content is managed as one image element, without independently editable or revealable internal parts.
 
-**Use generated raster images only when they materially improve the slide.** A specific scene, concrete object, atmosphere essential to the narrative, or subject-specific visual explanation may justify generation. A generic illustration added to fill empty space does not. Existing photographs, screenshots, and assets may already communicate the point better.
+**Use ImageGen only for purposeful icons or stylized graphics.** Do not generate realistic photographs of food, objects, or people. Avoid generic AI-looking imagery and graphics added merely to fill empty space. Reuse existing photographs, screenshots, and assets when they communicate the point; prefer native primitives or SVG for visuals they can express clearly.
 
 Before generation, identify what the image explains, the intended crop and frame, and how it fits the deck's tone. Keep unrelated detail low and leave room for any adjacent typography. Do not ask a generated image to supply precise chart data, interface evidence, labels, or paragraphs that should remain accurate and editable. Inspect the result for factual errors, artifacts, readability, and coherence with the other slides before using it.
 
@@ -117,7 +119,7 @@ The editor's file imports, clipboard image paste, and Finder drops also ingest m
 
 Keep a coherent type hierarchy, palette, margin rhythm, label treatment, stroke language, and image style across the deck. Vary composition to suit the story while preserving those conventions. A statement, screenshot, chart, and diagram should feel like parts of one presentation.
 
-Do not add visible slide numbers, page counters, or repeated section headers to slide canvases unless explicitly requested. Keep navigation indicators in the application UI.
+Do not add visible slide numbers, page counters, repeated section headers, or small footers to slide canvases unless explicitly requested. Keep navigation indicators in the application UI.
 
 Use repeated layouts when they make a comparison or progression easier to follow. Avoid repetition that merely fills a template. Keep recurring concepts in recognizable positions when helpful, and reserve dramatic changes in scale or color for meaningful changes in the story.
 
@@ -125,13 +127,13 @@ Preserve the presentation ID, slide IDs, narration section IDs and membership, a
 
 ## Narration-aware design
 
-Slides support spoken narration. They should give the audience something useful to see while hearing the explanation: evidence, a relationship, a concrete example, or a memorable takeaway. Do not paste a narration script onto the canvas.
+Slides support spoken narration. They should give the audience something useful to see while hearing the explanation: evidence, a relationship, a concrete example, or a meaningful comparison. Do not paste a narration script onto the canvas.
 
 Place the spoken explanation, delivery cues, source reminders, and supporting context in slide `notes`. Notes are authoring support; recorded takes and cue timing are managed separately under `narration/`. Keep necessary visible labels, units, and qualifications so the visual remains understandable.
 
 Choose slides as natural narration beats. If the listener needs to understand several separate claims, consider separate slides. If a single idea benefits from successive evidence or labels, use a small reveal sequence within the slide. Avoid unnecessary micro-slides and long slides crowded with all the points the narrator intends to say.
 
-When redesigning an existing deck, preserve narration sections and slide membership unless a story change was requested. Check the visuals against the existing spoken sequence so labels and evidence appear when the narrator discusses them.
+When redesigning an existing deck, preserve the story and supplied data while improving composition and visualization. Preserve narration sections and slide membership unless a story change was requested. Check the visuals against the existing spoken sequence so labels and evidence appear when the narrator discusses them.
 
 ## Restrained animation and continuity
 

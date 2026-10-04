@@ -27,7 +27,7 @@ The app keeps the last valid deck open during invalid intermediate writes. Unsav
 
 Choose what the viewer sees first. A typical slide has one dominant element, one to three supporting elements, and perhaps a small annotation. Dominance can come from scale, contrast, placement, or whitespace.
 
-Use the full canvas deliberately. Important content usually fits comfortably within `x: 80–1000` and `y: 120–1720`, but intentional crops, overlap, off-canvas images, asymmetry, and empty space are useful design tools. Do not fill every corner or force a corporate grid.
+Use the full canvas for backgrounds and intentional crops, while keeping essential content inside the [TikTok working safe area in VISUAL_DESIGN.md](VISUAL_DESIGN.md#tiktok-overlays-and-working-safe-area). Default main content bounds are `x: 60–920`, `y: 270–1540`; reserve `y: 1560–1720` for narration captions. Without subtitles, main content may extend to `y: 1720`. These bounds follow the reference feed's navigation/search, action rail, and account/title block. Center within the safe area at `x: 490` and recompose to fit instead of shrinking everything. Do not fill every corner or force a corporate grid.
 
 Keep visible copy presentation-like: a 3–12 word headline, short labels, and short annotations. A paragraph usually belongs in `notes`, where it can carry the narration suggestion, source reminder, pronunciation, delivery cue, or supporting context. Use body text when it is truly the visual point, not as a substitute for planning.
 

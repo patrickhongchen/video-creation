@@ -21,6 +21,7 @@ import { resolveNarrationVisualAtTime } from '../narration/resolveNarrationVisua
 import { NARRATION_POINTER_FADE_END_MS, narrationPointerOpacityAtTime, resolveNarrationPointerAtTime } from '../narration/resolveNarrationPointer'
 import { coverSlidesWithSections, mergeSectionIntoPrevious, sectionsWithChangedSlideRanges, splitSectionAtSlide } from '../narration/sectionBoundaries'
 import { countCaptionEdits } from '../narration/captionReview'
+import { resolveCaptionAtTime } from '../narration/resolveNarrationCaption'
 import { CaptionReviewDialog } from './CaptionReviewDialog'
 import { NarrationHeader } from './narration/NarrationHeader'
 import { NarrationSlideRail } from './narration/NarrationSlideRail'
@@ -679,6 +680,8 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
   }, [presentation.voiceEnhance])
   const orphanSections = sections.filter((section) => !section.slideIds.some((id) => presentation.slides.some((slide) => slide.id === id)))
   const playbackTake = Object.values(takeMap).flat().find((take) => take.id === playback.takeId)
+  const takeCaptionText = recorderBusy ? null
+    : resolveCaptionAtTime(playbackTake?.captions, playback.currentTimeMs)?.text ?? null
   const currentRevealOrders = currentSlide
     ? slideRevealOrders(currentSlide, previousSlideFor(presentation.slides, currentSlide))
     : []
@@ -791,6 +794,7 @@ export function NarrationStudio({ presentation, projectId, initialSlideIndex, on
           selectedSectionValid={selectedResolved?.valid ?? false} activeSectionSlideIndex={activeRelativeIndex}
           direction={direction} renderInstanceKey={renderInstanceKey}
           revealState={stageRevealState} pointerState={stagePointerState} stageRef={stageRef}
+          captionText={takeCaptionText}
           videoPlayback={stageVideoPlayback} onToggleVideo={toggleRecordingVideo}
           mode={uiMode} recorderStatus={recorder.status} recorderBusy={recorderBusy}
           recorderCountdown={recorder.countdown} recorderElapsedMs={recorder.elapsedMs}

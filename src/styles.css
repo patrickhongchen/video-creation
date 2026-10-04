@@ -31,9 +31,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .export-render-surface .final-video-frame { width: 1080px; height: 1920px; }
 .final-video-frame { position: relative; aspect-ratio: 9 / 16; container-type: inline-size; isolation: isolate; }
 .final-video-frame > .stage { width: 100%; height: 100%; max-width: none; max-height: none; }
-.caption-overlay { position: absolute; z-index: 60; right: 8%; bottom: 14%; left: 8%; display: flex; justify-content: center; pointer-events: none; color: #fff; text-align: center; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
-.caption-overlay span { display: block; max-width: 100%; background: rgba(10, 15, 22, .82); border-radius: 2.1cqw; padding: 1.7cqw 2.7cqw; font-size: 4.2cqw; font-weight: 750; line-height: 1.25; text-shadow: 0 1px 2px rgba(0, 0, 0, .34); }
-.caption-overlay--minimal span { background: rgba(10, 15, 22, .69); border-radius: 1.35cqw; padding: 1.2cqw 2cqw; font-size: 3.7cqw; font-weight: 600; line-height: 1.3; }
+/* TikTok feed reference: x 60–920, caption bottom y 1720 on a 1080 × 1920 video. */
+.caption-overlay { position: absolute; z-index: 60; right: calc(100% * 160 / 1080); bottom: calc(100% * 200 / 1920); left: calc(100% * 60 / 1080); display: flex; justify-content: center; pointer-events: none; color: #fff; text-align: center; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; white-space: pre-wrap; overflow-wrap: anywhere; }
+.caption-overlay span { display: block; max-width: 100%; background: rgba(10, 15, 22, .82); border-radius: 1.6cqw; padding: 1.2cqw 2cqw; font-size: 3.4cqw; font-weight: 750; line-height: 1.25; text-shadow: 0 1px 2px rgba(0, 0, 0, .34); }
+.caption-overlay--minimal span { background: rgba(10, 15, 22, .69); border-radius: 1.1cqw; padding: .9cqw 1.6cqw; font-size: 3.1cqw; font-weight: 600; line-height: 1.3; }
 .export-stage .scene-canvas {
   width: 432px;
   height: 768px;
@@ -139,7 +140,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .slide-viewport-scroll { min-width: 0; min-height: 0; overflow: auto; padding: 12px; scrollbar-width: thin; }
 .slide-viewport-canvas { width: max-content; height: max-content; min-width: 100%; min-height: 100%; display: flex; }
 .slide-viewport-content { width: calc(var(--slide-stage-height) * .5625); height: var(--slide-stage-height); flex: none; margin: auto; }
-.slide-viewport-content > .stage { width: 100%; height: 100%; max-width: none; max-height: none; }
+.slide-viewport-content > .stage, .slide-viewport-content > .final-video-frame { width: 100%; height: 100%; max-width: none; max-height: none; }
 .slide-zoom-controls { min-height: 34px; display: flex; align-items: center; justify-content: center; gap: 4px; padding-top: 6px; color: #536276; font-size: 11px; font-variant-numeric: tabular-nums; }
 .slide-zoom-controls button { min-width: 29px; height: 28px; border: 1px solid #cbd5df; border-radius: 4px; background: rgba(255,255,255,.92); color: #3d4f62; padding: 0 8px; font: inherit; font-weight: 700; }
 .slide-zoom-controls button:not(:disabled):hover { border-color: #9fb0c1; background: #fff; }

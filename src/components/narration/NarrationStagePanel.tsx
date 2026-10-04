@@ -1,5 +1,5 @@
 import type { PointerEventHandler, RefObject } from 'react'
-import type { NarrationSection, Presentation, Slide } from '../../model'
+import { resolveCaptionSettings, type NarrationSection, type Presentation, type Slide } from '../../model'
 import type { RevealVisualState } from '../../entranceAnimation'
 import type { NarrationPointerDisplayState } from '../../narration/resolveNarrationPointer'
 import type { VideoPlaybackState } from '../../narration/resolveVideoPlayback'
@@ -7,6 +7,7 @@ import type { NarrationRecorderStatus } from '../../narration/narrationTypes'
 import { ArrowLeftIcon, ArrowRightIcon } from '../Icons'
 import { SlideViewport } from '../SlideViewport'
 import { Stage } from '../Stage'
+import { FinalVideoFrame } from '../FinalVideoFrame'
 import { formatTimer } from '../narrationTime'
 import { MicrophoneMeter } from './MicrophoneMeter'
 
@@ -22,6 +23,7 @@ interface NarrationStagePanelProps {
   renderInstanceKey: string
   revealState: RevealVisualState | null
   pointerState: NarrationPointerDisplayState | null
+  captionText: string | null
   stageRef: RefObject<HTMLDivElement | null>
   mode: 'setup' | 'recording'
   recorderStatus: NarrationRecorderStatus
@@ -58,6 +60,7 @@ export function NarrationStagePanel({
   renderInstanceKey,
   revealState,
   pointerState,
+  captionText,
   stageRef,
   mode,
   recorderStatus,
@@ -84,7 +87,9 @@ export function NarrationStagePanel({
   return (
     <section className="narration-stage-panel">
       {currentSlide ? <SlideViewport contentClassName="narration-stage-hit-area" onContentClick={recorderStatus === 'recording' ? () => onAdvanceRecording(1) : undefined}>
+        <FinalVideoFrame captionText={captionText} captionStyle={resolveCaptionSettings(presentation).style}>
         <Stage ref={stageRef} slide={currentSlide} slides={presentation.slides} theme={presentation.theme} imageAssets={presentation.imageAssets} videoAssets={presentation.videoAssets} videoPlayback={videoPlayback} presentationId={presentation.id} slideNumber={currentSlideIndex + 1} slideCount={presentation.slides.length} direction={direction} renderInstanceKey={renderInstanceKey} revealState={revealState} pointerState={pointerState} onPointerMove={onPointerMove} onPointerLeave={onPointerLeave} className={`narration-stage${recorderStatus === 'recording' && pointerMode ? ' pointer-enabled' : ''}`} />
+        </FinalVideoFrame>
       </SlideViewport> : <div className="narration-empty-stage">Add a slide before recording narration.</div>}
       <div className="narration-progress">{selectedSection && <span>{mode === 'recording' ? recordingProgress : `Slide ${Math.min(activeSectionSlideIndex + 1, selectedSectionSlideCount)} of ${selectedSectionSlideCount} in section`}</span>}{mode !== 'recording' && currentSlideIndex >= 0 && <span>Presentation slide {currentSlideIndex + 1} of {presentation.slides.length}</span>}{advanceHint && recorderStatus === 'recording' && <span className="narration-advance-hint">Press D or Space for the next reveal or slide</span>}</div>
       <div className="narration-stage-toolbar">

@@ -87,10 +87,10 @@ All elements have:
 Coordinates are explicit design units, not percentages or responsive constraints:
 
 ```json
-"frame": { "x": 120, "y": 260, "width": 840, "height": 220 }
+"frame": { "x": 80, "y": 290, "width": 820, "height": 220 }
 ```
 
-Elements may extend outside the canvas for intentional crops. Keep important content roughly inside `x: 80–1000` and `y: 120–1720` unless the design calls for otherwise.
+Elements may extend outside the canvas for intentional crops. For this project's default TikTok destination, follow the [working safe area in VISUAL_DESIGN.md](VISUAL_DESIGN.md#tiktok-overlays-and-working-safe-area): essential slide content inside `x: 60–920`, `y: 270–1540`, with `y: 1560–1720` reserved for narration captions. Without subtitles, main content may extend to `y: 1720`. These are authoring recommendations, not schema constraints or automatic layout enforcement.
 
 ### Element entrance animation
 

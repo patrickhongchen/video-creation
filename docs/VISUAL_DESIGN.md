@@ -47,7 +47,32 @@ Before finishing, read the visible copy aloud. Replace wording that sounds like 
 
 The canonical desktop project is a folder containing `presentation.json`, portable visual files under `assets/`, and optional recorded narration under `narration/`. New presentations use `schemaVersion: 2`, `aspectRatio: "9:16"`, and a `slides` array. Each slide has ordinary `elements`; presets are starting arrangements, not persisted slide types.
 
-The canvas is fixed at **1080 × 1920**. Use explicit `frame` coordinates with `x`, `y`, `width`, and `height`; optional rotation and opacity belong in the frame. Important content usually sits within approximately `x: 80–1000` and `y: 120–1720`. These are useful margins, not schema limits. Intentional crops and off-canvas elements are possible. Array order controls back-to-front layering.
+The canvas is fixed at **1080 × 1920**. Use explicit `frame` coordinates with `x`, `y`, `width`, and `height`; optional rotation and opacity belong in the frame. TikTok is the default publishing destination for this project: place important content inside the working safe area below. These are authoring margins, not schema limits. Backgrounds and intentional crops can extend across the full canvas. Array order controls back-to-front layering.
+
+### TikTok overlays and working safe area
+
+Compose for the video as it appears in the TikTok feed, with app controls over it. Use the supplied For You feed screenshot as the reference: keep material below the navigation/search row, left of the profile/heart/comment/save/share/sound action rail, and above the account name and video title/description block. The narration subtitle box belongs immediately above that bottom text block and left of the action rail. Essential text, chart labels, annotation targets, faces, and evidence must remain readable with these regions covered.
+
+Use these approximate **project defaults**, based on that reference, on the 1080 × 1920 canvas. They include a small gap from the visible controls without reserving a full bottom quarter:
+
+| Region | Coordinates | Purpose |
+| --- | --- | --- |
+| Main slide content | `x: 60–920`, `y: 270–1540` | Headlines, charts, labels, diagrams, and essential image details. Maximum width: 860 px. |
+| Narration caption band | `x: 60–920`, `y: 1560–1720` | Subtitles immediately above the account/title block. Keep slide content out of this band when captions are used. |
+| Top reserve | `y: 0–270` | Navigation/search row, with a small gap below it. |
+| Right reserve | `x: 920–1080` | Action rail, with a small gap to its left. |
+| Bottom reserve | `y: 1720–1920` | Account name, title/description, and sound attribution. |
+| Left margin | `x: 0–60` | Edge/crop breathing room. |
+
+The overall working safe rectangle is `{ "x": 60, "y": 270, "width": 860, "height": 1450 }`. Center important compositions within this rectangle (horizontal center `x: 490`), rather than the full frame. If subtitles are not used, main content may extend to `y: 1720`. Frame boundaries alone are insufficient: keep rendered labels, arrowheads, and meaningful image details inside the area too.
+
+Generated captions use this 860 px maximum width, with their bottom edge at `y: 1720` (about 10.4% above the video bottom), in take preview, final preview, and export. They are centered within the available width, with about 14.8% of the frame kept clear on the right. Keep the compact typography readable and aim for one or two lines. Longer segments grow upward: review the longest captions against the actual slide and leave more space above the band where needed. Do not clip subtitles or shrink them until they become unreadable.
+
+When adapting a phone screenshot, identify the video display area first. The example's black Home/Friends/create/Inbox/Profile bar is app chrome below the video; do not count its height as an additional reserve inside the exported video. A phone screenshot also has a different aspect ratio from the 9:16 export, and TikTok may crop or scale playback. Measure the visible overlay edges relative to the video area and check the actual upload rather than mapping the entire phone screenshot directly to 1080 × 1920.
+
+These coordinates are our working policy, not official universal TikTok pixel limits. [TikTok's official safe-zone guidance](https://ads.tiktok.com/resources/help/article/tiktok-auction-in-feed-ads?lang=en) is for in-feed ads and says the available area depends on dimensions, description length, and additional formats; preview and live display can differ by device. Use it as a reference for organic posts, then check a representative upload in the actual feed with the intended description. Ads, Shop links, expanded descriptions, and other extra overlays may require more room.
+
+Use the outer regions for backgrounds or nonessential image texture. Recompose within the smaller area instead of uniformly shrinking a full-frame layout: shorten headlines, simplify charts, crop screenshots to the evidence, and split crowded ideas across slides. Preserve useful type hierarchy and whitespace. Do not draw safe-area boxes or imitate TikTok controls in the exported video. Existing slides are not automatically repositioned by this policy; apply it when authoring or revising their composition.
 
 Use the existing primitives first:
 
@@ -183,7 +208,7 @@ An entrance is suppressed when the immediately previous slide has a visible comp
 2. Identify each slide's main idea and what the narrator will explain. Choose the simplest visual treatment that supports it.
 3. Establish or preserve the deck's typography, palette, and spacing conventions. Compose with native elements before making new assets.
 4. Add custom SVG or purposeful raster assets only where needed, register them, and preserve continuing identities.
-5. Inspect slides at presentation size and at a reduced viewing size. Check contrast, wrapping, clipping, crops, chart labels, arrow endpoints, and reading order. Inspect SVGs and generated images as rendered, not only as files or prompts.
+5. Inspect slides at presentation size and at a reduced viewing size. Check contrast, wrapping, clipping, crops, chart labels, arrow endpoints, and reading order. For TikTok, review with the top, right, and bottom reserves covered and with a long narration caption visible; essential content must remain clear. Check a representative upload in the actual feed with the intended description. Inspect SVGs and generated images as rendered, not only as files or prompts.
 6. Read the visible copy aloud for natural, specific wording, and remove redundant callouts. Review the sequence for consistency and narration pacing. Step through any reveals and Morph transitions; verify that each stage makes sense before the next advance.
 7. Run `npm run validate-project -- <project-folder> --strict` for modified presentation projects and resolve errors and meaningful warnings. Validation checks structure and assets; visual review still matters. For repository changes, also follow the build requirement in the repo-level `AGENTS.md`.
 

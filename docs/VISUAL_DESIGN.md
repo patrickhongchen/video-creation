@@ -23,6 +23,26 @@ Avoid generic AI-presentation aesthetics as defaults:
 
 Use a container only when its boundary communicates something, such as a system, region, or grouping. Use an icon only when it identifies something faster or more clearly than a short label. A subject-specific illustration or requested playful tone can be appropriate; keep its purpose and visual language deliberate.
 
+## Slide copy: natural, specific, and brief
+
+Write like a person explaining the subject to an audience. Use familiar words and name the actual topic, action, or observation. Avoid abstract slogans, dramatic fragments, forced metaphors, motivational language, and polished phrases that could fit almost any presentation. Do not make a heading sound profound at the expense of clarity.
+
+A plain topic heading is appropriate when the visual supplies the explanation. Use a direct claim when the slide supports that claim, or a straightforward question when it reflects a real audience question. Do not force every heading into a takeaway sentence or rhetorical question.
+
+Examples from the calorie presentation:
+
+| Avoid | Prefer |
+| --- | --- |
+| “Precision has a cost” | “How much should you track?” |
+| “Let reality close the loop” | “Weight trends over time” |
+| “A moving range. Not one fixed daily number.” | Omit the bottom callout; let the chart show the range. |
+
+These examples illustrate the tone, not a set of phrases to reuse across decks. Avoid formulaic contrasts such as “Not X. Y.” and repeated two-line declarations. Keep chart labels literal: describe what is measured, show the units, and distinguish examples and estimates from observed data. Preserve necessary qualifications without adding a paragraph of explanation.
+
+Reduce text by removing repeated explanations and unnecessary commentary before shortening useful labels. Do not automatically add a closing slogan or bottom summary to every slide. Keep the story and evidence intact, and move detail that belongs in the spoken explanation to notes.
+
+Before finishing, read the visible copy aloud. Replace wording that sounds like marketing copy or an AI-generated maxim with the phrase you would naturally use to explain that specific visual. Check that the shorter wording still conveys the intended meaning and degree of certainty.
+
 ## Work within the actual presentation model
 
 The canonical desktop project is a folder containing `presentation.json`, portable visual files under `assets/`, and optional recorded narration under `narration/`. New presentations use `schemaVersion: 2`, `aspectRatio: "9:16"`, and a `slides` array. Each slide has ordinary `elements`; presets are starting arrangements, not persisted slide types.
@@ -48,7 +68,7 @@ Establish a small type hierarchy for the deck through `theme.fontFamily` and its
 
 Choose a coherent, readable font family available in the rendering environment and provide sensible fallbacks. Usually one family and a restrained set of weights are enough. Keep typography consistent across native text and SVG artwork. Give changes in size, weight, or color a clear purpose, and preserve useful hierarchy when redesigning. Do not default to making everything Arial or flattening all text to neutral colors.
 
-Use large, short headlines, often 3–12 words. Prefer a sentence that states the point to a vague category heading. Break lines at meaningful phrases; avoid isolated trailing words. Use size and weight before adding a box, underline, or accent color.
+Use large, short headlines, often 3–12 words. Choose a clear topic heading, a specific supported claim, or a natural audience question; avoid vague category labels and slogan-like statements. Break lines at meaningful phrases; avoid isolated trailing words. Use size and weight before adding a box, underline, or accent color.
 
 For this canvas, headline sizes around 80–132 and supporting text around 32–44 are useful starting points, not fixed requirements. There is no fixed maximum of three font sizes or minimum size of 40. Choose sizes for readability, hierarchy, and the actual canvas. A single word or number may be much larger. Captions can be smaller, but key information must remain readable when the tall slide is shown at a reduced viewing size. Check actual wrapping and font rendering before finalizing.
 
@@ -164,7 +184,7 @@ An entrance is suppressed when the immediately previous slide has a visible comp
 3. Establish or preserve the deck's typography, palette, and spacing conventions. Compose with native elements before making new assets.
 4. Add custom SVG or purposeful raster assets only where needed, register them, and preserve continuing identities.
 5. Inspect slides at presentation size and at a reduced viewing size. Check contrast, wrapping, clipping, crops, chart labels, arrow endpoints, and reading order. Inspect SVGs and generated images as rendered, not only as files or prompts.
-6. Review the sequence for consistency and narration pacing. Step through any reveals and Morph transitions; verify that each stage makes sense before the next advance.
+6. Read the visible copy aloud for natural, specific wording, and remove redundant callouts. Review the sequence for consistency and narration pacing. Step through any reveals and Morph transitions; verify that each stage makes sense before the next advance.
 7. Run `npm run validate-project -- <project-folder> --strict` for modified presentation projects and resolve errors and meaningful warnings. Validation checks structure and assets; visual review still matters. For repository changes, also follow the build requirement in the repo-level `AGENTS.md`.
 
 Before finishing, remove decoration without a communication purpose, unnecessary containers and icons, redundant visible narration, and motion that distracts from the idea. The final slide should feel intentionally composed, readable, and coherent with its neighbors.
